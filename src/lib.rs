@@ -18,7 +18,6 @@ impl Plugin for AppPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(plugins::defaults::plugin);
         app.add_plugins(plugins::world::plugin);
-        app.add_plugins(plugins::player::plugin);
         app.add_plugins(plugins::camera::plugin);
         app.add_plugins(plugins::character_controller::plugin);
     }

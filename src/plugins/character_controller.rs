@@ -1,17 +1,36 @@
-use crate::components::{key_mapping::*, player::*};
+use crate::prelude::{key_mapping::*, player::*};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
-        (move_players_from_input, translate_players_from_grid_coords),
+        (
+            attach_player_controls,
+            move_player_from_input,
+            translate_from_grid_coords,
+        ),
     );
 }
 
 const GRID_SIZE: i32 = 16;
 
-fn move_players_from_input(
+fn attach_player_controls(
+    mut commands: Commands,
+    mut players: Query<(Entity, &mut Player), (Added<Player>, Without<KeyMapping>)>,
+) {
+    for (entity, player) in &mut players {
+        let key_mapping = match player.player_id {
+            0 => KeyMapping::wasd(),
+            1 => KeyMapping::arrow_keys(),
+            _ => KeyMapping::default(),
+        };
+
+        commands.entity(entity).insert(key_mapping);
+    }
+}
+
+fn move_player_from_input(
     mut players: Query<(&mut GridCoords, &KeyMapping), With<Player>>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
@@ -33,7 +52,7 @@ fn move_players_from_input(
     }
 }
 
-fn translate_players_from_grid_coords(
+fn translate_from_grid_coords(
     mut grid_coords_entities: Query<(&mut Transform, &GridCoords), Changed<GridCoords>>,
 ) {
     for (mut transform, grid_coords) in &mut grid_coords_entities {
