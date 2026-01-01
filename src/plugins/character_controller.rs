@@ -1,4 +1,4 @@
-use crate::prelude::{key_mapping::*, player::*};
+use crate::prelude::{key_mapping::*, player::*, walkable::*, world::*};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 
@@ -12,8 +12,6 @@ pub(crate) fn plugin(app: &mut App) {
         ),
     );
 }
-
-const GRID_SIZE: i32 = 16;
 
 fn attach_player_controls(
     mut commands: Commands,
@@ -33,6 +31,7 @@ fn attach_player_controls(
 fn move_player_from_input(
     mut players: Query<(&mut GridCoords, &KeyMapping), With<Player>>,
     input: Res<ButtonInput<KeyCode>>,
+    level_walkables: Res<LevelWalkables>,
 ) {
     for (mut player_grid_coords, key_mapping) in &mut players {
         let movement_direction = if input.just_pressed(key_mapping.up) {
@@ -48,7 +47,9 @@ fn move_player_from_input(
         };
 
         let destination = *player_grid_coords + movement_direction;
-        *player_grid_coords = destination;
+        if level_walkables.in_walkable(&destination) {
+            *player_grid_coords = destination;
+        }
     }
 }
 
