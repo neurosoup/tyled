@@ -1,5 +1,7 @@
+use crate::prelude::actions::*;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
+use leafwing_input_manager::prelude::*;
 
 #[derive(Default, Component)]
 pub struct Player {

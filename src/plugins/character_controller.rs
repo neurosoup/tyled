@@ -1,8 +1,10 @@
-use crate::prelude::{key_mapping::*, player::*, walkable::*, world::*};
+use crate::prelude::{actions::*, player::*, walkable::*, world::*};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
+use leafwing_input_manager::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
+    app.add_plugins(InputManagerPlugin::<Action>::default());
     app.add_systems(
         Update,
         (
@@ -15,40 +17,27 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn attach_player_controls(
     mut commands: Commands,
-    mut players: Query<(Entity, &mut Player), (Added<Player>, Without<KeyMapping>)>,
+    mut players: Query<(Entity, &mut Player), (Added<Player>, Without<InputMap<Action>>)>,
 ) {
     for (entity, player) in &mut players {
-        let key_mapping = match player.player_id {
-            0 => KeyMapping::wasd(),
-            1 => KeyMapping::arrow_keys(),
-            _ => KeyMapping::default(),
-        };
-
-        commands.entity(entity).insert(key_mapping);
+        commands
+            .entity(entity)
+            .insert(Action::default_input_map(&player));
     }
 }
 
 fn move_player_from_input(
-    mut players: Query<(&mut GridCoords, &KeyMapping), With<Player>>,
-    input: Res<ButtonInput<KeyCode>>,
+    mut players: Query<(&ActionState<Action>, &mut GridCoords), With<Player>>,
     level_walkables: Res<LevelWalkables>,
 ) {
-    for (mut player_grid_coords, key_mapping) in &mut players {
-        let movement_direction = if input.just_pressed(key_mapping.up) {
-            GridCoords::new(0, 1)
-        } else if input.just_pressed(key_mapping.down) {
-            GridCoords::new(0, -1)
-        } else if input.just_pressed(key_mapping.left) {
-            GridCoords::new(-1, 0)
-        } else if input.just_pressed(key_mapping.right) {
-            GridCoords::new(1, 0)
-        } else {
-            continue; // No input for this player, continue to next
-        };
-
-        let destination = *player_grid_coords + movement_direction;
-        if level_walkables.in_walkable(&destination) {
-            *player_grid_coords = destination;
+    for (action_state, mut player_grid_coords) in &mut players {
+        if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
+            let axis = action_state.clamped_axis_pair(&Action::Move);
+            let direction = GridCoords::new(axis.x as i32, axis.y as i32);
+            let destination = *player_grid_coords + direction;
+            if level_walkables.in_walkable(&destination) {
+                *player_grid_coords = destination;
+            }
         }
     }
 }
