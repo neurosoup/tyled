@@ -5,6 +5,7 @@ use leafwing_input_manager::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
+    app.add_systems(Startup, setup_move_timer);
     app.add_systems(
         Update,
         (
@@ -13,6 +14,13 @@ pub(crate) fn plugin(app: &mut App) {
             translate_from_grid_coords,
         ),
     );
+}
+
+#[derive(Resource)]
+struct MoveTimer(Timer);
+
+fn setup_move_timer(mut commands: Commands) {
+    commands.insert_resource(MoveTimer(Timer::from_seconds(0.125, TimerMode::Repeating)));
 }
 
 fn attach_player_controls(
@@ -27,9 +35,16 @@ fn attach_player_controls(
 }
 
 fn move_player_from_input(
+    time: Res<Time>,
+    mut move_timer: ResMut<MoveTimer>,
     mut players: Query<(&ActionState<Action>, &mut GridCoords), With<Player>>,
     level_walkables: Res<LevelWalkables>,
 ) {
+    move_timer.0.tick(time.delta());
+    if !move_timer.0.just_finished() {
+        return;
+    }
+
     for (action_state, mut player_grid_coords) in &mut players {
         if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
             let axis = action_state.clamped_axis_pair(&Action::Move);
