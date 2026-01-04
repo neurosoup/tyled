@@ -28,7 +28,7 @@ struct MoveTimer(Timer);
 
 fn create_tween(start: Vec3, end: Vec3) -> Tween {
     Tween::new(
-        EaseFunction::QuadraticInOut,
+        EaseFunction::QuadraticOut,
         Duration::from_millis(200),
         TransformPositionLens { start, end },
     )
