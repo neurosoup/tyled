@@ -6,6 +6,7 @@ use leafwing_input_manager::prelude::*;
 pub enum Action {
     #[actionlike(DualAxis)]
     Move,
+    Lock,
     Shoot,
     Parry,
 }
@@ -23,6 +24,16 @@ impl Action {
                 0 => default_wasd,
                 1 => VirtualDPad::arrow_keys(),
                 _ => VirtualDPad::wasd(),
+            },
+        );
+
+        // Lock action
+        input_map.insert(
+            Action::Lock,
+            match player.player_id {
+                0 => KeyCode::KeyQ,
+                1 => KeyCode::ShiftRight,
+                _ => KeyCode::KeyQ,
             },
         );
 
