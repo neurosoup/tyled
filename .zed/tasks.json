@@ -53,7 +53,7 @@
   },
   {
     "label": "Run",
-    "command": "cargo run",
+    "command": "RUST_BACKTRACE=1 cargo run",
     //"args": [],
     // Whether to use a new terminal tab or reuse the existing one to spawn the process, defaults to `false`.
     "use_new_terminal": false,
