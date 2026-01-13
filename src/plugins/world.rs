@@ -10,7 +10,8 @@ pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(LevelSelection::index(0));
     app.init_resource::<LevelWalkables>();
 
-    app.register_ldtk_entity::<PlayerBundle>("Player");
+    app.register_ldtk_entity::<PlayerBundle>("Player1");
+    app.register_ldtk_entity::<PlayerBundle>("Player2");
     app.register_ldtk_int_cell::<WalkableBundle>(1);
 
     app.add_systems(Startup, load_ltdk_world);
