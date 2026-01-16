@@ -10,28 +10,30 @@ use bevy_tweening::{
 use leafwing_input_manager::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DoubleTapDirection {
+enum DirectionLock {
     Left,
     Right,
     Up,
     Down,
 }
 
-fn check_double_tap(
+fn check_direction_lock(
     action_state: &ActionState<Action>,
     action: &Action,
-) -> Option<(DoubleTapDirection, u128)> {
+    timer: &mut Timer,
+) -> Option<DirectionLock> {
     if action_state.just_pressed(action) {
         let time = action_state.previous_duration(action).as_millis();
         if time < 100 {
             let direction = match action {
-                Action::LockLeft => DoubleTapDirection::Left,
-                Action::LockRight => DoubleTapDirection::Right,
-                Action::LockUp => DoubleTapDirection::Up,
-                Action::LockDown => DoubleTapDirection::Down,
+                Action::LockLeft => DirectionLock::Left,
+                Action::LockRight => DirectionLock::Right,
+                Action::LockUp => DirectionLock::Up,
+                Action::LockDown => DirectionLock::Down,
                 _ => return None,
             };
-            return Some((direction, time));
+            timer.reset();
+            return Some(direction);
         }
     }
     None
@@ -40,7 +42,7 @@ fn check_double_tap(
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
     app.add_plugins(TweeningPlugin);
-    app.add_systems(Startup, setup_move_timer);
+    app.add_systems(Startup, setup);
     app.add_systems(
         Update,
         (
@@ -62,7 +64,7 @@ fn create_tween(start: Vec3, end: Vec3) -> Tween {
     )
 }
 
-fn setup_move_timer(mut commands: Commands) {
+fn setup(mut commands: Commands) {
     commands.insert_resource(MoveTimer(Timer::from_seconds(0.0625, TimerMode::Repeating)));
 }
 
@@ -87,12 +89,21 @@ fn attach_player_controls(
 fn move_player_from_input(
     time: Res<Time>,
     mut move_timer: ResMut<MoveTimer>,
-    mut players: Query<(&ActionState<Action>, &mut GridCoords), With<Player>>,
+    mut players: Query<
+        (
+            &ActionState<Action>,
+            &mut GridCoords,
+            &mut DirectionLockCooldown,
+        ),
+        With<Player>,
+    >,
     level_walkables: Res<LevelWalkables>,
 ) {
     move_timer.0.tick(time.delta());
-    for (action_state, mut player_grid_coords) in &mut players {
+
+    for (action_state, mut player_grid_coords, mut direction_lock_cooldown) in &mut players {
         // Locked movement direction
+        direction_lock_cooldown.timer.tick(time.delta());
         let lock_pressed = action_state.just_pressed(&Action::Lock);
         let lock_print = format!("Lock: {lock_pressed}, Pressed: {}", lock_pressed);
         if lock_pressed {
@@ -100,56 +111,50 @@ fn move_player_from_input(
         }
 
         // Check for double taps on all lock directions
-        let double_tap_result = check_double_tap(action_state, &Action::LockLeft)
-            .or_else(|| check_double_tap(action_state, &Action::LockRight))
-            .or_else(|| check_double_tap(action_state, &Action::LockUp))
-            .or_else(|| check_double_tap(action_state, &Action::LockDown));
+        let direction_lock =
+            check_direction_lock(action_state, &Action::LockLeft, &mut move_timer.0)
+                .or_else(|| {
+                    check_direction_lock(action_state, &Action::LockRight, &mut move_timer.0)
+                })
+                .or_else(|| check_direction_lock(action_state, &Action::LockUp, &mut move_timer.0))
+                .or_else(|| {
+                    check_direction_lock(action_state, &Action::LockDown, &mut move_timer.0)
+                });
 
         // Use the double_tap_result variable here as needed
-        if let Some((direction, lock_time)) = double_tap_result {
+        if let Some(direction) = direction_lock {
+            direction_lock_cooldown.timer.reset();
+            println!(
+                "Double tap detected in direction {:?}, direction_lock_cooldown.timer.reset()",
+                direction
+            );
             // Handle the double tap direction
             match direction {
-                DoubleTapDirection::Left => {
+                DirectionLock::Left => {
                     // Handle left double tap
-                    // println!("Left double tap detected! {}ms", lock_time);
                 }
-                DoubleTapDirection::Right => {
+                DirectionLock::Right => {
                     // Handle right double tap
-                    // println!("Right double tap detected! {}ms", lock_time);
                 }
-                DoubleTapDirection::Up => {
+                DirectionLock::Up => {
                     // Handle up double tap
-                    // println!("Up double tap detected! {}ms", lock_time);
                 }
-                DoubleTapDirection::Down => {
+                DirectionLock::Down => {
                     // Handle down double tap
-                    // println!("Down double tap detected! {}ms", lock_time);
                 }
             }
         }
 
         let timer_finished = move_timer.0.just_finished();
+        let direction_lock_finished = direction_lock_cooldown.timer.is_finished();
 
-        if timer_finished && double_tap_result.is_none() {
-            // let lock = action_state.instant_started(&Action::LockLeft);
-            // if let Some(lock) = lock {
-            //     print!("-{}-", lock.elapsed().as_millis());
-            //     if lock.elapsed().as_millis() < 80 {
-            //         return;
-            //     }
-            // }
-
-            let lock = action_state.previous_duration(&Action::LockLeft);
-            if action_state.released(&Action::LockLeft) && lock.as_millis() < 100 {
-                println!("Lock left previous duration: {}", lock.as_millis());
-            } else {
-                if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
-                    let axis = action_state.clamped_axis_pair(&Action::Move);
-                    let direction = GridCoords::new(axis.x as i32, axis.y as i32);
-                    let destination = *player_grid_coords + direction;
-                    if level_walkables.in_walkable(&destination) {
-                        *player_grid_coords = destination;
-                    }
+        if timer_finished && direction_lock_finished {
+            if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
+                let axis = action_state.clamped_axis_pair(&Action::Move);
+                let direction = GridCoords::new(axis.x as i32, axis.y as i32);
+                let destination = *player_grid_coords + direction;
+                if level_walkables.in_walkable(&destination) {
+                    *player_grid_coords = destination;
                 }
             }
         }

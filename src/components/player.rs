@@ -4,6 +4,11 @@ use bevy_ecs_ldtk::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 #[derive(Default, Component)]
+pub struct DirectionLockCooldown {
+    pub timer: Timer,
+}
+
+#[derive(Default, Component)]
 pub struct Player {
     pub player_id: i32,
 }
@@ -25,4 +30,12 @@ pub struct PlayerBundle {
     sprite_sheet: Sprite,
     #[grid_coords]
     grid_coords: GridCoords,
+    #[with(initial_direction_lock_cooldown)]
+    direction_lock_cooldown: DirectionLockCooldown,
+}
+
+fn initial_direction_lock_cooldown(_: &EntityInstance) -> DirectionLockCooldown {
+    DirectionLockCooldown {
+        timer: Timer::from_seconds(1.0, TimerMode::Once),
+    }
 }
