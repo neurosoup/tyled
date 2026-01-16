@@ -9,6 +9,34 @@ use bevy_tweening::{
 };
 use leafwing_input_manager::prelude::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DoubleTapDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+fn check_double_tap(
+    action_state: &ActionState<Action>,
+    action: &Action,
+) -> Option<(DoubleTapDirection, u128)> {
+    if action_state.just_pressed(action) {
+        let time = action_state.previous_duration(action).as_millis();
+        if time < 100 {
+            let direction = match action {
+                Action::LockLeft => DoubleTapDirection::Left,
+                Action::LockRight => DoubleTapDirection::Right,
+                Action::LockUp => DoubleTapDirection::Up,
+                Action::LockDown => DoubleTapDirection::Down,
+                _ => return None,
+            };
+            return Some((direction, time));
+        }
+    }
+    None
+}
+
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
     app.add_plugins(TweeningPlugin);
@@ -71,15 +99,57 @@ fn move_player_from_input(
             println!("{}", lock_print);
         }
 
+        // Check for double taps on all lock directions
+        let double_tap_result = check_double_tap(action_state, &Action::LockLeft)
+            .or_else(|| check_double_tap(action_state, &Action::LockRight))
+            .or_else(|| check_double_tap(action_state, &Action::LockUp))
+            .or_else(|| check_double_tap(action_state, &Action::LockDown));
+
+        // Use the double_tap_result variable here as needed
+        if let Some((direction, lock_time)) = double_tap_result {
+            // Handle the double tap direction
+            match direction {
+                DoubleTapDirection::Left => {
+                    // Handle left double tap
+                    // println!("Left double tap detected! {}ms", lock_time);
+                }
+                DoubleTapDirection::Right => {
+                    // Handle right double tap
+                    // println!("Right double tap detected! {}ms", lock_time);
+                }
+                DoubleTapDirection::Up => {
+                    // Handle up double tap
+                    // println!("Up double tap detected! {}ms", lock_time);
+                }
+                DoubleTapDirection::Down => {
+                    // Handle down double tap
+                    // println!("Down double tap detected! {}ms", lock_time);
+                }
+            }
+        }
+
         let timer_finished = move_timer.0.just_finished();
 
-        if timer_finished {
-            if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
-                let axis = action_state.clamped_axis_pair(&Action::Move);
-                let direction = GridCoords::new(axis.x as i32, axis.y as i32);
-                let destination = *player_grid_coords + direction;
-                if level_walkables.in_walkable(&destination) {
-                    *player_grid_coords = destination;
+        if timer_finished && double_tap_result.is_none() {
+            // let lock = action_state.instant_started(&Action::LockLeft);
+            // if let Some(lock) = lock {
+            //     print!("-{}-", lock.elapsed().as_millis());
+            //     if lock.elapsed().as_millis() < 80 {
+            //         return;
+            //     }
+            // }
+
+            let lock = action_state.previous_duration(&Action::LockLeft);
+            if action_state.released(&Action::LockLeft) && lock.as_millis() < 100 {
+                println!("Lock left previous duration: {}", lock.as_millis());
+            } else {
+                if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
+                    let axis = action_state.clamped_axis_pair(&Action::Move);
+                    let direction = GridCoords::new(axis.x as i32, axis.y as i32);
+                    let destination = *player_grid_coords + direction;
+                    if level_walkables.in_walkable(&destination) {
+                        *player_grid_coords = destination;
+                    }
                 }
             }
         }

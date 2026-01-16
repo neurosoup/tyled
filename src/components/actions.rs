@@ -6,6 +6,10 @@ use leafwing_input_manager::prelude::*;
 pub enum Action {
     #[actionlike(DualAxis)]
     Move,
+    LockLeft,
+    LockRight,
+    LockUp,
+    LockDown,
     Lock,
     Shoot,
     Parry,
@@ -36,6 +40,11 @@ impl Action {
                 _ => KeyCode::KeyQ,
             },
         );
+
+        input_map.insert(Action::LockLeft, KeyCode::KeyA);
+        input_map.insert(Action::LockRight, KeyCode::KeyD);
+        input_map.insert(Action::LockUp, KeyCode::KeyW);
+        input_map.insert(Action::LockDown, KeyCode::KeyS);
 
         input_map
     }

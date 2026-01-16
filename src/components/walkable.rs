@@ -7,7 +7,7 @@ pub struct Walkable;
 
 #[derive(Default, Bundle, LdtkIntCell)]
 pub struct WalkableBundle {
-    wall: Walkable,
+    walkable: Walkable,
 }
 
 #[derive(Default, Resource)]
