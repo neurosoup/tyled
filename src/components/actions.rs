@@ -14,7 +14,6 @@ pub enum Action {
     Shoot,
     Parry,
 }
-
 impl Action {
     pub fn default_input_map(player: &Player) -> InputMap<Action> {
         let mut input_map = InputMap::default();
@@ -47,5 +46,41 @@ impl Action {
         input_map.insert(Action::LockDown, KeyCode::KeyS);
 
         input_map
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockedDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Component)]
+pub struct DirectionLockState {
+    // Define how fast double-tapping the key can activate the lock
+    pub activation_window: Timer,
+    // Prevent normal movement just after locking (because we use the same key for direction locking and movement)
+    pub cooldown: Timer,
+    // True on the first tap of the key
+    pub is_armed: bool,
+    pub locked_direction: LockedDirection,
+}
+
+impl Default for DirectionLockState {
+    fn default() -> Self {
+        Self {
+            activation_window: Timer::from_seconds(0.2, TimerMode::Once),
+            cooldown: Timer::from_seconds(0.1, TimerMode::Once),
+            is_armed: false,
+            locked_direction: LockedDirection::Down,
+        }
+    }
+}
+
+impl DirectionLockState {
+    pub fn direction(&mut self, direction: LockedDirection) {
+        self.locked_direction = direction;
     }
 }
