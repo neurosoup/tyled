@@ -17,8 +17,6 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             attach_player_controls,
-            update_direction_lock_state,
-            // handle_direction_lock_input,
             handle_movement_input,
             translate_from_grid_coords,
         ),
@@ -58,57 +56,17 @@ fn attach_player_controls(
     }
 }
 
-fn update_direction_lock_state(time: Res<Time>, mut states: Query<&mut DirectionLockState>) {
-    for mut direction_lock_state in &mut states {
-        direction_lock_state.cooldown.tick(time.delta());
-        direction_lock_state.activation_window.tick(time.delta());
-
-        if direction_lock_state.is_pressed {
-            if direction_lock_state.activation_window.is_finished() {
-                direction_lock_state.cancel_press(false);
-            }
-        }
-    }
-}
-
 fn handle_movement_input(
     time: Res<Time>,
     mut move_timer: ResMut<MoveTimer>,
-    mut players: Query<
-        (
-            &ActionState<Action>,
-            &mut GridCoords,
-            &mut DirectionLockState,
-        ),
-        With<Player>,
-    >,
+    mut players: Query<(&ActionState<Action>, &mut GridCoords, &mut LookDirection), With<Player>>,
     level_walkables: Res<LevelWalkables>,
 ) {
     move_timer.0.tick(time.delta());
 
-    for (action_state, mut player_grid_coords, mut direction_lock_state) in &mut players {
-        // Locked movement direction
-        // let lock_pressed = action_state.just_pressed(&Action::Lock);
-        // let lock_print = format!("Lock: {lock_pressed}, Pressed: {}", lock_pressed);
-        // if lock_pressed {
-        //     println!("{}", lock_print);
-        // }
-
-        let just_pressed = action_state.get_just_pressed();
-        let just_released = action_state.get_just_released();
-
-        // The first time we press the button, we press the lock
-        if just_pressed.contains(&Action::LockLeft) {
-            direction_lock_state.press();
-        }
-
-        // Each time we release the button while direction lock is pressed, we release the lock: We must release the lock twice to activate it
-        if just_released.contains(&Action::LockLeft) {
-            direction_lock_state.release(LockedDirection::Left);
-        }
-
-        if !direction_lock_state.is_released() {
-            return;
+    for (action_state, mut player_grid_coords, mut look_direction) in &mut players {
+        if action_state.just_pressed(&Action::Lock) {
+            look_direction.toggle_lock();
         }
 
         if !move_timer.0.is_finished() {
@@ -116,8 +74,8 @@ fn handle_movement_input(
         }
 
         if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
-            println!("Moving...");
             let axis = action_state.clamped_axis_pair(&Action::Move);
+            look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
             let destination = *player_grid_coords + direction;
             if level_walkables.in_walkable(&destination) {

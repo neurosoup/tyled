@@ -25,17 +25,17 @@ pub struct PlayerBundle {
     sprite_sheet: Sprite,
     #[grid_coords]
     grid_coords: GridCoords,
-    #[with(initial_direction_lock_state)]
-    direction_lock_state: DirectionLockState,
+    #[with(initial_look_direction)]
+    look_direction: LookDirection,
 }
 
-fn initial_direction_lock_state(entity_instance: &EntityInstance) -> DirectionLockState {
+fn initial_look_direction(entity_instance: &EntityInstance) -> LookDirection {
     let player_id = *entity_instance
         .get_int_field("player_id")
         .unwrap_or_else(|e| panic!("Failed to get player_id: {}", e));
-    DirectionLockState::new(match player_id {
-        0 => LockedDirection::Down,
-        1 => LockedDirection::Up,
-        _ => LockedDirection::Down,
+    LookDirection::new(match player_id {
+        0 => Direction::Down,
+        1 => Direction::Up,
+        _ => Direction::Down,
     })
 }

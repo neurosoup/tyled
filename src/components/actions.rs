@@ -6,10 +6,6 @@ use leafwing_input_manager::prelude::*;
 pub enum Action {
     #[actionlike(DualAxis)]
     Move,
-    LockLeft,
-    LockRight,
-    LockUp,
-    LockDown,
     Lock,
     Shoot,
     Parry,
@@ -40,91 +36,63 @@ impl Action {
             },
         );
 
-        input_map.insert(Action::LockLeft, KeyCode::KeyA);
-        input_map.insert(Action::LockRight, KeyCode::KeyD);
-        input_map.insert(Action::LockUp, KeyCode::KeyW);
-        input_map.insert(Action::LockDown, KeyCode::KeyS);
-
         input_map
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LockedDirection {
-    Left,
-    Right,
+#[derive(Debug, PartialEq, Clone)]
+pub enum Direction {
     Up,
     Down,
+    Left,
+    Right,
 }
 
 #[derive(Component)]
-pub struct DirectionLockState {
-    // Define how fast double-tapping the key can activate the lock
-    pub activation_window: Timer,
-    // Prevent normal movement just after locking (because we use the same key for direction locking and movement)
-    pub cooldown: Timer,
-    // True on the first tap of the key
-    pub is_pressed: bool,
-    pub release_count: u8,
-    pub locked_direction: LockedDirection,
+pub struct LookDirection {
+    pub direction: Option<Direction>,
+    pub locked: bool,
 }
 
-impl Default for DirectionLockState {
+impl Default for LookDirection {
     fn default() -> Self {
         Self {
-            activation_window: Timer::from_seconds(0.175, TimerMode::Once),
-            cooldown: Timer::from_seconds(0.1, TimerMode::Once),
-            is_pressed: false,
-            release_count: 0,
-            locked_direction: LockedDirection::Down,
+            direction: None,
+            locked: false,
         }
     }
 }
 
-impl DirectionLockState {
-    pub fn new(direction: LockedDirection) -> Self {
+impl LookDirection {
+    pub fn new(direction: Direction) -> Self {
         Self {
-            activation_window: Timer::from_seconds(0.250, TimerMode::Once),
-            cooldown: Timer::from_seconds(0.1, TimerMode::Once),
-            is_pressed: false,
-            release_count: 0,
-            locked_direction: direction,
+            direction: Some(direction),
+            locked: false,
         }
     }
 
-    pub fn release(&mut self, direction: LockedDirection) {
-        if self.is_pressed {
-            println!("Releasing direction lock...");
-            if !self.activation_window.is_finished() {
-                self.release_count += 1;
-                println!("Releasing count: {}", self.release_count);
-                if self.release_count >= 2 {
-                    self.locked_direction = direction;
-                    self.cancel_press(true);
-                    println!("Direction lock set to {:?}!", direction);
-                }
+    pub fn toggle_lock(&mut self) {
+        self.locked = !self.locked;
+    }
+
+    pub fn look_at(&mut self, vec: Vec2) {
+        if !self.locked {
+            let new_direction = match vec {
+                Vec2::Y => Direction::Up,
+                Vec2::NEG_Y => Direction::Down,
+                Vec2::X => Direction::Right,
+                Vec2::NEG_X => Direction::Left,
+                _ => Direction::Up,
+            };
+
+            let should_update = match &self.direction {
+                Some(current_direction) => new_direction != *current_direction,
+                None => true,
+            };
+            if should_update {
+                self.direction = Some(new_direction);
+                println!("LookDirection changed to {:?}", self.direction);
             }
-        }
-    }
-
-    pub fn press(&mut self) {
-        if !self.is_pressed {
-            self.is_pressed = true;
-            self.activation_window.reset();
-            println!("Pressing direction lock...");
-        }
-    }
-
-    pub fn is_released(&self) -> bool {
-        !self.is_pressed && self.release_count == 0
-    }
-
-    pub fn cancel_press(&mut self, reset_cooldown: bool) {
-        self.is_pressed = false;
-        self.release_count = 0;
-        println!("Pressed cancelled");
-        if reset_cooldown {
-            self.cooldown.reset();
         }
     }
 }
