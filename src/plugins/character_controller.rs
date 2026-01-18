@@ -70,20 +70,9 @@ fn update_direction_lock_state(time: Res<Time>, mut states: Query<&mut Direction
     }
 }
 
-fn handle_direction_lock_input(
-    mut players: Query<(&ActionState<Action>, &mut DirectionLockState), With<Player>>,
-) {
-    for (action_state, mut lock_state) in &mut players {
-        if action_state.just_pressed(&Action::LockLeft) {
-            // The second time we press the button within the activation window, we lock the direction
-            if lock_state.is_armed && !lock_state.activation_window.is_finished() {
-                lock_state.direction(LockedDirection::Left);
-                lock_state.cooldown.reset();
-                lock_state.is_armed = false;
-            } else {
-                // The first time we press the button, we arm the lock and reset the activation window
-                lock_state.is_armed = true;
-                lock_state.activation_window.reset();
+        if state.is_armed {
+            if state.activation_window.is_finished() {
+                state.disarm(false);
             }
         }
     }
@@ -92,7 +81,14 @@ fn handle_direction_lock_input(
 fn handle_movement_input(
     time: Res<Time>,
     mut move_timer: ResMut<MoveTimer>,
-    mut players: Query<(&ActionState<Action>, &mut GridCoords, &DirectionLockState), With<Player>>,
+    mut players: Query<
+        (
+            &ActionState<Action>,
+            &mut GridCoords,
+            &mut DirectionLockState,
+        ),
+        With<Player>,
+    >,
     level_walkables: Res<LevelWalkables>,
 ) {
     move_timer.0.tick(time.delta());
