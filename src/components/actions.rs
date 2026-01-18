@@ -64,23 +64,67 @@ pub struct DirectionLockState {
     // Prevent normal movement just after locking (because we use the same key for direction locking and movement)
     pub cooldown: Timer,
     // True on the first tap of the key
-    pub is_armed: bool,
+    pub is_pressed: bool,
+    pub release_count: u8,
     pub locked_direction: LockedDirection,
 }
 
 impl Default for DirectionLockState {
     fn default() -> Self {
         Self {
-            activation_window: Timer::from_seconds(0.2, TimerMode::Once),
+            activation_window: Timer::from_seconds(0.175, TimerMode::Once),
             cooldown: Timer::from_seconds(0.1, TimerMode::Once),
-            is_armed: false,
+            is_pressed: false,
+            release_count: 0,
             locked_direction: LockedDirection::Down,
         }
     }
 }
 
 impl DirectionLockState {
-    pub fn direction(&mut self, direction: LockedDirection) {
-        self.locked_direction = direction;
+    pub fn new(direction: LockedDirection) -> Self {
+        Self {
+            activation_window: Timer::from_seconds(0.250, TimerMode::Once),
+            cooldown: Timer::from_seconds(0.1, TimerMode::Once),
+            is_pressed: false,
+            release_count: 0,
+            locked_direction: direction,
+        }
+    }
+
+    pub fn release(&mut self, direction: LockedDirection) {
+        if self.is_pressed {
+            println!("Releasing direction lock...");
+            if !self.activation_window.is_finished() {
+                self.release_count += 1;
+                println!("Releasing count: {}", self.release_count);
+                if self.release_count >= 2 {
+                    self.locked_direction = direction;
+                    self.cancel_press(true);
+                    println!("Direction lock set to {:?}!", direction);
+                }
+            }
+        }
+    }
+
+    pub fn press(&mut self) {
+        if !self.is_pressed {
+            self.is_pressed = true;
+            self.activation_window.reset();
+            println!("Pressing direction lock...");
+        }
+    }
+
+    pub fn is_released(&self) -> bool {
+        !self.is_pressed && self.release_count == 0
+    }
+
+    pub fn cancel_press(&mut self, reset_cooldown: bool) {
+        self.is_pressed = false;
+        self.release_count = 0;
+        println!("Pressed cancelled");
+        if reset_cooldown {
+            self.cooldown.reset();
+        }
     }
 }
