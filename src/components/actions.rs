@@ -82,7 +82,9 @@ impl LookDirection {
                 Vec2::NEG_Y => Direction::Down,
                 Vec2::X => Direction::Right,
                 Vec2::NEG_X => Direction::Left,
-                _ => Direction::Up,
+                Vec2 { x: 1.0, y: 1.0 } => Direction::Right,
+                Vec2 { x: -1.0, y: -1.0 } => Direction::Left,
+                _ => panic!("Invalid direction"),
             };
 
             let should_update = match &self.direction {

@@ -1,8 +1,9 @@
 use std::time::Duration;
 
-use crate::prelude::{actions::*, player::*, walkable::*, world::*};
+use crate::prelude::{actions::*, animations::*, player::*, walkable::*, world::*};
 use bevy::{prelude::*, transform::commands};
 use bevy_ecs_ldtk::{prelude::*, utils::*};
+use bevy_spritesheet_animation::prelude::*;
 use bevy_tweening::{
     AnimTarget, EntityCommandsTweeningExtensions, Tween, TweenAnim, TweenState, TweeningPlugin,
     lens::TransformPositionLens,

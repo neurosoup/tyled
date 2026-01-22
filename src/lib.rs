@@ -20,5 +20,6 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::world::plugin);
         app.add_plugins(plugins::camera::plugin);
         app.add_plugins(plugins::character_controller::plugin);
+        app.add_plugins(plugins::animations::plugin);
     }
 }
