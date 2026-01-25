@@ -77,22 +77,42 @@ impl LookDirection {
 
     pub fn look_at(&mut self, vec: Vec2) {
         if !self.locked {
+            println!("LookDirection {:?}", vec);
             let new_direction = match vec {
-                Vec2::Y => Direction::Up,
-                Vec2::NEG_Y => Direction::Down,
-                Vec2::X => Direction::Right,
-                Vec2::NEG_X => Direction::Left,
-                Vec2 { x: 1.0, y: 1.0 } => Direction::Right,
-                Vec2 { x: -1.0, y: -1.0 } => Direction::Left,
-                _ => panic!("Invalid direction"),
+                Vec2::Y => Some(Direction::Up),
+                Vec2::NEG_Y => Some(Direction::Down),
+                Vec2::X => Some(Direction::Right),
+                Vec2::NEG_X => Some(Direction::Left),
+                Vec2 { x: 1.0, y: 1.0 } => match self.direction {
+                    Some(Direction::Down) => Some(Direction::Up),
+                    Some(Direction::Left) => Some(Direction::Right),
+                    _ => None,
+                },
+                Vec2 { x: -1.0, y: -1.0 } => match self.direction {
+                    Some(Direction::Up) => Some(Direction::Down),
+                    Some(Direction::Right) => Some(Direction::Left),
+                    _ => None,
+                },
+                Vec2 { x: 1.0, y: -1.0 } => match self.direction {
+                    Some(Direction::Up) => Some(Direction::Down),
+                    Some(Direction::Left) => Some(Direction::Right),
+                    _ => None,
+                },
+                Vec2 { x: -1.0, y: 1.0 } => match self.direction {
+                    Some(Direction::Down) => Some(Direction::Up),
+                    Some(Direction::Right) => Some(Direction::Left),
+                    _ => None,
+                },
+                _ => None,
             };
 
-            let should_update = match &self.direction {
-                Some(current_direction) => new_direction != *current_direction,
-                None => true,
-            };
-            if should_update {
-                self.direction = Some(new_direction);
+            // If we do not have a new direction then do not change the direction
+            if new_direction.is_none() {
+                return;
+            }
+
+            if self.direction != new_direction {
+                self.direction = new_direction;
                 println!("LookDirection changed to {:?}", self.direction);
             }
         }
