@@ -1,3 +1,7 @@
-pub(super) mod actions;
-pub(super) mod player;
-pub(super) mod walkable;
+mod actions;
+mod player;
+mod walkable;
+
+pub use actions::*;
+pub use player::*;
+pub use walkable::*;

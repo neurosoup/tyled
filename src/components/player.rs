@@ -1,4 +1,4 @@
-use crate::prelude::actions::*;
+use crate::prelude::*;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use leafwing_input_manager::prelude::*;

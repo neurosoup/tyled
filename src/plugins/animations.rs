@@ -1,11 +1,11 @@
+use crate::prelude::*;
 use bevy::prelude::*;
 use bevy_spritesheet_animation::prelude::*;
 
-use crate::prelude::{actions::*, player::*};
-
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(SpritesheetAnimationPlugin);
-    app.add_systems(Update, (update_animation, attach_player_animations));
+    app.add_systems(PreUpdate, attach_player_animations);
+    app.add_systems(Update, update_player_animation);
 }
 
 #[derive(Resource, Clone)]
@@ -22,7 +22,7 @@ struct PlayerTwoAnimations {
     idle_down: Handle<Animation>,
 }
 
-fn update_animation(
+fn update_player_animation(
     players: Query<(
         &Player,
         &LookDirection,
@@ -76,8 +76,7 @@ fn update_animation(
 fn attach_player_animations(
     mut commands: Commands,
     mut animations: ResMut<Assets<Animation>>,
-    players: Query<(Entity, &Player, &Sprite), Without<SpritesheetAnimation>>,
-    // mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    players: Query<(Entity, &Player, &Sprite), Added<Player>>,
 ) {
     for (entity, player, sprite) in &players {
         let spritesheet = Spritesheet::new(&sprite.image, 8, 1);

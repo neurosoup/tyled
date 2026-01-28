@@ -1,4 +1,4 @@
-use crate::prelude::player::*;
+use crate::prelude::*;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 

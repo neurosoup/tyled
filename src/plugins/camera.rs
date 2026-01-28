@@ -1,4 +1,4 @@
-use crate::prelude::player::*;
+use crate::prelude::*;
 use bevy::{
     post_process::{bloom::Bloom, dof::DepthOfField, motion_blur::MotionBlur},
     prelude::*,
