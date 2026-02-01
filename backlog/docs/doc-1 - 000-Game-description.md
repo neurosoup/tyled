@@ -1,9 +1,9 @@
 ---
 id: doc-1
-title: Game description
+title: '[000] Game description'
 type: other
 created_date: '2026-01-25 17:02'
-updated_date: '2026-01-25 17:07'
+updated_date: '2026-02-01 19:34'
 ---
 Fast-paced real-time strategy game played on a top-down, tile-based board. Each player controls a character and spreads their color by shooting a beam in a straight line. The beam does not paint every tile it passes through; instead, it targets a single tile per shot:
 - If the beam does not encounter any colored tile, it paints the tile at the edge of the board.

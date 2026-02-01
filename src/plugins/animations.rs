@@ -5,7 +5,7 @@ use bevy_spritesheet_animation::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(SpritesheetAnimationPlugin);
     app.add_systems(PreUpdate, attach_player_animations);
-    app.add_systems(Update, update_player_animation);
+    app.add_systems(Update, update_animation);
 }
 
 #[derive(Resource, Clone)]
@@ -22,7 +22,7 @@ struct PlayerTwoAnimations {
     idle_down: Handle<Animation>,
 }
 
-fn update_player_animation(
+fn update_animation(
     players: Query<(
         &Player,
         &LookDirection,

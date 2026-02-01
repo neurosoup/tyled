@@ -43,7 +43,7 @@ fn handle_players_input(
     time: Res<Time>,
     mut input_timer: ResMut<InputTimer>,
     mut players: Query<(&ActionState<Action>, &mut GridCoords, &mut LookDirection), With<Player>>,
-    level_walkables: Res<LevelLookup>,
+    level_lookup: Res<LevelLookup>,
 ) {
     input_timer.0.tick(time.delta());
 
@@ -61,7 +61,7 @@ fn handle_players_input(
             look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
             let destination = *player_grid_coords + direction;
-            if level_walkables.on_ground(&destination) {
+            if level_lookup.on_ground(&destination) {
                 *player_grid_coords = destination;
             }
         }

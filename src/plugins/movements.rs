@@ -21,11 +21,11 @@ fn create_tween(start: Vec3, end: Vec3) -> Tween {
 
 fn attach_player_movement_tween(
     mut commands: Commands,
-    players: Query<(Entity, &GridCoords, &Transform), Added<Player>>,
+    players: Query<(Entity, &GridCoords), Added<Player>>,
 ) {
-    for (entity, grid_coords, transform) in &players {
-        let initial_pos = grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE))
-            .extend(transform.translation.z);
+    for (entity, grid_coords) in &players {
+        let initial_pos =
+            grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE)).extend(0.0);
 
         commands
             .entity(entity)
@@ -54,8 +54,8 @@ fn translate_from_grid_coords(
                 to_grid_position: *grid_coords,
             });
         }
-        let destination = grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE))
-            .extend(transform.translation.z);
+        let destination =
+            grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE)).extend(0.0);
         anim.set_tweenable(create_tween(transform.translation, destination))
             .unwrap();
     }

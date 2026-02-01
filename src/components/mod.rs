@@ -1,7 +1,7 @@
 mod actions;
+mod ground;
 mod player;
-mod walkable;
 
 pub use actions::*;
+pub use ground::*;
 pub use player::*;
-pub use walkable::*;
