@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.18.0", default-features = true, features = ["dynamic_linking", "file_watcher"] }
+bevy = { version = "0.18.0", default-features = false, features = ["2d", "dynamic_linking", "file_watcher"] }
 bevy_ecs_ldtk = "0.14"
 bevy_spritesheet_animation = "6.1"
 bevy_tweening = "0.15"
