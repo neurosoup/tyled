@@ -3,7 +3,7 @@ id: doc-6
 title: '[005] Camera plugin'
 type: other
 created_date: '2026-02-01 19:27'
-updated_date: '2026-02-01 19:35'
+updated_date: '2026-02-01 19:58'
 ---
 ```mermaid
 ---
@@ -45,11 +45,10 @@ update_camera["`**Update Camera**<br>follows smoothly players transform centroid
 startup -.-> initialize_camera
 update -.-> update_camera
 
-update_camera ---> |"`**Q2**<br>writes`"| ce_transform_component & ce_projection_component
-update_camera -..-> |"`**Q2**<br>with`"| ce_camera2d_component
-update_camera -..-> |"`**Q1**<br>without`"| ce_camera2d_component
-update_camera ---> |"`**Q1**<br>reads`"| pe_transform_component
-update_camera -..-> |"`**Q1**<br>with`"| pe_player_component
+update_camera ---> |writes| ce_transform_component & ce_projection_component
+update_camera -..-> |with| ce_camera2d_component
+update_camera ---> |reads| pe_transform_component
+update_camera -..-> |with| pe_player_component
 
 subgraph Levels
     load_ldtk_project["`**Load LDTK Project**`"]

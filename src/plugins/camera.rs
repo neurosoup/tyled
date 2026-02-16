@@ -30,26 +30,28 @@ fn initialize_camera(mut commands: Commands) {
 }
 
 fn update_camera(
-    camera_query: Single<(&mut Transform, &mut Projection), With<Camera2d>>,
-    players: Query<&Transform, (With<Player>, Without<Camera2d>)>,
+    mut set: ParamSet<(
+        Single<(&mut Transform, &mut Projection), With<Camera2d>>,
+        Query<&Transform, With<Player>>,
+    )>,
     time: Res<Time>,
 ) {
-    let (mut camera_transform, mut projection) = camera_query.into_inner();
-
     // Calculate barycenter of all player positions
-    if players.is_empty() {
+    let player_count = set.p1().count() as f32;
+    if player_count == 0.0 {
         return;
     }
 
     let mut total_x = 0.0;
     let mut total_y = 0.0;
-    let player_count = players.iter().count() as f32;
 
     // Collect player positions for barycenter and distance calculations
-    let player_positions: Vec<Vec2> = players
-        .iter()
-        .map(|transform| Vec2::new(transform.translation.x, transform.translation.y))
-        .collect();
+    let player_positions: Vec<Vec2> = {
+        set.p1()
+            .iter()
+            .map(|transform| Vec2::new(transform.translation.x, transform.translation.y))
+            .collect()
+    };
 
     for position in &player_positions {
         total_x += position.x;
@@ -79,6 +81,8 @@ fn update_camera(
     let target_scale = (MIN_ZOOM_SCALE * zoom_factor).clamp(MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
 
     // Update camera position to barycenter
+    let (mut camera_transform, mut projection) = set.p0().into_inner();
+
     let direction = Vec3::new(barycenter.x, barycenter.y, camera_transform.translation.z);
     camera_transform
         .translation
