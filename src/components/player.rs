@@ -3,7 +3,8 @@ use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use leafwing_input_manager::prelude::*;
 
-#[derive(Default, Component)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
 pub struct Player {
     pub player_id: i32,
 }

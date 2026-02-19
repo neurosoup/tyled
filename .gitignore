@@ -1,2 +1,4 @@
 /target
 /Cargo.lock
+assets/tyled.tiled-session
+tiled_types_export.json

@@ -23,5 +23,6 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::movements::plugin);
         app.add_plugins(plugins::animations::plugin);
         app.add_plugins(plugins::messages::plugin);
+        app.add_plugins(plugins::debug::plugin);
     }
 }

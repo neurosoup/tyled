@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.18.0", default-features = false, features = ["2d", "dynamic_linking", "file_watcher"] }
+bevy-inspector-egui = "0.36.0"
 bevy_ecs_ldtk = "0.14"
+bevy_ecs_tiled = { version = "0.11.2", features = ["debug", "user_properties"] }
 bevy_spritesheet_animation = "6.1"
 bevy_tweening = "0.15"
 leafwing-input-manager = {version = "0.20", features = ["timing"]}
