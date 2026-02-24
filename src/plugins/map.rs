@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-
 use crate::prelude::*;
 use bevy::{ecs::name, prelude::*};
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::TweenAnim;
+use std::collections::HashSet;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TiledPlugin::default());
