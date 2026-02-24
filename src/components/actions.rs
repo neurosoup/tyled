@@ -40,15 +40,18 @@ impl Action {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Reflect, Default)]
+#[reflect(Default)]
 pub enum Direction {
-    Up,
+    #[default]
     Down,
+    Up,
     Left,
     Right,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug, Reflect)]
+#[reflect(Component)]
 pub struct LookDirection {
     pub direction: Option<Direction>,
     pub locked: bool,

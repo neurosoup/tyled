@@ -1,5 +1,6 @@
+use crate::prelude::*;
 use bevy::prelude::*;
-use bevy_ecs_ldtk::prelude::*;
+use bevy_ecs_tiled::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_message::<PlayerMovedEvent>();
@@ -9,5 +10,5 @@ pub(crate) fn plugin(app: &mut App) {
 #[derive(Message)]
 pub struct PlayerMovedEvent {
     pub player: Entity,
-    pub to_grid_position: GridCoords,
+    pub to_grid_coords: GridCoords,
 }

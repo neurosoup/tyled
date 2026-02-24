@@ -1749,36 +1749,7 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 87,
-            "members": [
-            ],
-            "name": "bevy_ecs::entity_disabling::Disabled",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 88,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "object",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_ecs::hierarchy::ChildOf",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 89,
+            "id": 96,
             "members": [
                 {
                     "name": "0",
@@ -1786,7 +1757,7 @@
                     "value": ""
                 }
             ],
-            "name": "bevy_ecs::name::Name",
+            "name": "bevy_ecs_ldtk::components::entity_iid::EntityIid",
             "type": "class",
             "useAs": [
                 "property"
@@ -1851,6 +1822,23 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 97,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_ecs_ldtk::components::level_iid::LevelIid",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 93,
             "members": [
             ],
@@ -1889,40 +1877,6 @@
                 }
             ],
             "name": "bevy_ecs_ldtk::components::Worldly",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 96,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "string",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_ecs_ldtk::components::entity_iid::EntityIid",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 97,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "string",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_ecs_ldtk::components::level_iid::LevelIid",
             "type": "class",
             "useAs": [
                 "property"
@@ -2645,6 +2599,25 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 126,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "core::option::Option<glam::Vec2>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::world::chunking::TiledWorldChunking",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 124,
             "members": [
             ],
@@ -2666,42 +2639,6 @@
                 }
             ],
             "name": "bevy_ecs_tiled::tiled::world::TiledWorld",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 126,
-            "members": [
-                {
-                    "name": "0",
-                    "propertyType": "core::option::Option<glam::Vec2>",
-                    "type": "class",
-                    "value": {
-                    }
-                }
-            ],
-            "name": "bevy_ecs_tiled::tiled::world::chunking::TiledWorldChunking",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 127,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "bool",
-                    "value": false
-                }
-            ],
-            "name": "bevy_ecs_tilemap::FrustumCulling",
             "type": "class",
             "useAs": [
                 "property"
@@ -2766,6 +2703,23 @@
                 }
             ],
             "name": "bevy_ecs_tilemap::anchor::TilemapAnchor::Custom",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 127,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "bevy_ecs_tilemap::FrustumCulling",
             "type": "class",
             "useAs": [
                 "property"
@@ -3164,6 +3118,52 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 87,
+            "members": [
+            ],
+            "name": "bevy_ecs::entity_disabling::Disabled",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 88,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs::hierarchy::ChildOf",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 89,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_ecs::name::Name",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 151,
             "members": [
                 {
@@ -3476,6 +3476,120 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 172,
+            "members": [
+            ],
+            "name": "bevy_input_focus::autofocus::AutoFocus",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 173,
+            "members": [
+                {
+                    "name": "max_search_distance",
+                    "propertyType": "core::option::Option<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "min_alignment_factor",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "prefer_aligned",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "bevy_input_focus::directional_navigation::AutoNavigationConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 170,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input_focus::InputFocus",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 171,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "bevy_input_focus::InputFocusVisible",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 174,
+            "members": [
+                {
+                    "name": "modal",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "order",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input_focus::tab_navigation::TabGroup",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 175,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input_focus::tab_navigation::TabIndex",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 166,
             "members": [
                 {
@@ -3550,186 +3664,6 @@
                 "Pixel"
             ],
             "valuesAsFlags": false
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 170,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "object",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_input_focus::InputFocus",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 171,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "bool",
-                    "value": false
-                }
-            ],
-            "name": "bevy_input_focus::InputFocusVisible",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 172,
-            "members": [
-            ],
-            "name": "bevy_input_focus::autofocus::AutoFocus",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 173,
-            "members": [
-                {
-                    "name": "max_search_distance",
-                    "propertyType": "core::option::Option<f32>",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "min_alignment_factor",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "prefer_aligned",
-                    "type": "bool",
-                    "value": false
-                }
-            ],
-            "name": "bevy_input_focus::directional_navigation::AutoNavigationConfig",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 174,
-            "members": [
-                {
-                    "name": "modal",
-                    "type": "bool",
-                    "value": false
-                },
-                {
-                    "name": "order",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_input_focus::tab_navigation::TabGroup",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 175,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_input_focus::tab_navigation::TabIndex",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 176,
-            "members": [
-            ],
-            "name": "bevy_light::NotShadowCaster",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 177,
-            "members": [
-            ],
-            "name": "bevy_light::NotShadowReceiver",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 178,
-            "members": [
-                {
-                    "name": ":variant",
-                    "propertyType": "bevy_light::ShadowFilteringMethod:::Variant",
-                    "type": "string",
-                    "value": "Hardware2x2"
-                }
-            ],
-            "name": "bevy_light::ShadowFilteringMethod",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "id": 179,
-            "name": "bevy_light::ShadowFilteringMethod:::Variant",
-            "storageType": "string",
-            "type": "enum",
-            "values": [
-                "Hardware2x2",
-                "Gaussian",
-                "Temporal"
-            ],
-            "valuesAsFlags": false
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 180,
-            "members": [
-            ],
-            "name": "bevy_light::TransmittedShadowReceiver",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
         },
         {
             "color": "#ff000000",
@@ -3898,6 +3832,51 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 191,
+            "members": [
+                {
+                    "name": "base_color_texture",
+                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "emissive_texture",
+                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "metallic_roughness_texture",
+                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "normal_map_texture",
+                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "tag",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_light::cluster::ClusteredDecal",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 187,
             "members": [
                 {
@@ -3967,51 +3946,6 @@
                 }
             ],
             "name": "bevy_light::cluster::ClusterZConfig",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 191,
-            "members": [
-                {
-                    "name": "base_color_texture",
-                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "emissive_texture",
-                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "metallic_roughness_texture",
-                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "normal_map_texture",
-                    "propertyType": "core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "tag",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_light::cluster::ClusteredDecal",
             "type": "class",
             "useAs": [
                 "property"
@@ -4093,6 +4027,30 @@
                 }
             ],
             "name": "bevy_light::directional_light::DirectionalLightTexture",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 176,
+            "members": [
+            ],
+            "name": "bevy_light::NotShadowCaster",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 177,
+            "members": [
+            ],
+            "name": "bevy_light::NotShadowReceiver",
             "type": "class",
             "useAs": [
                 "property"
@@ -4319,6 +4277,36 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 178,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_light::ShadowFilteringMethod:::Variant",
+                    "type": "string",
+                    "value": "Hardware2x2"
+                }
+            ],
+            "name": "bevy_light::ShadowFilteringMethod",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 179,
+            "name": "bevy_light::ShadowFilteringMethod:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Hardware2x2",
+                "Gaussian",
+                "Temporal"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 202,
             "members": [
                 {
@@ -4395,6 +4383,18 @@
                 }
             ],
             "name": "bevy_light::spot_light::SpotLightTexture",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 180,
+            "members": [
+            ],
+            "name": "bevy_light::TransmittedShadowReceiver",
             "type": "class",
             "useAs": [
                 "property"
@@ -5217,60 +5217,6 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 241,
-            "members": [
-                {
-                    "name": "is_hoverable",
-                    "type": "bool",
-                    "value": true
-                },
-                {
-                    "name": "should_block_lower",
-                    "type": "bool",
-                    "value": true
-                }
-            ],
-            "name": "bevy_picking::Pickable",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 242,
-            "members": [
-                {
-                    "name": "is_enabled",
-                    "type": "bool",
-                    "value": true
-                },
-                {
-                    "name": "is_hover_enabled",
-                    "type": "bool",
-                    "value": true
-                },
-                {
-                    "name": "is_input_enabled",
-                    "type": "bool",
-                    "value": true
-                },
-                {
-                    "name": "is_window_picking_enabled",
-                    "type": "bool",
-                    "value": true
-                }
-            ],
-            "name": "bevy_picking::PickingSettings",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
             "id": 243,
             "members": [
                 {
@@ -5444,6 +5390,60 @@
                 }
             ],
             "name": "bevy_picking::mesh_picking::ray_cast::SimplifiedMesh",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 241,
+            "members": [
+                {
+                    "name": "is_hoverable",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "should_block_lower",
+                    "type": "bool",
+                    "value": true
+                }
+            ],
+            "name": "bevy_picking::Pickable",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 242,
+            "members": [
+                {
+                    "name": "is_enabled",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "is_hover_enabled",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "is_input_enabled",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "is_window_picking_enabled",
+                    "type": "bool",
+                    "value": true
+                }
+            ],
+            "name": "bevy_picking::PickingSettings",
             "type": "class",
             "useAs": [
                 "property"
@@ -6066,6 +6066,216 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 305,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d:::Variant",
+                    "type": "string",
+                    "value": "Opaque"
+                },
+                {
+                    "name": "Mask",
+                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d::Mask",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 306,
+            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Opaque",
+                "Mask",
+                "Blend"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 307,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d::Mask",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 308,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "file",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::mesh2d::color_material::ColorMaterial>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 309,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "file",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::tilemap_chunk::tilemap_chunk_material::TilemapChunkMaterial>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 310,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "file",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::wireframe2d::Mesh2dWireframe",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 311,
+            "members": [
+            ],
+            "name": "bevy_sprite_render::mesh2d::wireframe2d::NoWireframe2d",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 312,
+            "members": [
+            ],
+            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2d",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 313,
+            "members": [
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dColor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 314,
+            "members": [
+                {
+                    "name": "default_color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                },
+                {
+                    "name": "global",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 315,
+            "members": [
+                {
+                    "name": "alpha_mode",
+                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "chunk_size",
+                    "propertyType": "glam::UVec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0
+                    }
+                },
+                {
+                    "name": "tile_display_size",
+                    "propertyType": "glam::UVec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0
+                    }
+                },
+                {
+                    "name": "tileset",
+                    "type": "file",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_sprite_render::tilemap_chunk::TilemapChunk",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 284,
             "members": [
             ],
@@ -6542,216 +6752,6 @@
                 }
             ],
             "name": "bevy_sprite::texture_slice::slicer::TextureSlicer",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 305,
-            "members": [
-                {
-                    "name": ":variant",
-                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d:::Variant",
-                    "type": "string",
-                    "value": "Opaque"
-                },
-                {
-                    "name": "Mask",
-                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d::Mask",
-                    "type": "class",
-                    "value": {
-                    }
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "id": 306,
-            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d:::Variant",
-            "storageType": "string",
-            "type": "enum",
-            "values": [
-                "Opaque",
-                "Mask",
-                "Blend"
-            ],
-            "valuesAsFlags": false
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 307,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::material::AlphaMode2d::Mask",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 308,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "file",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::mesh2d::color_material::ColorMaterial>",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 309,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "file",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::tilemap_chunk::tilemap_chunk_material::TilemapChunkMaterial>",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 310,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "file",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::wireframe2d::Mesh2dWireframe",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 311,
-            "members": [
-            ],
-            "name": "bevy_sprite_render::mesh2d::wireframe2d::NoWireframe2d",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 312,
-            "members": [
-            ],
-            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2d",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 313,
-            "members": [
-                {
-                    "name": "color",
-                    "type": "color",
-                    "value": "#ffffffff"
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dColor",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 314,
-            "members": [
-                {
-                    "name": "default_color",
-                    "type": "color",
-                    "value": "#ffffffff"
-                },
-                {
-                    "name": "global",
-                    "type": "bool",
-                    "value": false
-                }
-            ],
-            "name": "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dConfig",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 315,
-            "members": [
-                {
-                    "name": "alpha_mode",
-                    "propertyType": "bevy_sprite_render::mesh2d::material::AlphaMode2d",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "chunk_size",
-                    "propertyType": "glam::UVec2",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 0
-                    }
-                },
-                {
-                    "name": "tile_display_size",
-                    "propertyType": "glam::UVec2",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 0
-                    }
-                },
-                {
-                    "name": "tileset",
-                    "type": "file",
-                    "value": ""
-                }
-            ],
-            "name": "bevy_sprite_render::tilemap_chunk::TilemapChunk",
             "type": "class",
             "useAs": [
                 "property"
@@ -7311,19 +7311,48 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 341,
+            "id": 388,
             "members": [
                 {
                     "name": "0",
-                    "type": "float",
-                    "value": 1
+                    "type": "int",
+                    "value": 4
                 }
             ],
-            "name": "bevy_ui::UiScale",
+            "name": "bevy_ui_render::BoxShadowSamples",
             "type": "class",
             "useAs": [
                 "property"
             ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 389,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_ui_render::UiAntiAlias:::Variant",
+                    "type": "string",
+                    "value": "On"
+                }
+            ],
+            "name": "bevy_ui_render::UiAntiAlias",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 390,
+            "name": "bevy_ui_render::UiAntiAlias:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "On",
+                "Off"
+            ],
+            "valuesAsFlags": false
         },
         {
             "color": "#ff000000",
@@ -7538,6 +7567,23 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 354,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ui::geometry::Val::Vh",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 352,
             "members": [
                 {
@@ -7564,23 +7610,6 @@
                 }
             ],
             "name": "bevy_ui::geometry::Val::VMin",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 354,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "bevy_ui::geometry::Val::Vh",
             "type": "class",
             "useAs": [
                 "property"
@@ -8151,6 +8180,23 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 341,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "float",
+                    "value": 1
+                }
+            ],
+            "name": "bevy_ui::UiScale",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 376,
             "members": [
             ],
@@ -8418,52 +8464,6 @@
             "useAs": [
                 "property"
             ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 388,
-            "members": [
-                {
-                    "name": "0",
-                    "type": "int",
-                    "value": 4
-                }
-            ],
-            "name": "bevy_ui_render::BoxShadowSamples",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 389,
-            "members": [
-                {
-                    "name": ":variant",
-                    "propertyType": "bevy_ui_render::UiAntiAlias:::Variant",
-                    "type": "string",
-                    "value": "On"
-                }
-            ],
-            "name": "bevy_ui_render::UiAntiAlias",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "id": 390,
-            "name": "bevy_ui_render::UiAntiAlias:::Variant",
-            "storageType": "string",
-            "type": "enum",
-            "values": [
-                "On",
-                "Off"
-            ],
-            "valuesAsFlags": false
         },
         {
             "color": "#ff000000",
@@ -10972,7 +10972,7 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 512,
+            "id": 518,
             "members": [
                 {
                     "name": "player_id",
@@ -10981,6 +10981,150 @@
                 }
             ],
             "name": "tyled::components::player::Player",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 519,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::grid_coords::GridCoords",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 520,
+            "members": [
+            ],
+            "name": "tyled::components::markers::Ground",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 533,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<tyled::components::actions::Direction>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<tyled::components::actions::Direction>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<tyled::components::actions::Direction>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 534,
+            "name": "core::option::Option<tyled::components::actions::Direction>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 535,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "tyled::components::actions::Direction",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<tyled::components::actions::Direction>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 536,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "tyled::components::actions::Direction:::Variant",
+                    "type": "string",
+                    "value": "Down"
+                }
+            ],
+            "name": "tyled::components::actions::Direction",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 537,
+            "name": "tyled::components::actions::Direction:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Down",
+                "Up",
+                "Left",
+                "Right"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 538,
+            "members": [
+                {
+                    "name": "direction",
+                    "propertyType": "core::option::Option<tyled::components::actions::Direction>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "locked",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "tyled::components::actions::LookDirection",
             "type": "class",
             "useAs": [
                 "property"

@@ -1,17 +1,16 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy_ecs_ldtk::{prelude::*, utils::grid_coords_to_translation};
+use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::{Tween, TweenAnim, lens::TransformPositionLens};
 
 use crate::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(PreUpdate, attach_player_movement_tween);
-    app.add_systems(Update, translate_from_grid_coords);
+    app.add_systems(Update, translate_objects);
 }
 
-fn create_tween(start: Vec3, end: Vec3) -> Tween {
+pub fn create_movement_tween(start: Vec3, end: Vec3) -> Tween {
     Tween::new(
         EaseFunction::QuadraticOut,
         Duration::from_millis(200),
@@ -19,24 +18,10 @@ fn create_tween(start: Vec3, end: Vec3) -> Tween {
     )
 }
 
-fn attach_player_movement_tween(
-    mut commands: Commands,
-    players: Query<(Entity, &GridCoords), Added<Player>>,
-) {
-    for (entity, grid_coords) in &players {
-        let initial_pos =
-            grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE)).extend(0.0);
-
-        commands
-            .entity(entity)
-            .insert((TweenAnim::new(create_tween(initial_pos, initial_pos))
-                .with_destroy_on_completed(false),));
-    }
-}
-
-fn translate_from_grid_coords(
+fn translate_objects(
     mut messages: MessageWriter<PlayerMovedEvent>,
-    mut grid_coords_entities: Query<
+    map_lookup: Res<MapLookup>,
+    mut moving_objects: Query<
         (
             Entity,
             &Transform,
@@ -47,16 +32,29 @@ fn translate_from_grid_coords(
         Changed<GridCoords>,
     >,
 ) {
-    for (entity, transform, grid_coords, mut anim, player) in &mut grid_coords_entities {
+    for (entity, transform, grid_coords, mut anim, player) in &mut moving_objects {
+        info!(
+            "Translating object {} to tile position {:?}",
+            entity, grid_coords
+        );
+        let tile_pos = TilePos::from(*grid_coords);
+        let destination = (tile_pos.center_in_world(
+            &map_lookup.map_size,
+            &map_lookup.grid_size,
+            &map_lookup.tile_size,
+            &map_lookup.map_type,
+            &map_lookup.map_anchor,
+        ) - Vec2::new(map_lookup.player_size.x, map_lookup.player_size.y) / 2.0)
+            .extend(0.0);
+
+        anim.set_tweenable(create_movement_tween(transform.translation, destination))
+            .unwrap();
+
         if player.is_some() {
             messages.write(PlayerMovedEvent {
                 player: entity,
-                to_grid_position: *grid_coords,
+                to_grid_coords: *grid_coords,
             });
         }
-        let destination =
-            grid_coords_to_translation(*grid_coords, IVec2::splat(GRID_SIZE)).extend(0.0);
-        anim.set_tweenable(create_tween(transform.translation, destination))
-            .unwrap();
     }
 }

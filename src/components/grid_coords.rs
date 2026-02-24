@@ -1,9 +1,18 @@
-use bevy::prelude::*;
-use bevy_ecs_tiled::prelude::*;
+use bevy::{
+    ecs::prelude::*,
+    math::{IVec2, Vec2},
+    reflect::Reflect,
+    transform::components::Transform,
+};
+use bevy_ecs_ldtk::EntityInstance;
+use bevy_ecs_tiled::prelude::{tiled::*, *};
+
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
-/// [Component] that stores grid-based coordinate information.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, Hash, Component)]
+use crate::plugins::MapLookup;
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, Hash, Component, Reflect)]
+#[reflect(Component)]
 pub struct GridCoords {
     pub x: i32,
     pub y: i32,
@@ -93,5 +102,18 @@ impl MulAssign<GridCoords> for GridCoords {
 impl GridCoords {
     pub fn new(x: i32, y: i32) -> GridCoords {
         GridCoords { x, y }
+    }
+
+    pub fn from_world_pos(world_pos: &Vec2, map: &MapLookup) -> Option<GridCoords> {
+        let tile_pos = TilePos::from_world_pos(
+            &world_pos,
+            &map.map_size,
+            &map.grid_size,
+            &map.tile_size,
+            &map.map_type,
+            &map.map_anchor,
+        )?;
+
+        Some(GridCoords::from(tile_pos))
     }
 }
