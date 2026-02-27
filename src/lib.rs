@@ -17,7 +17,7 @@ pub struct AppPlugin;
 impl Plugin for AppPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(plugins::defaults::plugin);
-        app.add_plugins(plugins::map::plugin);
+        app.add_plugins(plugins::maps::plugin);
         app.add_plugins(plugins::camera::plugin);
         app.add_plugins(plugins::inputs::plugin);
         app.add_plugins(plugins::movements::plugin);
