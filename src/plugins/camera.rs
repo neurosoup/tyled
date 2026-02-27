@@ -3,6 +3,7 @@ use bevy::{
     post_process::{bloom::Bloom, dof::DepthOfField, motion_blur::MotionBlur},
     prelude::*,
 };
+use rand::Rng;
 
 /// How quickly should the camera snap to the desired location.
 const CAMERA_DECAY_RATE: f32 = 0.5;
@@ -13,9 +14,25 @@ const MAX_ZOOM_SCALE: f32 = 2.0;
 /// Base distance for zoom calculations
 const BASE_ZOOM_DISTANCE: f32 = 200.0;
 
+// HSL equivalent of srgb_u8(100, 122, 64): saturation and lightness are fixed,
+// only the hue is randomized each run.
+const CLEAR_COLOR_SATURATION: f32 = 0.312;
+const CLEAR_COLOR_LIGHTNESS: f32 = 0.365;
+
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Startup, initialize_camera);
+    app.insert_resource(ClearColor(Color::hsl(
+        0.0,
+        CLEAR_COLOR_SATURATION,
+        CLEAR_COLOR_LIGHTNESS,
+    )));
+    app.add_systems(Startup, (initialize_camera, randomize_clear_color));
     app.add_systems(Update, update_camera);
+}
+
+fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
+    let hue = rand::rng().random_range(0.0f32..360.0f32);
+    clear_color.0 = Color::hsl(hue, CLEAR_COLOR_SATURATION, CLEAR_COLOR_LIGHTNESS);
+    info!("HSL = {:?}", clear_color.0);
 }
 
 fn initialize_camera(mut commands: Commands) {
