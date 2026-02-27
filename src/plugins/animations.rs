@@ -28,13 +28,13 @@ fn update_animation(
     // Used to traverse the hierarchy with iter_descendants
     children_query: Query<&Children>,
     // Child entity: has Sprite and SpritesheetAnimation (both must co-locate)
-    mut sprite_entities: Query<(&mut Sprite, &mut SpritesheetAnimation)>,
+    mut sprites: Query<(&mut Sprite, &mut SpritesheetAnimation)>,
     player_one_animations: If<Res<PlayerOneAnimations>>,
     player_two_animations: If<Res<PlayerTwoAnimations>>,
 ) {
     for (entity, player, look_direction) in &players {
         for descendant in children_query.iter_descendants(entity) {
-            let Ok((mut sprite, mut animation)) = sprite_entities.get_mut(descendant) else {
+            let Ok((mut sprite, mut animation)) = sprites.get_mut(descendant) else {
                 continue;
             };
 
