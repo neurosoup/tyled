@@ -7,26 +7,25 @@ use std::collections::HashSet;
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TiledPlugin::default());
 
-    app.init_resource::<MapLookup>();
+    app.init_resource::<MapInfo>();
 
     app.add_systems(Startup, load_map);
     app.add_systems(Update, on_map_created);
 }
 
 #[derive(Default, Resource)]
-pub struct MapLookup {
+pub struct MapInfo {
     pub ground_locations: HashSet<TilePos>,
     pub map_size: TilemapSize,
     pub grid_size: TilemapGridSize,
     pub tile_size: TilemapTileSize,
     pub map_type: TilemapType,
     pub map_anchor: TilemapAnchor,
-    pub player_size: TilemapTileSize,
 }
 
-impl MapLookup {
-    pub fn on_ground(&self, grid_coords: &GridCoords) -> bool {
-        let tile_pos = TilePos::from(*grid_coords);
+impl MapInfo {
+    pub fn on_ground(&self, grid_coords: GridCoords) -> bool {
+        let tile_pos = TilePos::from(grid_coords);
         tile_pos.within_map_bounds(&self.map_size) && self.ground_locations.contains(&tile_pos)
     }
 }
@@ -41,7 +40,7 @@ fn load_map(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn on_map_created(
     mut commands: Commands,
     mut messages: MessageReader<TiledEvent<MapCreated>>,
-    mut map_lookup: ResMut<MapLookup>,
+    mut map_info: ResMut<MapInfo>,
     tilemap_query: Query<
         (
             &TiledName,
@@ -63,16 +62,15 @@ fn on_map_created(
             continue;
         };
 
-        // Initialize map lookup
+        // Initialize map info resource
         let ground_locations = ground_tiles_query.iter().copied().collect();
-        *map_lookup = MapLookup {
+        *map_info = MapInfo {
             ground_locations,
             map_size: *map_size,
             grid_size: *grid_size,
             tile_size: *tile_size,
             map_type: *map_type,
             map_anchor: *map_anchor,
-            player_size: TilemapTileSize::new(24.0, 24.0),
         };
 
         // Initialize players
@@ -84,7 +82,7 @@ fn on_map_created(
             });
 
             if let Some(grid_coords) =
-                GridCoords::from_world_pos(&(transform.translation.truncate()), &map_lookup)
+                GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {
                 commands.entity(entity).insert((
                     grid_coords,
