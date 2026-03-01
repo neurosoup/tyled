@@ -4,3 +4,6 @@ use bevy_ecs_tiled::prelude::*;
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Ground;
+
+#[derive(Component)]
+pub struct CurrentLevel;

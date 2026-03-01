@@ -6,6 +6,7 @@ pub(super) mod inputs;
 pub(super) mod maps;
 pub(super) mod messages;
 pub(super) mod movements;
+pub(super) mod tile_claim;
 
 pub use animations::*;
 pub use camera::*;
@@ -15,3 +16,4 @@ pub use inputs::*;
 pub use maps::*;
 pub use messages::*;
 pub use movements::*;
+pub use tile_claim::*;

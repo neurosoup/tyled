@@ -123,4 +123,8 @@ impl GridCoords {
         );
         (world_center - (tile_size.as_vec2() / 2.)).extend(0.0)
     }
+
+    pub fn to_tile_pos(self, map_info: &MapInfo) -> Option<TilePos> {
+        TilePos::from_i32_pair(self.x, self.y, &map_info.map_size)
+    }
 }

@@ -1,8 +1,7 @@
 use crate::prelude::*;
-use bevy::{ecs::name, prelude::*};
+use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::TweenAnim;
-use std::collections::HashSet;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TiledPlugin::default());
@@ -15,7 +14,7 @@ pub(crate) fn plugin(app: &mut App) {
 
 #[derive(Default, Resource)]
 pub struct MapInfo {
-    pub ground_locations: HashSet<TilePos>,
+    pub ground_entities: HashMap<TilePos, Entity>,
     pub map_size: TilemapSize,
     pub grid_size: TilemapGridSize,
     pub tile_size: TilemapTileSize,
@@ -26,7 +25,7 @@ pub struct MapInfo {
 impl MapInfo {
     pub fn on_ground(&self, grid_coords: GridCoords) -> bool {
         let tile_pos = TilePos::from(grid_coords);
-        tile_pos.within_map_bounds(&self.map_size) && self.ground_locations.contains(&tile_pos)
+        tile_pos.within_map_bounds(&self.map_size) && self.ground_entities.contains_key(&tile_pos)
     }
 }
 
@@ -52,7 +51,7 @@ fn on_map_created(
         ),
         With<TiledTilemap>,
     >,
-    ground_tiles_query: Query<&TilePos, With<Ground>>,
+    ground_tiles_query: Query<(Entity, &TilePos), With<Ground>>,
     players_query: Query<(Entity, &Player, &Transform), With<TiledObject>>,
 ) {
     for _ in messages.read() {
@@ -63,9 +62,13 @@ fn on_map_created(
         };
 
         // Initialize map info resource
-        let ground_locations = ground_tiles_query.iter().copied().collect();
+        let ground_entities = ground_tiles_query
+            .iter()
+            .map(|(entity, tile_pos)| (*tile_pos, entity))
+            .collect();
+
         *map_info = MapInfo {
-            ground_locations,
+            ground_entities,
             map_size: *map_size,
             grid_size: *grid_size,
             tile_size: *tile_size,

@@ -6,6 +6,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<PlayerMoved>();
     app.add_message::<BeamFired>();
     app.add_message::<TileClaimed>();
+    app.add_message::<BeamMoved>();
 }
 
 // Fired when a player moved from one grid position to another
@@ -19,7 +20,13 @@ pub struct PlayerMoved {
 pub struct BeamFired {
     pub owner: Entity,
     pub origin: GridCoords,
-    pub direction: IVec2,
+    pub direction: GridCoords,
+}
+
+#[derive(Message)]
+pub struct BeamMoved {
+    pub owner: Entity,
+    pub position: GridCoords,
 }
 
 #[derive(Message)]

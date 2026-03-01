@@ -51,8 +51,8 @@ fn handle_players_input(
         ),
         With<Player>,
     >,
-    mut player_moved_messages: MessageWriter<PlayerMoved>,
-    mut beam_fired_messages: MessageWriter<BeamFired>,
+    mut player_moved_writer: MessageWriter<PlayerMoved>,
+    mut beam_fired_writer: MessageWriter<BeamFired>,
 ) {
     input_timer.0.tick(time.delta());
 
@@ -62,10 +62,10 @@ fn handle_players_input(
         }
 
         if action_state.just_pressed(&Action::Shoot) {
-            beam_fired_messages.write(BeamFired {
+            beam_fired_writer.write(BeamFired {
                 owner: player_entity,
                 origin: *player_grid_coords,
-                direction: look_direction.to_vec2(),
+                direction: look_direction.to_grid_coords(),
             });
         }
 
@@ -78,7 +78,7 @@ fn handle_players_input(
             look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
             let position = *player_grid_coords + direction;
-            player_moved_messages.write(PlayerMoved {
+            player_moved_writer.write(PlayerMoved {
                 player: player_entity,
                 position,
             });
