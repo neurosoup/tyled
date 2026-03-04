@@ -72,17 +72,17 @@ pub(crate) fn beam_step(
         }
 
         // Colored tile check
-        if let Some(tile_pos) = next_position.to_tile_pos(&map_info) {
-            if let Some(tile_entity) = map_info.ground_entities.get(&tile_pos) {
-                if let Ok(_) = claimed_query.get(*tile_entity) {
-                    tile_claimed_writer.write(TileClaimed {
-                        position: *position,
-                        owner: beam.owner,
-                    });
-                    commands.entity(beam_entity).despawn();
-                    continue;
-                }
-            }
+        let is_next_already_claimed = next_position
+            .to_tile_pos(&map_info)
+            .and_then(|tile_pos| map_info.ground_entities.get(&tile_pos))
+            .is_some_and(|tile_entity| claimed_query.get(*tile_entity).is_ok());
+        if is_next_already_claimed {
+            tile_claimed_writer.write(TileClaimed {
+                position: *position,
+                owner: beam.owner,
+            });
+            commands.entity(beam_entity).despawn();
+            continue;
         }
 
         // Advance
