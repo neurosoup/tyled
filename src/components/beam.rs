@@ -8,8 +8,3 @@ pub struct Beam {
     pub head: GridCoords,
     pub speed: f32,
 }
-
-#[derive(Component)]
-pub struct ClaimedTile {
-    pub owner: Entity,
-}

@@ -35,6 +35,23 @@ fn on_player_moved(
     }
 }
 
+// fn on_beam_moved(
+//     mut beam_moved_reader: MessageReader<BeamMoved>,
+//     mut beams: Query<&mut GridCoords, With<Beam>>,
+//     map_info: Res<MapInfo>,
+// ) {
+//     for beam_moved_message in beam_moved_reader.read() {
+//         let entity = beam_moved_message.beam;
+//         let position = beam_moved_message.position;
+
+//         if map_info.on_ground(position) {
+//             if let Ok(mut beam) = beams.get_mut(entity) {
+//                 *beam_grid_coords = position;
+//             }
+//         }
+//     }
+// }
+
 fn translate_objects(
     mut moving_objects: Query<(&Transform, &GridCoords, &mut TweenAnim), Changed<GridCoords>>,
     map_info: Res<MapInfo>,

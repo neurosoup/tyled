@@ -70,7 +70,7 @@ fn handle_players_input(
         }
 
         if !input_timer.0.is_finished() {
-            return;
+            continue;
         }
 
         if action_state.axis_pair(&Action::Move) != Vec2::ZERO {

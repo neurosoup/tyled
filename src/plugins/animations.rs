@@ -135,20 +135,12 @@ fn attach_player_animations(
         };
 
         if player.player_id == 0 {
-            println!(
-                "Player 1 animations initialized (entity: {:?}, sprite child: {:?})",
-                entity, sprite_entity
-            );
             commands.insert_resource(PlayerOneAnimations {
                 idle_x: idle_x_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,
                 idle_up: idle_up_animation_handle,
             });
         } else if player.player_id == 1 {
-            println!(
-                "Player 2 animations initialized (entity: {:?}, sprite child: {:?})",
-                entity, sprite_entity
-            );
             commands.insert_resource(PlayerTwoAnimations {
                 idle_x: idle_x_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,

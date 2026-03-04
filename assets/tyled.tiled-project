@@ -7235,9 +7235,12 @@
                     "type": "class",
                     "value": {
                         "matrix3": {
-                            "x_axis": null,
-                            "y_axis": null,
-                            "z_axis": null
+                            "x_axis": {
+                            },
+                            "y_axis": {
+                            },
+                            "z_axis": {
+                            }
                         },
                         "translation": {
                             "x": 0,
@@ -8094,8 +8097,10 @@
                     "type": "class",
                     "value": {
                         "matrix2": {
-                            "x_axis": null,
-                            "y_axis": null
+                            "x_axis": {
+                            },
+                            "y_axis": {
+                            }
                         },
                         "translation": {
                             "x": 0,
@@ -10565,6 +10570,61 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 533,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<tyled::components::actions::Direction>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<tyled::components::actions::Direction>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<tyled::components::actions::Direction>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 534,
+            "name": "core::option::Option<tyled::components::actions::Direction>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 535,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "tyled::components::actions::Direction",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<tyled::components::actions::Direction>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 498,
             "members": [
                 {
@@ -10972,112 +11032,6 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 518,
-            "members": [
-                {
-                    "name": "player_id",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "tyled::components::player::Player",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 519,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "int",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "tyled::components::grid_coords::GridCoords",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 520,
-            "members": [
-            ],
-            "name": "tyled::components::markers::Ground",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 533,
-            "members": [
-                {
-                    "name": ":variant",
-                    "propertyType": "core::option::Option<tyled::components::actions::Direction>:::Variant",
-                    "type": "string",
-                    "value": "None"
-                },
-                {
-                    "name": "Some",
-                    "propertyType": "core::option::Option<tyled::components::actions::Direction>::Some",
-                    "type": "class",
-                    "value": {
-                    }
-                }
-            ],
-            "name": "core::option::Option<tyled::components::actions::Direction>",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "id": 534,
-            "name": "core::option::Option<tyled::components::actions::Direction>:::Variant",
-            "storageType": "string",
-            "type": "enum",
-            "values": [
-                "None",
-                "Some"
-            ],
-            "valuesAsFlags": false
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 535,
-            "members": [
-                {
-                    "name": "0",
-                    "propertyType": "tyled::components::actions::Direction",
-                    "type": "class",
-                    "value": {
-                    }
-                }
-            ],
-            "name": "core::option::Option<tyled::components::actions::Direction>::Some",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
             "id": 536,
             "members": [
                 {
@@ -11125,6 +11079,57 @@
                 }
             ],
             "name": "tyled::components::actions::LookDirection",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 519,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::grid_coords::GridCoords",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 520,
+            "members": [
+            ],
+            "name": "tyled::components::markers::Ground",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 518,
+            "members": [
+                {
+                    "name": "player_id",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::player::Player",
             "type": "class",
             "useAs": [
                 "property"

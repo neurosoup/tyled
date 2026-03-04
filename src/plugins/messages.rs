@@ -5,8 +5,8 @@ use bevy_ecs_tiled::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_message::<PlayerMoved>();
     app.add_message::<BeamFired>();
-    app.add_message::<TileClaimed>();
     app.add_message::<BeamMoved>();
+    app.add_message::<TileClaimed>();
 }
 
 // Fired when a player moved from one grid position to another
@@ -29,7 +29,7 @@ pub struct BeamMoved {
     pub position: GridCoords,
 }
 
-#[derive(Message)]
+#[derive(Message, Debug)]
 pub struct TileClaimed {
     pub position: GridCoords,
     pub owner: Entity,

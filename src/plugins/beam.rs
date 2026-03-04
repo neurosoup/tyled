@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, (spawn_beam, beam_step, on_tile_claimed));
+    app.add_systems(Update, (spawn_beam, beam_step));
 }
 
 /// System that spawns [`Beam`] entities in response to [`BeamFired`] messages.
@@ -18,24 +18,40 @@ fn spawn_beam(mut commands: Commands, mut beam_fired_reader: MessageReader<BeamF
     }
 }
 
-fn beam_step(
+pub(crate) fn beam_step(
     mut commands: Commands,
-    mut beams: Query<(Entity, &mut Beam)>,
+    mut beams_query: Query<(Entity, &mut Beam)>,
+    claimed_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
     mut tile_claimed_writer: MessageWriter<TileClaimed>,
     mut beam_moved_writer: MessageWriter<BeamMoved>,
 ) {
-    for (beam_entity, mut beam) in &mut beams {
+    for (beam_entity, mut beam) in &mut beams_query {
         let next_position = beam.head + beam.direction;
 
         // Out of map bounds rule
         if !map_info.on_ground(next_position) {
+            info!("Beam stops at: {:?}", beam.head);
             tile_claimed_writer.write(TileClaimed {
-                position: next_position,
+                position: beam.head,
                 owner: beam.owner,
             });
             commands.entity(beam_entity).despawn();
             continue;
+        }
+
+        // Colored tile check
+        if let Some(tile_pos) = next_position.to_tile_pos(&map_info) {
+            if let Some(tile_entity) = map_info.ground_entities.get(&tile_pos) {
+                if let Ok(_) = claimed_query.get(*tile_entity) {
+                    tile_claimed_writer.write(TileClaimed {
+                        position: beam.head,
+                        owner: beam.owner,
+                    });
+                    commands.entity(beam_entity).despawn();
+                    continue;
+                }
+            }
         }
 
         // Advance
@@ -44,21 +60,5 @@ fn beam_step(
             owner: beam.owner,
             position: next_position,
         });
-    }
-}
-
-fn on_tile_claimed(
-    mut commands: Commands,
-    mut tile_claimed_reader: MessageReader<TileClaimed>,
-    map_info: Res<MapInfo>,
-) {
-    for tile_claimed_message in tile_claimed_reader.read() {
-        if let Some(tile_pos) = tile_claimed_message.position.to_tile_pos(&map_info) {
-            if let Some(tile_entity) = map_info.ground_entities.get(&tile_pos) {
-                commands.entity(*tile_entity).insert(ClaimedTile {
-                    owner: tile_claimed_message.owner,
-                });
-            }
-        }
     }
 }

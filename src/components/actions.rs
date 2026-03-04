@@ -90,8 +90,8 @@ impl LookDirection {
 
     pub fn to_grid_coords(&self) -> GridCoords {
         match self.direction {
-            Some(Direction::Up) => GridCoords::new(0, -1),
-            Some(Direction::Down) => GridCoords::new(0, 1),
+            Some(Direction::Up) => GridCoords::new(0, 1),
+            Some(Direction::Down) => GridCoords::new(0, -1),
             Some(Direction::Left) => GridCoords::new(-1, 0),
             Some(Direction::Right) => GridCoords::new(1, 0),
             None => GridCoords::new(0, 0),
