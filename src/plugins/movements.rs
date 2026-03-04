@@ -57,7 +57,7 @@ fn translate_objects(
     map_info: Res<MapInfo>,
 ) {
     for (transform, grid_coords, mut anim) in &mut moving_objects {
-        let destination = grid_coords.to_translation(&map_info, IVec2::new(24, 24));
+        let destination = grid_coords.to_translation(&map_info);
 
         anim.set_tweenable(create_movement_tween(transform.translation, destination))
             .unwrap();

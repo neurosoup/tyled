@@ -5,7 +5,6 @@ use bevy_ecs_tiled::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_message::<PlayerMoved>();
     app.add_message::<BeamFired>();
-    app.add_message::<BeamMoved>();
     app.add_message::<TileClaimed>();
 }
 
@@ -21,12 +20,6 @@ pub struct BeamFired {
     pub owner: Entity,
     pub origin: GridCoords,
     pub direction: GridCoords,
-}
-
-#[derive(Message)]
-pub struct BeamMoved {
-    pub owner: Entity,
-    pub position: GridCoords,
 }
 
 #[derive(Message, Debug)]

@@ -57,7 +57,7 @@ fn spawn_claimed_tiles(
                         index: match player.player_id {
                             0 => 6,
                             1 => 7,
-                            _ => 0,
+                            _ => 6,
                         },
                     },
                 ),

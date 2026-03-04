@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::{platform::collections::HashMap, prelude::*, sprite::Anchor};
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::TweenAnim;
 
@@ -80,6 +80,7 @@ fn initialize_players(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     players_query: Query<(Entity, &Player, &Transform), With<TiledObject>>,
+    children_query: Query<&Children>,
 ) {
     for _ in map_created_reader.read() {
         for (entity, player, transform) in &players_query {
@@ -101,6 +102,14 @@ fn initialize_players(
                     ))
                     .with_destroy_on_completed(false),
                 ));
+
+                if let Ok(children) = children_query.get(entity) {
+                    if let Some(&first_child) = children.first() {
+                        commands
+                            .entity(first_child)
+                            .insert(Anchor::from(Vec2::new(0.0, 0.0)));
+                    }
+                }
             }
         }
     }

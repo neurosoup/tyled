@@ -5,6 +5,5 @@ use bevy::prelude::*;
 pub struct Beam {
     pub owner: Entity,
     pub direction: GridCoords,
-    pub head: GridCoords,
     pub speed: f32,
 }
