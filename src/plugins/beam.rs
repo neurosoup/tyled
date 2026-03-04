@@ -60,7 +60,9 @@ pub(crate) fn beam_step(
     for (beam_entity, beam, mut position) in &mut beams_query {
         let next_position = *position + beam.direction;
 
-        // Out of map bounds rule
+        // +--------------------------+
+        // | Out of map bounds rule   |
+        // +--------------------------+
         if !map_info.on_ground(next_position) {
             info!("Beam stops at: {:?}", *position);
             tile_claimed_writer.write(TileClaimed {
@@ -71,7 +73,9 @@ pub(crate) fn beam_step(
             continue;
         }
 
-        // Colored tile check
+        // +------------------------+
+        // | Colored tile check     |
+        // +------------------------+
         let is_next_already_claimed = next_position
             .to_tile_pos(&map_info)
             .and_then(|tile_pos| map_info.ground_entities.get(&tile_pos))
