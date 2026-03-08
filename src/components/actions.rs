@@ -36,6 +36,16 @@ impl Action {
             },
         );
 
+        // Shoot action
+        input_map.insert(
+            Action::Shoot,
+            match player.player_id {
+                0 => KeyCode::Tab,
+                1 => KeyCode::Slash,
+                _ => KeyCode::Tab,
+            },
+        );
+
         input_map
     }
 }
@@ -78,9 +88,18 @@ impl LookDirection {
         self.locked = !self.locked;
     }
 
+    pub fn to_grid_coords(&self) -> GridCoords {
+        match self.direction {
+            Some(Direction::Up) => GridCoords::new(0, 1),
+            Some(Direction::Down) => GridCoords::new(0, -1),
+            Some(Direction::Left) => GridCoords::new(-1, 0),
+            Some(Direction::Right) => GridCoords::new(1, 0),
+            None => GridCoords::new(0, 0),
+        }
+    }
+
     pub fn look_at(&mut self, vec: Vec2) {
         if !self.locked {
-            println!("LookDirection {:?}", vec);
             let new_direction = match vec {
                 Vec2::Y => Some(Direction::Up),
                 Vec2::NEG_Y => Some(Direction::Down),
@@ -116,7 +135,6 @@ impl LookDirection {
 
             if self.direction != new_direction {
                 self.direction = new_direction;
-                println!("LookDirection changed to {:?}", self.direction);
             }
         }
     }

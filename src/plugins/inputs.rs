@@ -42,28 +42,46 @@ fn attach_players_actions(
 fn handle_players_input(
     time: Res<Time>,
     mut input_timer: ResMut<InputTimer>,
-    mut players: Query<(&ActionState<Action>, &mut GridCoords, &mut LookDirection), With<Player>>,
-    map_lookup: Res<MapLookup>,
+    mut players: Query<
+        (
+            Entity,
+            &ActionState<Action>,
+            &GridCoords,
+            &mut LookDirection,
+        ),
+        With<Player>,
+    >,
+    mut player_moved_writer: MessageWriter<PlayerMoved>,
+    mut beam_fired_writer: MessageWriter<BeamFired>,
 ) {
     input_timer.0.tick(time.delta());
 
-    for (action_state, mut player_grid_coords, mut look_direction) in &mut players {
+    for (player_entity, action_state, player_grid_coords, mut look_direction) in &mut players {
         if action_state.just_pressed(&Action::Lock) {
             look_direction.toggle_lock();
         }
 
+        if action_state.just_pressed(&Action::Shoot) {
+            beam_fired_writer.write(BeamFired {
+                owner: player_entity,
+                origin: *player_grid_coords,
+                direction: look_direction.to_grid_coords(),
+            });
+        }
+
         if !input_timer.0.is_finished() {
-            return;
+            continue;
         }
 
         if action_state.axis_pair(&Action::Move) != Vec2::ZERO {
             let axis = action_state.clamped_axis_pair(&Action::Move);
             look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
-            let destination = *player_grid_coords + direction;
-            if map_lookup.on_ground(&destination) {
-                *player_grid_coords = destination;
-            }
+            let position = *player_grid_coords + direction;
+            player_moved_writer.write(PlayerMoved {
+                player: player_entity,
+                position,
+            });
         }
     }
 }

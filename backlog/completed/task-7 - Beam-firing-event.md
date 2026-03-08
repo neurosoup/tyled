@@ -1,10 +1,10 @@
 ---
 id: TASK-7
 title: Beam firing event
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-01-25 17:17'
-updated_date: '2026-01-26 18:18'
+updated_date: '2026-03-08 10:45'
 labels: []
 milestone: m-1
 dependencies: []

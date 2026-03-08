@@ -1,5 +1,7 @@
 pub(super) mod animations;
+pub(super) mod beam;
 pub(super) mod camera;
+pub(super) mod claim;
 pub(super) mod debug;
 pub(super) mod defaults;
 pub(super) mod inputs;
@@ -8,7 +10,9 @@ pub(super) mod messages;
 pub(super) mod movements;
 
 pub use animations::*;
+pub use beam::*;
 pub use camera::*;
+pub use claim::*;
 pub use debug::*;
 pub use defaults::*;
 pub use inputs::*;
