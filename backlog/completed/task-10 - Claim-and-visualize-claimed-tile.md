@@ -1,10 +1,10 @@
 ---
 id: TASK-10
 title: Claim and  visualize claimed tile
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-01-25 17:53'
-updated_date: '2026-01-27 18:21'
+updated_date: '2026-03-08 10:45'
 labels: []
 milestone: m-1
 dependencies: []

@@ -1,10 +1,10 @@
 ---
 id: TASK-8
 title: Beam iteration logic
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-01-25 17:19'
-updated_date: '2026-01-26 18:40'
+updated_date: '2026-03-08 10:45'
 labels: []
 milestone: m-1
 dependencies: []
@@ -18,7 +18,7 @@ System responsibilities:
 - Read BeamFired
 - Read tile ownership
 - Call beam iteration logic
-- Emit BeamResolved
+- Emit TileClaimed when beam us resolved
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Implementation Plan
