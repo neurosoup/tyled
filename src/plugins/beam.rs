@@ -55,7 +55,7 @@ pub(crate) fn beam_step(
     mut beams_query: Query<(Entity, &Beam, &mut GridCoords)>,
     claimed_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
-    mut tile_claimed_writer: MessageWriter<TileClaimed>,
+    mut beam_resolved_writer: MessageWriter<BeamResolved>,
 ) {
     for (beam_entity, beam, mut position) in &mut beams_query {
         let next_position = *position + beam.direction;
@@ -65,7 +65,7 @@ pub(crate) fn beam_step(
         // +--------------------------+
         if !map_info.on_ground(next_position) {
             info!("Beam stops at: {:?}", *position);
-            tile_claimed_writer.write(TileClaimed {
+            beam_resolved_writer.write(BeamResolved {
                 position: *position,
                 owner: beam.owner,
             });
@@ -81,7 +81,7 @@ pub(crate) fn beam_step(
             .and_then(|tile_pos| map_info.ground_entities.get(&tile_pos))
             .is_some_and(|tile_entity| claimed_query.get(*tile_entity).is_ok());
         if is_next_already_claimed {
-            tile_claimed_writer.write(TileClaimed {
+            beam_resolved_writer.write(BeamResolved {
                 position: *position,
                 owner: beam.owner,
             });

@@ -29,7 +29,7 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
                 - `ClaimedTile` component on ground tile entities (for claimed-tile check)
             - Writes:
                 - Advances `GridCoords` of the beam if the next tile is valid and unclaimed
-                - Writes a `TileClaimed` message and despawns the beam when it must stop
+                - Writes a `BeamResolved` message and despawns the beam when it must stop
 
 ## Plugin Systems
 
@@ -41,8 +41,8 @@ Reacts to `BeamFired` messages emitted by the input system. For each message, it
 
 Runs every frame. For each `Beam` entity it computes the next grid position (`current + direction`) and applies two stopping rules in order:
 
-1. **Out of bounds** — if the next position is not on ground, emit `TileClaimed` for the *current* position and despawn.
-2. **Already claimed** — if the next tile's ground entity already carries a `ClaimedTile` component, emit `TileClaimed` for the *current* position and despawn.
+1. **Out of bounds** — if the next position is not on ground, emit `BeamResolved` for the *current* position and despawn.
+2. **Already claimed** — if the next tile's ground entity already carries a `ClaimedTile` component, emit `BeamResolved` for the *current* position and despawn.
 
 If neither rule fires, the beam advances: `GridCoords` is overwritten with the next position (which triggers `translate_objects` in the Movements plugin to tween the sprite).
 
@@ -265,10 +265,10 @@ beam_step ---> |reads `on_ground`| map_info_res
 beam_step ---> |reads `ground_entities`| map_info_res
 ```
 
-### Write TileClaimed messages
+### Write BeamResolved messages
 
 Used in the following systems:
-- **beam_step**: emits a `TileClaimed` message with the beam's current position and owner when the beam stops (out of bounds or claimed tile hit)
+- **beam_step**: emits a `BeamResolved` message with the beam's current position and owner when the beam stops (out of bounds or claimed tile hit)
 
 ```mermaid
 ---
@@ -284,15 +284,15 @@ beam_step["`**beam_step**`"]
 
 update -.-> beam_step
 
-tile_claimed_message(["`**TileClaimed**`"])
+beam_resolved_message(["`**BeamResolved**`"])
 
-beam_step ---> |writes| tile_claimed_message
+beam_step ---> |writes| beam_resolved_message
 ```
 
 ### Write commands — despawn Beam entity
 
 Used in the following systems:
-- **beam_step**: despawns the beam entity after emitting `TileClaimed` when a stopping condition is met
+- **beam_step**: despawns the beam entity after emitting `BeamResolved` when a stopping condition is met
 
 ```mermaid
 ---

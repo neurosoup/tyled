@@ -7,13 +7,13 @@ updated_date: '2026-03-08 17:04'
 ---
 # Claim Plugin
 
-Contains the system responsible for processing tile claim events. When a `TileClaimed` message is received, this plugin marks the corresponding ground tile entity with a `ClaimedTile` component and spawns a colored sprite overlay on that tile to visually indicate which player owns it.
+Contains the system responsible for processing tile claim events. When a `BeamResolved` message is received, this plugin marks the corresponding ground tile entity with a `ClaimedTile` component and spawns a colored sprite overlay on that tile to visually indicate which player owns it.
 
 ## Plugin workflow
 
 - Update phase
     - On Tile Claimed:
-        - Reacts to `TileClaimed` message
+        - Reacts to `BeamResolved` message
             - Reads:
                 - `MapInfo` resource (to resolve `GridCoords` → `TilePos` → tile `Entity` and compute world-space tile transform)
                 - `Player` component on the owning player entity (to determine the sprite atlas index)
@@ -25,7 +25,7 @@ Contains the system responsible for processing tile claim events. When a `TileCl
 
 ### On Tile Claimed
 
-Reacts to `TileClaimed` messages. For each message it:
+Reacts to `BeamResolved` messages. For each message it:
 1. Resolves the `GridCoords` position to a `TilePos` and looks up the corresponding ground tile entity via `MapInfo::ground_entities`.
 2. Looks up the owning `Player` to determine the correct sprite atlas index (index 6 for player 0, index 7 for player 1).
 3. Inserts a `ClaimedTile { owner }` component on the ground tile entity.
@@ -33,7 +33,7 @@ Reacts to `TileClaimed` messages. For each message it:
 
 ## Components, Resources and Messages CRUD
 
-### Read TileClaimed messages
+### Read BeamResolved messages
 
 Used in the following systems:
 - **on_tile_claimed**: used to trigger tile ownership processing
@@ -53,10 +53,10 @@ on_tile_claimed["`**on_tile_claimed**`"]
 
 update -.-> on_tile_claimed
 
-message_reader{{"MessageReader#60;TileClaimed#62;"}}:::reader
+message_reader{{"MessageReader#60;BeamResolved#62;"}}:::reader
 on_tile_claimed ---> message_reader
 
-tile_claimed_message(["`**TileClaimed**`"])
+tile_claimed_message(["`**BeamResolved**`"])
 
 message_reader ---> |reads| tile_claimed_message
 ```
