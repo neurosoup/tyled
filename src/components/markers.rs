@@ -5,5 +5,6 @@ use bevy_ecs_tiled::prelude::*;
 #[reflect(Component, Default)]
 pub struct Ground;
 
-#[derive(Component)]
-pub struct CurrentLevel;
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct HUD;

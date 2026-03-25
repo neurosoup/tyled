@@ -1,0 +1,17 @@
+GIMP Palette
+Name: Quantum Arena Palette
+Columns: 4
+#
+ 20  20  24 Background Dark
+ 40  40  48 Grid Dark
+ 60  60  70 Neutral Tile
+ 70 120 255 Blue Base
+120 170 255 Blue Bright
+170 210 255 Blue Glow
+255  80  80 Red Base
+255 130 130 Red Bright
+255 180 180 Red Glow
+180 120 255 Energy Purple
+120 255 255 Energy Cyan
+240 240 255 White Highlight
+ 10  10  12 Black Deep

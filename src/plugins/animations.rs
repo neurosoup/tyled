@@ -113,36 +113,35 @@ fn attach_player_animations(
             return;
         };
 
-        let spritesheet = Spritesheet::new(&image, 8, 1);
-        let animation_builder = spritesheet.create_animation();
+        let spritesheet = Spritesheet::new(&image, 32, 16);
 
-        let idle_x_animation_handle = match player.player_id {
-            0 => animations.add(animation_builder.clone().add_cell(3, 0).build()),
-            1 => animations.add(animation_builder.clone().add_cell(7, 0).build()),
+        let idle_left_right_animation_handle = match player.player_id {
+            0 => animations.add(spritesheet.create_animation().add_cell(3, 0).build()),
+            1 => animations.add(spritesheet.create_animation().add_cell(3, 1).build()),
             _ => panic!("Invalid player ID"),
         };
 
         let idle_down_animation_handle = match player.player_id {
-            0 => animations.add(animation_builder.clone().add_cell(0, 0).build()),
-            1 => animations.add(animation_builder.clone().add_cell(4, 0).build()),
+            0 => animations.add(spritesheet.create_animation().add_cell(0, 0).build()),
+            1 => animations.add(spritesheet.create_animation().add_cell(0, 1).build()),
             _ => panic!("Invalid player ID"),
         };
 
         let idle_up_animation_handle = match player.player_id {
-            0 => animations.add(animation_builder.clone().add_cell(2, 0).build()),
-            1 => animations.add(animation_builder.clone().add_cell(6, 0).build()),
+            0 => animations.add(spritesheet.create_animation().add_cell(2, 0).build()),
+            1 => animations.add(spritesheet.create_animation().add_cell(2, 1).build()),
             _ => panic!("Invalid player ID"),
         };
 
         if player.player_id == 0 {
             commands.insert_resource(PlayerOneAnimations {
-                idle_x: idle_x_animation_handle.clone(),
+                idle_x: idle_left_right_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,
                 idle_up: idle_up_animation_handle,
             });
         } else if player.player_id == 1 {
             commands.insert_resource(PlayerTwoAnimations {
-                idle_x: idle_x_animation_handle.clone(),
+                idle_x: idle_left_right_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,
                 idle_up: idle_up_animation_handle,
             });
@@ -153,6 +152,6 @@ fn attach_player_animations(
         // SpritesheetAnimation must go on the SAME entity as Sprite (the child)
         commands
             .entity(sprite_entity)
-            .insert(SpritesheetAnimation::new(idle_x_animation_handle));
+            .insert(SpritesheetAnimation::new(idle_left_right_animation_handle));
     }
 }

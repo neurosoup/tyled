@@ -7235,12 +7235,9 @@
                     "type": "class",
                     "value": {
                         "matrix3": {
-                            "x_axis": {
-                            },
-                            "y_axis": {
-                            },
-                            "z_axis": {
-                            }
+                            "x_axis": null,
+                            "y_axis": null,
+                            "z_axis": null
                         },
                         "translation": {
                             "x": 0,
@@ -8097,10 +8094,8 @@
                     "type": "class",
                     "value": {
                         "matrix2": {
-                            "x_axis": {
-                            },
-                            "y_axis": {
-                            }
+                            "x_axis": null,
+                            "y_axis": null
                         },
                         "translation": {
                             "x": 0,
@@ -11134,6 +11129,47 @@
             "useAs": [
                 "property"
             ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 540,
+            "members": [
+            ],
+            "name": "tyled::components::markers::HUD",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 541,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "tyled::components::render_category::RenderCategory:::Variant",
+                    "type": "string",
+                    "value": "Main"
+                }
+            ],
+            "name": "tyled::components::render_category::RenderCategory",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 542,
+            "name": "tyled::components::render_category::RenderCategory:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Main",
+                "HUD"
+            ],
+            "valuesAsFlags": false
         }
     ]
 }

@@ -112,7 +112,7 @@ impl GridCoords {
         Some(GridCoords::from(tile_pos))
     }
 
-    pub fn to_translation(self, map_info: &MapInfo) -> Vec3 {
+    pub fn to_translation_with_z_index(self, map_info: &MapInfo, z_index: i16) -> Vec3 {
         let tile_pos = TilePos::from(self);
         tile_pos
             .center_in_world(
@@ -122,7 +122,11 @@ impl GridCoords {
                 &map_info.map_type,
                 &map_info.map_anchor,
             )
-            .extend(0.0)
+            .extend(z_index as f32 * map_info.z_offset)
+    }
+
+    pub fn to_translation(self, map_info: &MapInfo) -> Vec3 {
+        self.to_translation_with_z_index(map_info, 0)
     }
 
     pub fn to_tile_pos(self, map_info: &MapInfo) -> Option<TilePos> {

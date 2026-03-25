@@ -1,5 +1,7 @@
 use crate::prelude::*;
-use bevy::{platform::collections::HashMap, prelude::*, sprite::Anchor};
+use bevy::{
+    camera::visibility::RenderLayers, platform::collections::HashMap, prelude::*, sprite::Anchor,
+};
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::TweenAnim;
 
@@ -8,11 +10,11 @@ pub(crate) fn plugin(app: &mut App) {
 
     app.init_resource::<MapInfo>();
 
-    app.add_systems(Startup, load_map);
+    app.add_systems(Startup, load_maps);
     app.add_systems(Update, (initialize_map_info, initialize_players).chain());
 }
 
-#[derive(Default, Resource)]
+#[derive(Default, Resource, Debug)]
 pub struct MapInfo {
     pub ground_entities: HashMap<TilePos, Entity>,
     pub map_size: TilemapSize,
@@ -20,6 +22,7 @@ pub struct MapInfo {
     pub tile_size: TilemapTileSize,
     pub map_type: TilemapType,
     pub map_anchor: TilemapAnchor,
+    pub z_offset: f32,
 }
 
 impl MapInfo {
@@ -29,9 +32,14 @@ impl MapInfo {
     }
 }
 
-fn load_map(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         TiledMap(asset_server.load("level0.tmx")),
+        TilemapAnchor::Center,
+    ));
+
+    commands.spawn((
+        TiledMap(asset_server.load("hud.tmx")),
         TilemapAnchor::Center,
     ));
 }
@@ -39,6 +47,7 @@ fn load_map(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn initialize_map_info(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     mut map_info: ResMut<MapInfo>,
+    map_query: Query<&TiledMapLayerZOffset, With<TiledMap>>,
     tilemap_query: Query<
         (
             &TiledName,
@@ -52,13 +61,15 @@ fn initialize_map_info(
     >,
     ground_tiles_query: Query<(Entity, &TilePos), With<Ground>>,
 ) {
-    for _ in map_created_reader.read() {
-        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
-            tilemap_query.iter().find(|(name, ..)| name.0 == "MapTiles")
-        else {
-            continue;
+    for map_created_message in map_created_reader.read() {
+        let Ok(z_offset) = map_query.get(map_created_message.origin) else {
+            return;
         };
-
+        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
+            tilemap_query.iter().find(|(name, ..)| name.0 == "Atlas")
+        else {
+            panic!("Atlas tilemap not found");
+        };
         let ground_entities = ground_tiles_query
             .iter()
             .map(|(entity, tile_pos)| (*tile_pos, entity))
@@ -71,6 +82,7 @@ fn initialize_map_info(
             tile_size: *tile_size,
             map_type: *map_type,
             map_anchor: *map_anchor,
+            z_offset: z_offset.0,
         };
     }
 }
@@ -107,7 +119,7 @@ fn initialize_players(
                     if let Some(&first_child) = children.first() {
                         commands
                             .entity(first_child)
-                            .insert(Anchor::from(Vec2::new(0.0, 0.0)));
+                            .insert(Anchor::from(Vec2::new(0.0, -0.25)));
                     }
                 }
             }

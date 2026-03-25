@@ -71,4 +71,18 @@
     "show_summary": true,
     "show_command": true,
   },
+  {
+    "label": "Build Debug",
+    "env": {
+      "RUST_BACKTRACE": "1",
+    },
+    // "args": ["--config", "profile.release.debug=true"],
+    "command": "/home/law/.cargo/bin/cargo build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal_target": "center",
+    "hide": "never",
+    "show_summary": true,
+    "show_command": true,
+  },
 ]

@@ -1,9 +1,15 @@
 use crate::prelude::*;
 use bevy::{
-    post_process::{bloom::Bloom, dof::DepthOfField, motion_blur::MotionBlur},
+    app::{HierarchyPropagatePlugin, Propagate},
+    camera::{Viewport, visibility::RenderLayers},
+    post_process::dof::DepthOfField,
     prelude::*,
+    window::WindowResized,
 };
+use bevy_ecs_tiled::prelude::{MapCreated, TiledEvent, TiledImage, TiledObject};
 use rand::Rng;
+
+pub const HUD_RENDER_LAYER: usize = 1;
 
 /// How quickly should the camera snap to the desired location.
 const CAMERA_DECAY_RATE: f32 = 0.5;
@@ -19,14 +25,28 @@ const BASE_ZOOM_DISTANCE: f32 = 200.0;
 const CLEAR_COLOR_SATURATION: f32 = 0.312;
 const CLEAR_COLOR_LIGHTNESS: f32 = 0.365;
 
+/// hud.tmx is 30 tiles wide and 4 tiles tall, each tile is 16x16 px.
+const HUD_TILES_H: u32 = 4;
+const HUD_TILE_SIZE: u32 = 16;
+const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
+const HUD_SCALE: f32 = 2.0;
+
+/// Marker component for the HUD overlay camera.
+#[derive(Component)]
+pub struct HudCamera;
+
 pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::hsl(
         0.0,
         CLEAR_COLOR_SATURATION,
         CLEAR_COLOR_LIGHTNESS,
     )));
-    app.add_systems(Startup, (initialize_camera, randomize_clear_color));
-    app.add_systems(Update, update_camera);
+    app.add_systems(Startup, (initialize_cameras, randomize_clear_color));
+    app.add_systems(
+        Update,
+        (initialize_hud_rendering, update_camera, update_hud_viewport),
+    );
+    app.add_plugins(HierarchyPropagatePlugin::<RenderLayers>::new(Update));
 }
 
 fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
@@ -35,7 +55,35 @@ fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
     info!("HSL = {:?}", clear_color.0);
 }
 
-fn initialize_camera(mut commands: Commands) {
+/// Computes the HUD viewport for a given physical window width.
+/// The HUD is scaled uniformly so its width matches the window width,
+/// and placed at the top of the screen.
+fn hud_viewport(physical_window_w: u32) -> Viewport {
+    let vp_w = physical_window_w;
+    let vp_h = (HUD_LOGICAL_H as f32 * HUD_SCALE).round() as u32;
+    Viewport {
+        physical_position: UVec2::ZERO, // top-left corner
+        physical_size: UVec2::new(vp_w, vp_h),
+        ..default()
+    }
+}
+
+fn initialize_hud_rendering(
+    mut commands: Commands,
+    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
+    hud_map_query: Query<Entity, With<HUD>>,
+) {
+    for map_created_message in map_created_reader.read() {
+        if let Ok(hud_map_entity) = hud_map_query.get(map_created_message.origin) {
+            commands
+                .entity(hud_map_entity)
+                .insert(Propagate(RenderLayers::from_layers(&[HUD_RENDER_LAYER])));
+            return;
+        }
+    }
+}
+
+fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
     commands.spawn((
         Camera2d,
         DepthOfField::default(),
@@ -44,11 +92,39 @@ fn initialize_camera(mut commands: Commands) {
             ..OrthographicProjection::default_2d()
         }),
     ));
+
+    commands.spawn((
+        Name::new("Hud Camera"),
+        HudCamera,
+        Camera2d,
+        Projection::Orthographic(OrthographicProjection {
+            scale: 1.0 / HUD_SCALE,
+            ..OrthographicProjection::default_2d()
+        }),
+        Camera {
+            order: 1,
+            viewport: Some(hud_viewport(window.physical_width())),
+            ..default()
+        },
+        RenderLayers::layer(HUD_RENDER_LAYER),
+    ));
+}
+
+/// Keeps the HUD viewport in sync when the window is resized.
+fn update_hud_viewport(
+    mut resize_events: MessageReader<WindowResized>,
+    window: Single<&Window>,
+    mut hud_camera: Single<&mut Camera, With<HudCamera>>,
+) {
+    if resize_events.read().last().is_none() {
+        return;
+    }
+    hud_camera.viewport = Some(hud_viewport(window.physical_width()));
 }
 
 fn update_camera(
     mut set: ParamSet<(
-        Single<(&mut Transform, &mut Projection), With<Camera2d>>,
+        Single<(&mut Transform, &mut Projection), (With<Camera2d>, Without<RenderLayers>)>,
         Query<&Transform, With<Player>>,
     )>,
     time: Res<Time>,

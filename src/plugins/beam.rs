@@ -18,11 +18,12 @@ fn spawn_beam(
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         if let Ok(player) = players_query.get(beam_fired_message.owner) {
-            let translation =
-                beam_fired_message.origin.to_translation(&map_info) + Vec3::new(0.0, 0.0, -0.1);
+            let translation = beam_fired_message
+                .origin
+                .to_translation_with_z_index(&map_info, -2);
 
-            let texture: Handle<Image> = asset_server.load("grid_tiles2-Sheet.png");
-            let layout = TextureAtlasLayout::from_grid(UVec2::splat(16), 8, 1, None, None);
+            let texture: Handle<Image> = asset_server.load("claimed-tiles.png");
+            let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 32, 1, None, None);
             let texture_atlas_layout = texture_atlas_layouts.add(layout);
             commands.spawn((
                 beam_fired_message.origin,
@@ -37,9 +38,9 @@ fn spawn_beam(
                     TextureAtlas {
                         layout: texture_atlas_layout,
                         index: match player.player_id {
-                            0 => 6,
-                            1 => 7,
-                            _ => 6,
+                            0 => 0,
+                            1 => 1,
+                            _ => 0,
                         },
                     },
                 ),
