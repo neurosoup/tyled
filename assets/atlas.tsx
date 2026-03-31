@@ -6,4 +6,9 @@
    <property name="Ground" type="class" propertytype="tyled::components::markers::Ground"/>
   </properties>
  </tile>
+ <tile id="68">
+  <properties>
+   <property name="ForbiddenArea" type="class" propertytype="tyled::components::markers::ForbiddenArea"/>
+  </properties>
+ </tile>
 </tileset>

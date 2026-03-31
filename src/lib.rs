@@ -21,6 +21,7 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::maps::plugin);
         app.add_plugins(plugins::camera::plugin);
         app.add_plugins(plugins::inputs::plugin);
+        app.add_plugins(plugins::effects::plugin);
         app.add_plugins(plugins::movements::plugin);
         app.add_plugins(plugins::animations::plugin);
         app.add_plugins(plugins::beam::plugin);

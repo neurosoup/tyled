@@ -1,4 +1,6 @@
-use bevy::{ecs::prelude::*, math::*, reflect::Reflect, transform::components::Transform};
+use bevy::{
+    ecs::prelude::*, log::info, math::*, reflect::Reflect, transform::components::Transform,
+};
 use bevy_ecs_ldtk::EntityInstance;
 use bevy_ecs_tiled::prelude::{tiled::*, *};
 
@@ -112,7 +114,7 @@ impl GridCoords {
         Some(GridCoords::from(tile_pos))
     }
 
-    pub fn to_translation_with_z_index(self, map_info: &MapInfo, z_index: i16) -> Vec3 {
+    pub fn to_translation_with_z_index(self, map_info: &MapInfo, z_index: i8) -> Vec3 {
         let tile_pos = TilePos::from(self);
         tile_pos
             .center_in_world(
@@ -122,7 +124,7 @@ impl GridCoords {
                 &map_info.map_type,
                 &map_info.map_anchor,
             )
-            .extend(z_index as f32 * map_info.z_offset)
+            .extend(-z_index as f32 * map_info.z_offset - (tile_pos.y as f32))
     }
 
     pub fn to_translation(self, map_info: &MapInfo) -> Vec3 {

@@ -1,0 +1,11 @@
+[
+  {
+    "adapter": "CodeLLDB",
+    "label": "Debug",
+    "name": "",
+    "request": "launch",
+    "program": "/home/law/.cargo/bin/cargo",
+    "stopOnEntry": true,
+    "build": "Build Debug",
+  },
+]

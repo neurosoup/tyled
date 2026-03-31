@@ -11170,6 +11170,18 @@
                 "HUD"
             ],
             "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 543,
+            "members": [
+            ],
+            "name": "tyled::components::markers::ForbiddenArea",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
         }
     ]
 }

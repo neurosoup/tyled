@@ -12,7 +12,7 @@ use rand::Rng;
 pub const HUD_RENDER_LAYER: usize = 1;
 
 /// How quickly should the camera snap to the desired location.
-const CAMERA_DECAY_RATE: f32 = 0.5;
+const CAMERA_DECAY_RATE: f32 = 0.80;
 /// Minimum zoom scale (zoomed out)
 const MIN_ZOOM_SCALE: f32 = 0.33;
 /// Maximum zoom scale (zoomed in)
