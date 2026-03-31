@@ -52,41 +52,52 @@ pub fn create_bounce_sequence(
 }
 
 fn apply_translate_effect(
+    mut commands: Commands,
     mut moving_objects: Query<
-        (&Transform, &GridCoords, &mut TweenAnim),
+        (Entity, &Transform, &GridCoords),
         (Changed<GridCoords>, With<TranslateEffectTarget>),
     >,
     map_info: Res<MapInfo>,
 ) {
-    for (transform, grid_coords, mut anim) in &mut moving_objects {
+    for (entity, transform, grid_coords) in &mut moving_objects {
         let destination = grid_coords.to_translation(&map_info);
 
-        anim.set_tweenable(create_movement_tween(transform.translation, destination))
-            .unwrap();
+        commands
+            .entity(entity)
+            .insert(TweenAnim::new(create_movement_tween(
+                transform.translation,
+                destination,
+            )));
+
+        // anim.set_tweenable(create_movement_tween(transform.translation, destination))
+        //     .unwrap();
     }
 }
 
 fn apply_wave_effect(
+    mut commands: Commands,
     mut waves_query: Query<(&GridCoords, &WaveEffect), Changed<GridCoords>>,
-    mut claimed_query: Query<(&GridCoords, &mut TweenAnim), With<WaveEffectTarget>>,
+    mut claimed_query: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
     map_info: Res<MapInfo>,
 ) {
     for (targeted_coords, shaker_effect) in &mut waves_query {
         let Some(claimed_entity) = map_info.claimed_entities.get(targeted_coords) else {
             continue;
         };
-        if let Ok((grid_coords, mut anim)) = claimed_query.get_mut(*claimed_entity) {
+        if let Ok((entity, grid_coords)) = claimed_query.get_mut(*claimed_entity) {
             let WaveEffect {
                 intensity,
                 bounce_count,
                 decay,
             } = *shaker_effect;
-            let _ = anim.set_tweenable(create_bounce_sequence(
-                grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
-                intensity,
-                bounce_count,
-                decay,
-            ));
+            commands
+                .entity(entity)
+                .insert(TweenAnim::new(create_bounce_sequence(
+                    grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
+                    intensity,
+                    bounce_count,
+                    decay,
+                )));
         }
     }
 }

@@ -127,11 +127,6 @@ fn initialize_players(
                     grid_coords,
                     look_direction,
                     TranslateEffectTarget,
-                    TweenAnim::new(create_movement_tween(
-                        transform.translation,
-                        transform.translation,
-                    ))
-                    .with_destroy_on_completed(false),
                 ));
 
                 if let Ok(children) = children_query.get(entity) {
@@ -177,8 +172,6 @@ fn initialize_unclaimed_tiles(
                     grid_coords,
                     Transform::from_translation(tile_transform),
                     Anchor::from(Vec2::new(-0.02, 0.18)),
-                    TweenAnim::new(create_bounce_sequence(tile_transform, 2.0, 5, 0.5))
-                        .with_destroy_on_completed(false),
                     Sprite::from_atlas_image(
                         texture,
                         TextureAtlas {
