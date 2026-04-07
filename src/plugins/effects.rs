@@ -5,7 +5,14 @@ use bevy::prelude::*;
 use bevy_tweening::{Tween, TweenAnim, Tweenable, lens::TransformPositionLens};
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, (apply_translate_effect, apply_wave_effect));
+    app.add_systems(
+        Update,
+        (
+            apply_translate_effect,
+            apply_wave_effect,
+            apply_bounce_effect,
+        ),
+    );
 }
 
 pub fn create_movement_tween(start: Vec3, end: Vec3) -> Tween {
@@ -76,7 +83,7 @@ fn apply_translate_effect(
 
 fn apply_wave_effect(
     mut commands: Commands,
-    mut waves_query: Query<(&GridCoords, &WaveEffect), Changed<GridCoords>>,
+    mut waves_query: Query<(&GridCoords, &BounceEffect), Changed<GridCoords>>,
     mut claimed_query: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
     map_info: Res<MapInfo>,
 ) {
@@ -85,7 +92,7 @@ fn apply_wave_effect(
             continue;
         };
         if let Ok((entity, grid_coords)) = claimed_query.get_mut(*claimed_entity) {
-            let WaveEffect {
+            let BounceEffect {
                 intensity,
                 bounce_count,
                 decay,
@@ -99,5 +106,28 @@ fn apply_wave_effect(
                     decay,
                 )));
         }
+    }
+}
+
+fn apply_bounce_effect(
+    mut commands: Commands,
+    mut bounce_query: Query<(Entity, &GridCoords, &BounceEffect), Added<BounceEffectTarget>>,
+    map_info: Res<MapInfo>,
+) {
+    for (entity, grid_coords, bounce_effect) in &mut bounce_query {
+        let BounceEffect {
+            intensity,
+            bounce_count,
+            decay,
+        } = *bounce_effect;
+        commands
+            .entity(entity)
+            .insert(TweenAnim::new(create_bounce_sequence(
+                grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
+                intensity,
+                bounce_count,
+                decay,
+            )))
+            .remove::<BounceEffectTarget>();
     }
 }

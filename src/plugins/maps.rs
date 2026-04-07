@@ -18,7 +18,7 @@ pub(crate) fn plugin(app: &mut App) {
         (
             initialize_map_info,
             initialize_players,
-            initialize_unclaimed_tiles,
+            initialize_claimed_tiles,
         )
             .chain(),
     );
@@ -28,6 +28,7 @@ pub(crate) fn plugin(app: &mut App) {
 pub struct MapInfo {
     pub ground_entities: HashMap<GridCoords, Entity>,
     pub claimed_entities: HashMap<GridCoords, Entity>,
+    pub forbidden_areas: HashMap<GridCoords, Entity>,
     pub map_size: TilemapSize,
     pub grid_size: TilemapGridSize,
     pub tile_size: TilemapTileSize,
@@ -42,16 +43,24 @@ impl MapInfo {
         tile_pos.within_map_bounds(&self.map_size)
             && self.ground_entities.contains_key(&grid_coords)
     }
+
+    pub fn on_forbidden_areas(&self, grid_coords: GridCoords) -> bool {
+        let tile_pos = TilePos::from(grid_coords);
+        tile_pos.within_map_bounds(&self.map_size)
+            && self.forbidden_areas.contains_key(&grid_coords)
+    }
 }
 
 fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         TiledMap(asset_server.load("level0.tmx")),
+        CurrentLevel,
         TilemapAnchor::Center,
     ));
 
     commands.spawn((
         TiledMap(asset_server.load("hud.tmx")),
+        HUD,
         TilemapAnchor::Center,
     ));
 }
@@ -59,7 +68,7 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn initialize_map_info(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     mut map_info: ResMut<MapInfo>,
-    map_query: Query<&TiledMapLayerZOffset, (With<TiledMap>, Without<HUD>)>,
+    map_query: Query<&TiledMapLayerZOffset, (With<TiledMap>, With<CurrentLevel>)>,
     tilemap_query: Query<
         (
             &TiledName,
@@ -72,6 +81,7 @@ fn initialize_map_info(
         With<TiledTilemap>,
     >,
     ground_tiles_query: Query<(Entity, &TilePos), (With<Ground>, Without<ForbiddenArea>)>,
+    forbidden_areas_query: Query<(Entity, &TilePos), With<ForbiddenArea>>,
 ) {
     for map_created_message in map_created_reader.read() {
         let Ok(z_offset) = map_query.get(map_created_message.origin) else {
@@ -87,8 +97,14 @@ fn initialize_map_info(
             .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
             .collect();
 
+        let forbidden_areas = forbidden_areas_query
+            .iter()
+            .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
+            .collect();
+
         *map_info = MapInfo {
             ground_entities,
+            forbidden_areas,
             claimed_entities: HashMap::new(),
             map_size: *map_size,
             grid_size: *grid_size,
@@ -104,7 +120,7 @@ fn initialize_players(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, Without<HUD>)>,
+    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     players_query: Query<(Entity, &Player, &Transform), With<TiledObject>>,
     children_query: Query<&Children>,
 ) {
@@ -141,13 +157,11 @@ fn initialize_players(
     }
 }
 
-fn initialize_unclaimed_tiles(
+fn initialize_claimed_tiles(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
-    asset_server: Res<AssetServer>,
     mut map_info: ResMut<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, Without<HUD>)>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
 ) {
     for map_created_message in map_created_reader.read() {
         let Ok(_) = map_query.get(map_created_message.origin) else {
@@ -158,10 +172,6 @@ fn initialize_unclaimed_tiles(
         let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
 
         for grid_coords in grid_coords_list {
-            let texture: Handle<Image> = asset_server.load("plates.png");
-            let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 32, 1, None, None);
-            let texture_atlas_layout = texture_atlas_layouts.add(layout);
-            info!("claimed tile z index: {}", CLAIMED_TILE_Z_INDEX);
             let tile_transform =
                 grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX);
             let entity = commands
@@ -172,13 +182,6 @@ fn initialize_unclaimed_tiles(
                     grid_coords,
                     Transform::from_translation(tile_transform),
                     Anchor::from(Vec2::new(-0.02, 0.18)),
-                    Sprite::from_atlas_image(
-                        texture,
-                        TextureAtlas {
-                            layout: texture_atlas_layout,
-                            index: 0,
-                        },
-                    ),
                 ))
                 .id();
 

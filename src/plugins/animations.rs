@@ -8,7 +8,15 @@ use bevy_tweening::{Tween, Tweenable, lens::TransformPositionLens};
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(SpritesheetAnimationPlugin);
-    app.add_systems(Update, (update_animation, attach_player_animations));
+    app.add_systems(
+        Update,
+        (
+            update_players_animation,
+            update_claimed_tile_animation,
+            attach_player_animations,
+            attach_claimed_tile_animations,
+        ),
+    );
 }
 
 #[derive(Resource, Clone)]
@@ -25,7 +33,62 @@ struct PlayerTwoAnimations {
     idle_down: Handle<Animation>,
 }
 
-fn update_animation(
+#[derive(Resource, Clone)]
+struct ClaimedTileAnimations {
+    unclaimed: Handle<Animation>,
+    to_player_one: Handle<Animation>,
+    to_player_two: Handle<Animation>,
+}
+
+fn update_claimed_tile_animation(
+    mut commands: Commands,
+    mut beam_resolved_reader: MessageReader<BeamResolved>,
+    players_query: Query<&Player>,
+    mut claimed_query: Query<&mut SpritesheetAnimation, With<ClaimedTile>>,
+    map_info: Res<MapInfo>,
+    claimed_tile_animations: If<Res<ClaimedTileAnimations>>,
+) {
+    for tile_claimed_message in beam_resolved_reader.read() {
+        let Some(claimed_tile_entity) = map_info
+            .claimed_entities
+            .get(&tile_claimed_message.position)
+        else {
+            continue;
+        };
+
+        let Ok(player) = players_query.get(tile_claimed_message.owner) else {
+            continue;
+        };
+
+        let Ok(mut animation) = claimed_query.get_mut(*claimed_tile_entity) else {
+            continue;
+        };
+
+        match player.player_id {
+            0 => {
+                animation.switch(claimed_tile_animations.to_player_one.clone());
+                commands
+                    .entity(*claimed_tile_entity)
+                    .insert(BounceEffectTarget);
+            }
+
+            1 => {
+                animation.switch(claimed_tile_animations.to_player_two.clone());
+                commands
+                    .entity(*claimed_tile_entity)
+                    .insert(BounceEffectTarget);
+            }
+            _ => {
+                animation.switch(claimed_tile_animations.unclaimed.clone());
+                commands
+                    .entity(*claimed_tile_entity)
+                    .insert(BounceEffectTarget);
+            }
+        }
+    }
+}
+
+fn update_players_animation(
     // Parent entity: has Player, LookDirection
     players: Query<(Entity, &Player, &LookDirection), With<TiledObject>>,
     // Used to traverse the hierarchy with iter_descendants
@@ -82,6 +145,61 @@ fn update_animation(
             // Only one sprite child expected per player, stop after the first match
             break;
         }
+    }
+}
+
+fn attach_claimed_tile_animations(
+    mut commands: Commands,
+    unclaimed_tiles: Query<(Entity, &ClaimedTile), Added<ClaimedTile>>,
+    assets: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    mut animations: ResMut<Assets<Animation>>,
+) {
+    for (entity, _) in &unclaimed_tiles {
+        let image = assets.load("plates.png");
+        let spritesheet = Spritesheet::new(&image, 12, 3);
+        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 12, 3, None, None);
+        let texture_atlas_layout = texture_atlas_layouts.add(layout);
+
+        const FLIP_FRAME_MS: u32 = 20;
+
+        let unclaimed_animation_handle =
+            animations.add(spritesheet.create_animation().add_cell(0, 0).build());
+        commands.insert_resource(ClaimedTileAnimations {
+            unclaimed: unclaimed_animation_handle.clone(),
+            to_player_one: animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_row(1)
+                    .set_repetitions(AnimationRepeat::Times(1))
+                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .build(),
+            ),
+            to_player_two: animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_row(2)
+                    .set_repetitions(AnimationRepeat::Times(1))
+                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .build(),
+            ),
+        });
+
+        commands.entity(entity).insert((
+            BounceEffect {
+                intensity: 8.0,
+                bounce_count: 1,
+                decay: 1.0,
+            },
+            SpritesheetAnimation::new(unclaimed_animation_handle.clone()),
+            Sprite::from_atlas_image(
+                image.clone(),
+                TextureAtlas {
+                    layout: texture_atlas_layout.clone(),
+                    index: 0,
+                },
+            ),
+        ));
     }
 }
 

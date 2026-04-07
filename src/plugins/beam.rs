@@ -33,7 +33,7 @@ fn spawn_beam(
                     direction: beam_fired_message.direction,
                     speed: 1.0,
                 },
-                WaveEffect {
+                BounceEffect {
                     intensity: 2.0,
                     bounce_count: 5,
                     decay: 0.5,
@@ -62,12 +62,28 @@ pub(crate) fn beam_step(
         // +--------------------------+
         // | Out of map bounds rule   |
         // +--------------------------+
-        if !map_info.on_ground(next_position) {
-            info!("Beam stops at: {:?}", *position);
-            beam_resolved_writer.write(BeamResolved {
-                position: *position,
-                owner: beam.owner,
-            });
+        if !(map_info.on_ground(next_position) || map_info.on_forbidden_areas(next_position)) {
+            // Move back to the last unclaimed position in case it's a forbidden area
+            while map_info.on_forbidden_areas(*position) {
+                *position -= beam.direction;
+            }
+            let is_position_claimed =
+                map_info
+                    .claimed_entities
+                    .get(&*position)
+                    .is_some_and(|claimed_entity| {
+                        if let Ok(claimed_tile) = claimed_query.get(*claimed_entity) {
+                            claimed_tile.owner.is_some()
+                        } else {
+                            false
+                        }
+                    });
+            if !is_position_claimed {
+                beam_resolved_writer.write(BeamResolved {
+                    position: *position,
+                    owner: beam.owner,
+                });
+            }
             commands.entity(beam_entity).despawn();
             continue;
         }
@@ -75,15 +91,40 @@ pub(crate) fn beam_step(
         // +------------------------+
         // | Claimed tile check     |
         // +------------------------+
-        let is_next_already_claimed = map_info
-            .ground_entities
-            .get(&next_position)
-            .is_some_and(|tile_entity| claimed_query.get(*tile_entity).is_ok());
+        let is_next_already_claimed =
+            map_info
+                .claimed_entities
+                .get(&next_position)
+                .is_some_and(|claimed_entity| {
+                    if let Ok(claimed_tile) = claimed_query.get(*claimed_entity) {
+                        claimed_tile.owner.is_some()
+                    } else {
+                        false
+                    }
+                });
+
         if is_next_already_claimed {
-            beam_resolved_writer.write(BeamResolved {
-                position: *position,
-                owner: beam.owner,
-            });
+            // Move back to the last unclaimed position in case it's a forbidden area
+            while map_info.on_forbidden_areas(*position) {
+                *position -= beam.direction;
+            }
+            let is_position_claimed =
+                map_info
+                    .claimed_entities
+                    .get(&*position)
+                    .is_some_and(|claimed_entity| {
+                        if let Ok(claimed_tile) = claimed_query.get(*claimed_entity) {
+                            claimed_tile.owner.is_some()
+                        } else {
+                            false
+                        }
+                    });
+            if !is_position_claimed {
+                beam_resolved_writer.write(BeamResolved {
+                    position: *position,
+                    owner: beam.owner,
+                });
+            }
             commands.entity(beam_entity).despawn();
             continue;
         }

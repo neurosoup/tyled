@@ -1,15 +1,13 @@
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
-    camera::{Viewport, visibility::RenderLayers},
+    camera::{ScalingMode, Viewport, visibility::RenderLayers},
     post_process::dof::DepthOfField,
     prelude::*,
     window::WindowResized,
 };
 use bevy_ecs_tiled::prelude::{MapCreated, TiledEvent, TiledImage, TiledObject};
 use rand::Rng;
-
-pub const HUD_RENDER_LAYER: usize = 1;
 
 /// How quickly should the camera snap to the desired location.
 const CAMERA_DECAY_RATE: f32 = 0.80;
@@ -25,15 +23,13 @@ const BASE_ZOOM_DISTANCE: f32 = 200.0;
 const CLEAR_COLOR_SATURATION: f32 = 0.312;
 const CLEAR_COLOR_LIGHTNESS: f32 = 0.365;
 
-/// hud.tmx is 30 tiles wide and 4 tiles tall, each tile is 16x16 px.
+const HUD_MAP_WIDTH: u32 = 48;
 const HUD_TILES_H: u32 = 4;
 const HUD_TILE_SIZE: u32 = 16;
 const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
 const HUD_SCALE: f32 = 2.0;
 
-/// Marker component for the HUD overlay camera.
-#[derive(Component)]
-pub struct HudCamera;
+pub const HUD_RENDER_LAYER: usize = 1;
 
 pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::hsl(
@@ -95,10 +91,12 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
 
     commands.spawn((
         Name::new("Hud Camera"),
-        HudCamera,
+        HUD,
         Camera2d,
+        IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
-            scale: 1.0 / HUD_SCALE,
+            // viewport_origin: Vec2::new(0.0, 0.5),
+            // scale: 1.0 / HUD_SCALE,
             ..OrthographicProjection::default_2d()
         }),
         Camera {
@@ -114,12 +112,20 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
 fn update_hud_viewport(
     mut resize_events: MessageReader<WindowResized>,
     window: Single<&Window>,
-    mut hud_camera: Single<&mut Camera, With<HudCamera>>,
+    (mut hud_camera, mut projection): (
+        Single<&mut Camera, With<HUD>>,
+        Single<&mut Projection, With<HUD>>,
+    ),
 ) {
     if resize_events.read().last().is_none() {
         return;
     }
     hud_camera.viewport = Some(hud_viewport(window.physical_width()));
+    if let Projection::Orthographic(ortho) = projection.as_mut() {
+        let hud_physical_w = window.physical_width() as f32;
+        let hud_content_w = (HUD_MAP_WIDTH * HUD_TILE_SIZE) as f32;
+        ortho.scale = hud_content_w / hud_physical_w;
+    }
 }
 
 fn update_camera(
