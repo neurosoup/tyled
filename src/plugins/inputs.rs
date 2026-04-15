@@ -1,3 +1,7 @@
+/*
+ * Plugin that handles player input and actions.
+ */
+
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -13,7 +17,7 @@ use leafwing_input_manager::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
     app.add_plugins(TweeningPlugin);
-    app.add_systems(Startup, setup_input_timer);
+    app.add_systems(Startup, setup_timer);
     app.add_systems(PreUpdate, attach_players_actions);
     app.add_systems(Update, handle_players_input);
 }
@@ -21,7 +25,7 @@ pub(crate) fn plugin(app: &mut App) {
 #[derive(Resource)]
 pub struct InputTimer(Timer);
 
-fn setup_input_timer(mut commands: Commands) {
+fn setup_timer(mut commands: Commands) {
     commands.insert_resource(InputTimer(Timer::from_seconds(
         0.0625,
         TimerMode::Repeating,
@@ -41,7 +45,7 @@ fn attach_players_actions(
 
 fn handle_players_input(
     time: Res<Time>,
-    mut input_timer: ResMut<InputTimer>,
+    mut timer: ResMut<InputTimer>,
     mut players: Query<
         (
             Entity,
@@ -51,10 +55,10 @@ fn handle_players_input(
         ),
         With<Player>,
     >,
-    mut player_moved_writer: MessageWriter<PlayerMoved>,
+    mut player_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,
 ) {
-    input_timer.0.tick(time.delta());
+    timer.0.tick(time.delta());
 
     for (player_entity, action_state, player_grid_coords, mut look_direction) in &mut players {
         if action_state.just_pressed(&Action::Lock) {
@@ -69,7 +73,7 @@ fn handle_players_input(
             });
         }
 
-        if !input_timer.0.is_finished() {
+        if !timer.0.is_finished() {
             continue;
         }
 
@@ -78,8 +82,8 @@ fn handle_players_input(
             look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
             let position = *player_grid_coords + direction;
-            player_moved_writer.write(PlayerMoved {
-                player: player_entity,
+            player_moved_writer.write(EntityMoved {
+                entity: player_entity,
                 position,
             });
         }

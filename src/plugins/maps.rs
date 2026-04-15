@@ -1,3 +1,6 @@
+/*
+ * Plugin that handles map loading and map-related resources and initializations.
+ */
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -17,8 +20,11 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             initialize_map_info,
-            initialize_players,
-            initialize_claimed_tiles,
+            (
+                initialize_players,
+                initialize_claimed_tiles,
+                initialize_hp_bars,
+            ),
         )
             .chain(),
     );
@@ -49,9 +55,20 @@ impl MapInfo {
         tile_pos.within_map_bounds(&self.map_size)
             && self.forbidden_areas.contains_key(&grid_coords)
     }
+
+    pub fn get_claimed_entity_by_position(&self, grid_coords: GridCoords) -> Option<Entity> {
+        let tile_pos = TilePos::from(grid_coords);
+        if tile_pos.within_map_bounds(&self.map_size) {
+            self.claimed_entities.get(&grid_coords).copied()
+        } else {
+            None
+        }
+    }
 }
 
 fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
+    info!("Loading maps");
+
     commands.spawn((
         TiledMap(asset_server.load("level0.tmx")),
         CurrentLevel,
@@ -60,7 +77,7 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands.spawn((
         TiledMap(asset_server.load("hud.tmx")),
-        HUD,
+        HudMap,
         TilemapAnchor::Center,
     ));
 }
@@ -84,8 +101,9 @@ fn initialize_map_info(
     forbidden_areas_query: Query<(Entity, &TilePos), With<ForbiddenArea>>,
 ) {
     for map_created_message in map_created_reader.read() {
+        // Skip maps that are not the current level
         let Ok(z_offset) = map_query.get(map_created_message.origin) else {
-            return;
+            continue;
         };
         let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
             tilemap_query.iter().find(|(name, ..)| name.0 == "Atlas")
@@ -116,17 +134,57 @@ fn initialize_map_info(
     }
 }
 
+fn initialize_hp_bars(
+    mut commands: Commands,
+    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
+    map_info: Res<MapInfo>,
+    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
+    hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
+    mut sprite_query: Query<(&mut Sprite, &mut Transform), Without<HPBar>>,
+) {
+    let desired_width = 20.0 * 16.0;
+    let height = 32.0;
+    let ratio = 1.0;
+
+    for map_created_message in map_created_reader.read() {
+        // Skip maps that are not the current level
+        let Ok(_) = map_query.get(map_created_message.origin) else {
+            continue;
+        };
+
+        for (entity, hp_bar, transform, children) in &hp_bars_query {
+            if let Some(grid_coords) =
+                GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
+            {
+                commands.entity(entity).insert(grid_coords);
+                if let Some(first_child) = children.and_then(|c| c.first()).copied() {
+                    commands
+                        .entity(first_child)
+                        .insert(Anchor::from(Vec2::new(0.0, -0.25)));
+                    if let Ok((mut sprite, mut transform)) = sprite_query.get_mut(first_child) {
+                        sprite.custom_size = Some(Vec2::new(desired_width, height));
+                        transform.scale.x = transform.scale.x.lerp(ratio, 0.1);
+                        // *transform = Transform::from_xyz(direction * desired_width, 0.0, 0.0);
+                        // transform.scale = Vec3::new(base_scale, 1.0, 1.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn initialize_players(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
-    players_query: Query<(Entity, &Player, &Transform), With<TiledObject>>,
+    players_query: Query<(Entity, &Player, &Transform)>,
     children_query: Query<&Children>,
 ) {
     for map_created_message in map_created_reader.read() {
+        // Skip maps that are not the current level
         let Ok(_) = map_query.get(map_created_message.origin) else {
-            return;
+            continue;
         };
 
         for (entity, player, transform) in &players_query {
@@ -143,6 +201,11 @@ fn initialize_players(
                     grid_coords,
                     look_direction,
                     TranslateEffectTarget,
+                    DamageEffectTarget,
+                    Health {
+                        current: 100.0,
+                        max: 100.0,
+                    },
                 ));
 
                 if let Ok(children) = children_query.get(entity) {
@@ -164,8 +227,9 @@ fn initialize_claimed_tiles(
     map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
 ) {
     for map_created_message in map_created_reader.read() {
+        // Skip maps that are not the current level
         let Ok(_) = map_query.get(map_created_message.origin) else {
-            return;
+            continue;
         };
 
         // Collect keys first to avoid holding a borrow on map_info

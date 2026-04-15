@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.0" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="2" nextobjectid="1">
- <properties>
-  <property name="HUD" type="class" propertytype="tyled::components::markers::HUD"/>
- </properties>
+<map version="1.10" tiledversion="1.12.0" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="8" nextobjectid="9">
  <tileset firstgid="1" source="atlas.tsx"/>
  <tileset firstgid="513" source="Hud.tsx"/>
- <layer id="1" name="Tile Layer 1" width="48" height="4">
+ <tileset firstgid="518" source="HP.tsx"/>
+ <layer id="1" name="HPContainer" width="48" height="4">
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -13,4 +11,8 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
+ <objectgroup id="7" name="HPBar">
+  <object id="7" gid="518" x="365" y="48" width="1" height="32"/>
+  <object id="8" gid="519" x="434" y="48" width="1" height="32"/>
+ </objectgroup>
 </map>

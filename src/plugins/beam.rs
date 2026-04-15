@@ -1,3 +1,6 @@
+/*
+ * Plugin for beam behavior and claim tile when beam is resolved.
+ */
 use crate::prelude::*;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
@@ -5,7 +8,7 @@ use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
-    app.add_systems(Update, (spawn_beam, beam_step));
+    app.add_systems(Update, (spawn_beam, beam_step, claim_tile));
 }
 
 #[derive(Resource)]
@@ -22,9 +25,19 @@ fn setup_beam_step_timer(mut commands: Commands) {
 fn spawn_beam(
     mut commands: Commands,
     mut beam_fired_reader: MessageReader<BeamFired>,
+    beams_query: Query<&Beam>,
     players_query: Query<&Player>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
+        // If we have already spawned a beam for this owner, skip
+        if let Ok(_beam) = beams_query.get(beam_fired_message.owner) {
+            info!(
+                "Skipping beam spawn for owner {:?} - already spawned",
+                beam_fired_message.owner
+            );
+            continue;
+        }
+
         if let Ok(_) = players_query.get(beam_fired_message.owner) {
             commands.spawn((
                 beam_fired_message.origin,
@@ -131,5 +144,22 @@ pub(crate) fn beam_step(
 
         // Advance
         *position = next_position;
+    }
+}
+
+fn claim_tile(
+    mut beam_resolved_reader: MessageReader<BeamResolved>,
+    mut claimed_query: Query<&mut ClaimedTile>,
+    map_info: Res<MapInfo>,
+) {
+    for tile_claimed_message in beam_resolved_reader.read() {
+        if let Some(claimed_entity) = map_info
+            .claimed_entities
+            .get(&tile_claimed_message.position)
+        {
+            if let Ok(mut claimed_tile) = claimed_query.get_mut(*claimed_entity) {
+                claimed_tile.owner = Some(tile_claimed_message.owner);
+            }
+        }
     }
 }

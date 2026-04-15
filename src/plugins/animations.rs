@@ -1,3 +1,6 @@
+/*
+ Plugin for initializing sprite animations and attaching them to entities.
+*/
 use std::time::Duration;
 
 use crate::prelude::*;

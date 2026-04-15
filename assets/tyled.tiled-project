@@ -11133,18 +11133,6 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 540,
-            "members": [
-            ],
-            "name": "tyled::components::markers::HUD",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
             "id": 541,
             "members": [
                 {
@@ -11178,6 +11166,23 @@
             "members": [
             ],
             "name": "tyled::components::markers::ForbiddenArea",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 544,
+            "members": [
+                {
+                    "name": "player_id",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::markers::HPBar",
             "type": "class",
             "useAs": [
                 "property"

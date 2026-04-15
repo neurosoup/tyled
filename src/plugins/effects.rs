@@ -1,3 +1,7 @@
+/*
+ * This plugin handles effects applied to entities on the map.
+ * For example, movement effects are applied to entities based on their current position and a target position when their GridCoords component changed.
+ */
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -11,6 +15,7 @@ pub(crate) fn plugin(app: &mut App) {
             apply_translate_effect,
             apply_wave_effect,
             apply_bounce_effect,
+            apply_damage_effect,
         ),
     );
 }
@@ -75,23 +80,48 @@ fn apply_translate_effect(
                 transform.translation,
                 destination,
             )));
+    }
+}
 
-        // anim.set_tweenable(create_movement_tween(transform.translation, destination))
-        //     .unwrap();
+fn apply_damage_effect(
+    mut commands: Commands,
+    map_info: Res<MapInfo>,
+    damaged_players: Query<(Entity, &Health, &Player), With<DamageEffectTarget>>,
+    mut hp_bars: Query<(&HPBar, &GridCoords, &mut Transform)>,
+) {
+    for (player_entity, health, player) in &damaged_players {
+        // Resize HP bars regarding player health
+        for (hp_bar, grid_coords, mut transform) in &mut hp_bars {
+            if hp_bar.player_id == player.player_id {
+                let translation = grid_coords.to_translation(&map_info);
+                let direction = match player.player_id {
+                    0 => -1.0,
+                    1 => 1.0,
+                    _ => 0.0,
+                };
+                // transform.scale.x =  direction * (health.current / health.max);
+                transform.translation = translation;
+            }
+        }
+
+        // Despawn players who have 0 health
+        if health.current <= 0.0 {
+            commands.entity(player_entity).despawn();
+        }
     }
 }
 
 fn apply_wave_effect(
     mut commands: Commands,
     mut waves_query: Query<(&GridCoords, &BounceEffect), Changed<GridCoords>>,
-    mut claimed_query: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
+    mut effect_targets: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
     map_info: Res<MapInfo>,
 ) {
     for (targeted_coords, shaker_effect) in &mut waves_query {
         let Some(claimed_entity) = map_info.claimed_entities.get(targeted_coords) else {
             continue;
         };
-        if let Ok((entity, grid_coords)) = claimed_query.get_mut(*claimed_entity) {
+        if let Ok((entity, grid_coords)) = effect_targets.get_mut(*claimed_entity) {
             let BounceEffect {
                 intensity,
                 bounce_count,
@@ -100,6 +130,7 @@ fn apply_wave_effect(
             commands
                 .entity(entity)
                 .insert(TweenAnim::new(create_bounce_sequence(
+                    //TODO: The z-index should be based on the entity's wave effect target z-index.
                     grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
                     intensity,
                     bounce_count,

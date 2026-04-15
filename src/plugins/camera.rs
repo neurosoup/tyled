@@ -1,3 +1,6 @@
+/*
+ * Plugin for camera behavior and viewport management (HUD).
+ */
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
@@ -67,7 +70,7 @@ fn hud_viewport(physical_window_w: u32) -> Viewport {
 fn initialize_hud_rendering(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
-    hud_map_query: Query<Entity, With<HUD>>,
+    hud_map_query: Query<Entity, With<HudMap>>,
 ) {
     for map_created_message in map_created_reader.read() {
         if let Ok(hud_map_entity) = hud_map_query.get(map_created_message.origin) {
@@ -91,7 +94,7 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
 
     commands.spawn((
         Name::new("Hud Camera"),
-        HUD,
+        HudMap,
         Camera2d,
         IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
@@ -113,8 +116,8 @@ fn update_hud_viewport(
     mut resize_events: MessageReader<WindowResized>,
     window: Single<&Window>,
     (mut hud_camera, mut projection): (
-        Single<&mut Camera, With<HUD>>,
-        Single<&mut Projection, With<HUD>>,
+        Single<&mut Camera, With<HudMap>>,
+        Single<&mut Projection, With<HudMap>>,
     ),
 ) {
     if resize_events.read().last().is_none() {

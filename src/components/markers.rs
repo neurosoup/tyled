@@ -11,7 +11,12 @@ pub struct Ground;
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
-pub struct HUD;
+pub struct HPBar {
+    pub player_id: usize,
+}
+
+#[derive(Component, Default)]
+pub struct CurrentLevel;
 
 #[derive(Component)]
-pub struct CurrentLevel;
+pub struct HudMap;
