@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use crate::prelude::*;
 use bevy::prelude::*;
-use bevy_tweening::{Tween, TweenAnim, Tweenable, lens::TransformPositionLens};
+use bevy_tweening::{
+    AnimCompletedEvent, CycleCompletedEvent, Tween, TweenAnim, Tweenable,
+    lens::TransformPositionLens,
+};
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
@@ -15,7 +18,8 @@ pub(crate) fn plugin(app: &mut App) {
             apply_translate_effect,
             apply_wave_effect,
             apply_bounce_effect,
-            apply_damage_effect,
+            apply_death_effect,
+            on_death_effect_completed,
         ),
     );
 }
@@ -83,30 +87,39 @@ fn apply_translate_effect(
     }
 }
 
-fn apply_damage_effect(
+// Reacts to PlayerDied event.
+fn apply_death_effect(
     mut commands: Commands,
-    map_info: Res<MapInfo>,
-    damaged_players: Query<(Entity, &Health, &Player), With<DamageEffectTarget>>,
-    mut hp_bars: Query<(&HPBar, &GridCoords, &mut Transform)>,
+    mut damageable_died_reader: MessageReader<DamageableDied>,
+    damageable_query: Query<&Health, With<DamageEffectTarget>>,
 ) {
-    for (player_entity, health, player) in &damaged_players {
-        // Resize HP bars regarding player health
-        for (hp_bar, grid_coords, mut transform) in &mut hp_bars {
-            if hp_bar.player_id == player.player_id {
-                let translation = grid_coords.to_translation(&map_info);
-                let direction = match player.player_id {
-                    0 => -1.0,
-                    1 => 1.0,
-                    _ => 0.0,
-                };
-                // transform.scale.x =  direction * (health.current / health.max);
-                transform.translation = translation;
-            }
+    // Despawn players who have 0 health
+    for damageable_died_message in damageable_died_reader.read() {
+        if let Ok(_) = damageable_query.get(damageable_died_message.entity) {
+            // Implement the death effect here
+            commands.entity(damageable_died_message.entity).insert((
+                BounceEffect {
+                    intensity: 8.0,
+                    bounce_count: 3,
+                    decay: 0.33,
+                    z_index: 1,
+                },
+                BounceEffectTarget,
+                IsDead,
+            ));
         }
+    }
+}
 
-        // Despawn players who have 0 health
-        if health.current <= 0.0 {
-            commands.entity(player_entity).despawn();
+// Apply post-death effects associated with a death effect (e.g., despawn entities with IsDead)
+fn on_death_effect_completed(
+    mut commands: Commands,
+    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
+    dead_entities: Query<Entity, (With<IsDead>, With<BounceEffect>)>,
+) {
+    for anim_completed_message in anim_completed_reader.read() {
+        if let Ok(entity) = dead_entities.get(anim_completed_message.anim_entity) {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -117,7 +130,7 @@ fn apply_wave_effect(
     mut effect_targets: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
     map_info: Res<MapInfo>,
 ) {
-    for (targeted_coords, shaker_effect) in &mut waves_query {
+    for (targeted_coords, bounce_effect) in &mut waves_query {
         let Some(claimed_entity) = map_info.claimed_entities.get(targeted_coords) else {
             continue;
         };
@@ -126,12 +139,12 @@ fn apply_wave_effect(
                 intensity,
                 bounce_count,
                 decay,
-            } = *shaker_effect;
+                z_index,
+            } = *bounce_effect;
             commands
                 .entity(entity)
                 .insert(TweenAnim::new(create_bounce_sequence(
-                    //TODO: The z-index should be based on the entity's wave effect target z-index.
-                    grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
+                    grid_coords.to_translation_with_z_index(&map_info, z_index),
                     intensity,
                     bounce_count,
                     decay,
@@ -150,11 +163,12 @@ fn apply_bounce_effect(
             intensity,
             bounce_count,
             decay,
+            z_index,
         } = *bounce_effect;
         commands
             .entity(entity)
             .insert(TweenAnim::new(create_bounce_sequence(
-                grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX),
+                grid_coords.to_translation_with_z_index(&map_info, z_index),
                 intensity,
                 bounce_count,
                 decay,

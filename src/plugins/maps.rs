@@ -140,11 +140,11 @@ fn initialize_hp_bars(
     map_info: Res<MapInfo>,
     map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
-    mut sprite_query: Query<(&mut Sprite, &mut Transform), Without<HPBar>>,
+    mut sprite_query: Query<&mut Sprite, Without<HPBar>>,
 ) {
-    let desired_width = 20.0 * 16.0;
-    let height = 32.0;
-    let ratio = 1.0;
+    // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall
+    let hp_container_width = 20.0 * 16.0 - 4.0;
+    let hp_container_height = 32.0;
 
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the current level
@@ -156,16 +156,29 @@ fn initialize_hp_bars(
             if let Some(grid_coords) =
                 GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {
-                commands.entity(entity).insert(grid_coords);
+                let player_one_offset = match hp_bar.player_id {
+                    0 => Vec3::X,
+                    _ => Vec3::ZERO,
+                };
+
+                commands.entity(entity).insert((
+                    grid_coords,
+                    Transform::from_translation(transform.translation + player_one_offset),
+                ));
+
                 if let Some(first_child) = children.and_then(|c| c.first()).copied() {
+                    let anchor_x = 0.5;
+                    let offset_direction = match hp_bar.player_id {
+                        0 => 1.0,
+                        1 => -1.0,
+                        _ => 0.0,
+                    };
                     commands
                         .entity(first_child)
-                        .insert(Anchor::from(Vec2::new(0.0, -0.25)));
-                    if let Ok((mut sprite, mut transform)) = sprite_query.get_mut(first_child) {
-                        sprite.custom_size = Some(Vec2::new(desired_width, height));
-                        transform.scale.x = transform.scale.x.lerp(ratio, 0.1);
-                        // *transform = Transform::from_xyz(direction * desired_width, 0.0, 0.0);
-                        // transform.scale = Vec3::new(base_scale, 1.0, 1.0);
+                        .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.25)),));
+                    if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
+                        sprite.custom_size =
+                            Some(Vec2::new(hp_container_width, hp_container_height));
                     }
                 }
             }
@@ -203,7 +216,7 @@ fn initialize_players(
                     TranslateEffectTarget,
                     DamageEffectTarget,
                     Health {
-                        current: 100.0,
+                        current: 20.0,
                         max: 100.0,
                     },
                 ));

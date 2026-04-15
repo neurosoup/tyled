@@ -6,6 +6,7 @@ pub struct BounceEffect {
     pub intensity: f32,
     pub bounce_count: usize,
     pub decay: f32,
+    pub z_index: i8,
 }
 
 /*

@@ -5,12 +5,20 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Update, update_hp);
 }
 
-pub fn update_hp(players: Query<(&Player, &Health), Changed<Health>>) {
-    for (player, health) in &players {
-        match player.player_id {
-            0 => info!("Player 0 health: {}", health.current),
-            1 => info!("Player 1 health: {}", health.current),
-            _ => {}
+fn update_hp(
+    players: Query<(&Health, &Player), With<DamageEffectTarget>>,
+    mut hp_bars: Query<(&HPBar, &mut Transform)>,
+) {
+    for (health, player) in &players {
+        // Apply damage effect to HP bars
+        for (hp_bar, mut transform) in &mut hp_bars {
+            if hp_bar.player_id == player.player_id {
+                let ratio = health.ratio();
+                transform.scale.x = transform.scale.x.lerp(ratio, 0.05);
+                if transform.scale.x <= 0.001 {
+                    transform.scale.x = 0.0;
+                }
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<EntityMoved>();
     app.add_message::<BeamFired>();
     app.add_message::<BeamResolved>();
+    app.add_message::<DamageableDied>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -29,6 +30,6 @@ pub struct BeamResolved {
 }
 
 #[derive(Message)]
-pub struct PlayerDied {
-    pub player: Entity,
+pub struct DamageableDied {
+    pub entity: Entity,
 }

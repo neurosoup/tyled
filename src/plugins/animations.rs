@@ -193,6 +193,7 @@ fn attach_claimed_tile_animations(
                 intensity: 8.0,
                 bounce_count: 1,
                 decay: 1.0,
+                z_index: CLAIMED_TILE_Z_INDEX,
             },
             SpritesheetAnimation::new(unclaimed_animation_handle.clone()),
             Sprite::from_atlas_image(

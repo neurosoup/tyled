@@ -50,6 +50,7 @@ fn spawn_beam(
                     intensity: 2.0,
                     bounce_count: 5,
                     decay: 0.5,
+                    z_index: CLAIMED_TILE_Z_INDEX,
                 },
             ));
         }

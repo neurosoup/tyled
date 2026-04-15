@@ -20,3 +20,6 @@ pub struct CurrentLevel;
 
 #[derive(Component)]
 pub struct HudMap;
+
+#[derive(Component)]
+pub struct IsDead;
