@@ -8,7 +8,7 @@ use crate::prelude::*;
 use bevy::prelude::*;
 use bevy_tweening::{
     AnimCompletedEvent, CycleCompletedEvent, Tween, TweenAnim, Tweenable,
-    lens::TransformPositionLens,
+    lens::{SpriteColorLens, TransformPositionLens},
 };
 
 pub(crate) fn plugin(app: &mut App) {
@@ -19,6 +19,7 @@ pub(crate) fn plugin(app: &mut App) {
             apply_wave_effect,
             apply_bounce_effect,
             apply_death_effect,
+            apply_damage_effect,
             on_death_effect_completed,
         ),
     );
@@ -32,7 +33,7 @@ pub fn create_movement_tween(start: Vec3, end: Vec3) -> Tween {
     )
 }
 
-pub fn create_bounce_sequence(
+pub fn create_bounce_tween(
     origin: Vec3,
     initial_intensity: f32,
     bounce_count: usize,
@@ -67,6 +68,25 @@ pub fn create_bounce_sequence(
         .unwrap()
 }
 
+pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
+    Tween::new(
+        EaseFunction::QuadraticOut,
+        Duration::from_millis(duration_ms / 2),
+        SpriteColorLens {
+            start: Color::srgb(1.0, 1.0, 1.0),
+            end: Color::srgb(1.0, 0.0, 0.0),
+        },
+    )
+    .then(Tween::new(
+        EaseFunction::QuadraticOut,
+        Duration::from_millis(duration_ms),
+        SpriteColorLens {
+            start: Color::srgb(1.0, 0.0, 0.0),
+            end: Color::srgb(1.0, 1.0, 1.0),
+        },
+    ))
+}
+
 fn apply_translate_effect(
     mut commands: Commands,
     mut moving_objects: Query<
@@ -87,7 +107,26 @@ fn apply_translate_effect(
     }
 }
 
-// Reacts to PlayerDied event.
+fn apply_damage_effect(
+    mut commands: Commands,
+    damageable_query: Query<
+        (Entity, Option<&Children>),
+        (With<DamageEffectTarget>, Changed<Health>),
+    >,
+    sprite_query: Query<&Sprite>,
+) {
+    for (_entity, children) in &damageable_query {
+        if let Some(first_child) = children.and_then(|c| c.first()).copied() {
+            if sprite_query.get(first_child).is_ok() {
+                commands
+                    .entity(first_child)
+                    .insert(TweenAnim::new(create_color_flash_tween(150)));
+            }
+        }
+    }
+}
+
+// Reacts to DamageableDied event.
 fn apply_death_effect(
     mut commands: Commands,
     mut damageable_died_reader: MessageReader<DamageableDied>,
@@ -143,7 +182,7 @@ fn apply_wave_effect(
             } = *bounce_effect;
             commands
                 .entity(entity)
-                .insert(TweenAnim::new(create_bounce_sequence(
+                .insert(TweenAnim::new(create_bounce_tween(
                     grid_coords.to_translation_with_z_index(&map_info, z_index),
                     intensity,
                     bounce_count,
@@ -167,7 +206,7 @@ fn apply_bounce_effect(
         } = *bounce_effect;
         commands
             .entity(entity)
-            .insert(TweenAnim::new(create_bounce_sequence(
+            .insert(TweenAnim::new(create_bounce_tween(
                 grid_coords.to_translation_with_z_index(&map_info, z_index),
                 intensity,
                 bounce_count,
