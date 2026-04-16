@@ -71,7 +71,7 @@ pub fn create_bounce_tween(
 pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
     Tween::new(
         EaseFunction::QuadraticOut,
-        Duration::from_millis(duration_ms / 2),
+        Duration::from_millis(duration_ms / 4),
         SpriteColorLens {
             start: Color::srgb(1.0, 1.0, 1.0),
             end: Color::srgb(1.0, 0.0, 0.0),
