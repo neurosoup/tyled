@@ -138,7 +138,7 @@ fn initialize_hp_bars(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
+    map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
     hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
     mut sprite_query: Query<&mut Sprite, Without<HPBar>>,
 ) {

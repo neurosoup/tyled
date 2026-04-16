@@ -3,11 +3,11 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-03-08 17:04'
+updated_date: '2026-06-15 12:00'
 ---
 # Input Plugin
 
-Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, sets up an input throttle timer resource, attaches input maps to player entities, and dispatches `PlayerMoved` and `BeamFired` messages in reaction to player actions.
+Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, sets up an input throttle timer resource, attaches input maps to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions.
 
 ## Plugin workflow
 
@@ -19,7 +19,7 @@ Contains systems related to player input handling. This plugin registers the `In
     - Handle Players Input ticks the timer and, for each player:
         - Handles `Action::Lock` (toggles look-direction lock)
         - Handles `Action::Shoot` (writes a `BeamFired` message)
-        - When the timer finishes, reads `Action::Move` axis and writes a `PlayerMoved` message
+        - When the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
 
 ## Plugin Systems
 
@@ -33,7 +33,7 @@ Runs in `PreUpdate`. Detects newly spawned `Player` entities that do not yet hav
 
 ### Handle Players Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all players. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` (emits a `BeamFired` message). When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits a `PlayerMoved` message with the new target `GridCoords`.
+Runs in `Update`. Ticks the `InputTimer` and iterates over all players. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` (emits a `BeamFired` message). When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
 
 ## Components, Resources and Messages CRUD
 
@@ -169,10 +169,10 @@ players_query ---> |writes| pe_look_direction
 players_query -..-> |filter With| pe_player
 ```
 
-### Write PlayerMoved messages
+### Write EntityMoved messages
 
 Used in the following systems:
-- **handle_players_input**: emits a `PlayerMoved` message when the movement axis is non-zero and the input timer has finished
+- **handle_players_input**: emits an `EntityMoved` message when the movement axis is non-zero and the input timer has finished
 
 ```mermaid
 ---
@@ -188,9 +188,9 @@ handle_players_input["`**handle_players_input**`"]
 
 update -.-> handle_players_input
 
-player_moved_message(["`**PlayerMoved**`"])
+entity_moved_message(["`**EntityMoved**`"])
 
-handle_players_input ---> |writes| player_moved_message
+handle_players_input ---> |writes| entity_moved_message
 ```
 
 ### Write BeamFired messages

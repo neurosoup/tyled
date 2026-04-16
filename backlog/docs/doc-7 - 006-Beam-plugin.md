@@ -3,26 +3,26 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-03-08 17:04'
+updated_date: '2026-06-15 12:00'
 ---
 # Beam Plugin
 
-Contains systems responsible for spawning and stepping beam projectiles fired by players. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per frame in the firing direction until it either leaves the map bounds or hits an already-claimed tile, at which point the current tile is claimed and the beam is despawned.
+Contains systems responsible for spawning and stepping beam projectiles fired by players, and for claiming tiles when a beam stops. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction until it either leaves the map bounds or hits an already-claimed tile. At that point a `BeamResolved` message is emitted, the tile ownership is updated via `claim_tile`, and the beam entity is despawned.
 
 ## Plugin workflow
 
+- Startup phase
+    - `setup_beam_step_timer` inserts the `BeamStepTimer` resource (62.5 ms repeating).
 - Update phase
     - Spawn Beam:
         - Reacts to `BeamFired` message
             - Reads:
                 - `BeamFired` message fields (`owner`, `origin`, `direction`)
-                - `Player` component of the firing player (for sprite atlas index)
-                - `MapInfo` resource (for world-space translation of origin)
-                - `AssetServer` and `Assets<TextureAtlasLayout>` (for sprite setup)
+                - `Player` component of the firing player (for beam metadata)
             - Writes:
-                - Spawns a new `Beam` entity with `GridCoords`, `Transform`, `Beam`, `Sprite` and `TweenAnim`
+                - Spawns a new `Beam` entity with `GridCoords`, `Beam{owner,direction,speed}`, and `BounceEffect`
     - Beam Step:
-        - Runs every frame on all existing `Beam` entities
+        - Runs on every `BeamStepTimer` tick (62.5 ms)
             - Reads:
                 - `Beam` component (`owner`, `direction`)
                 - `MapInfo` resource (for bounds check and tile entity lookup)
@@ -30,21 +30,36 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
             - Writes:
                 - Advances `GridCoords` of the beam if the next tile is valid and unclaimed
                 - Writes a `BeamResolved` message and despawns the beam when it must stop
+    - Claim Tile:
+        - Reacts to `BeamResolved` message
+            - Reads:
+                - `BeamResolved` message fields (`position`, `owner`)
+                - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
+            - Writes:
+                - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
 
 ## Plugin Systems
 
+### Setup Beam Step Timer
+
+Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Timer` with a 62.5 ms period — that gates how frequently each beam advances by one tile.
+
 ### Spawn Beam
 
-Reacts to `BeamFired` messages emitted by the input system. For each message, it looks up the firing `Player` to determine the correct sprite atlas index, converts the origin `GridCoords` to a world-space `Transform` via `MapInfo`, and spawns a `Beam` entity carrying `GridCoords`, `Transform`, `Beam` (owner + direction + speed), `Sprite` (atlas tile from `grid_tiles2-Sheet.png`), and a `TweenAnim` initialised at rest (same start and end position) with `destroy_on_completed` disabled.
+Reacts to `BeamFired` messages emitted by the input system. For each message, checks that the firing player does not already have an active `Beam` entity. If none exists, spawns a new `Beam` entity carrying `GridCoords` (set to `origin`), `Beam{owner, direction, speed}`, and `BounceEffect` (to trigger the visual bounce when the beam moves). No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
 
 ### Beam Step
 
-Runs every frame. For each `Beam` entity it computes the next grid position (`current + direction`) and applies two stopping rules in order:
+Runs every `BeamStepTimer` tick. For each `Beam` entity it computes the next grid position (`current + direction`) and applies two stopping rules in order:
 
-1. **Out of bounds** — if the next position is not on ground, emit `BeamResolved` for the *current* position and despawn.
-2. **Already claimed** — if the next tile's ground entity already carries a `ClaimedTile` component, emit `BeamResolved` for the *current* position and despawn.
+1. **Out of bounds** — if the next position is not on ground (`MapInfo::on_ground()`), emit `BeamResolved` for the *current* position and despawn.
+2. **Already claimed** — if the `ClaimedTile` entity at the next position already has an owner, emit `BeamResolved` for the *current* position and despawn.
 
-If neither rule fires, the beam advances: `GridCoords` is overwritten with the next position (which triggers `translate_objects` in the Movements plugin to tween the sprite).
+If neither rule fires, the beam advances: `GridCoords` is overwritten with the next position (which triggers `apply_translate_effect` in the Effects plugin to tween the sprite).
+
+### Claim Tile
+
+Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance.
 
 ## Components, Resources and Messages CRUD
 
@@ -76,10 +91,38 @@ beam_fired_message(["`**BeamFired**`"])
 message_reader ---> |reads| beam_fired_message
 ```
 
+### Read BeamResolved messages
+
+Used in the following systems:
+- **claim_tile**: used to trigger tile ownership mutation when a beam stops
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+message_reader{{"MessageReader#60;BeamResolved#62;"}}:::reader
+claim_tile ---> message_reader
+
+beam_resolved_message(["`**BeamResolved**`"])
+
+message_reader ---> |reads| beam_resolved_message
+```
+
 ### Query Player (spawn)
 
 Used in the following systems:
-- **spawn_beam**: reads the `Player` component of the firing entity to select the correct sprite atlas index
+- **spawn_beam**: reads the `Player` component of the firing entity to validate ownership and set beam metadata
 
 ```mermaid
 ---
@@ -106,10 +149,10 @@ pe_player>"`**Player**`"] --> |belongs to| player_entity
 players_query ---> |reads| pe_player
 ```
 
-### Read MapInfo resource (spawn)
+### Read MapInfo resource (beam step)
 
 Used in the following systems:
-- **spawn_beam**: converts the beam origin `GridCoords` to a world-space `Vec3` via `to_translation()`
+- **beam_step**: used to check `on_ground()` for the next position and to resolve the ground tile entity via `claimed_entities` HashMap
 
 ```mermaid
 ---
@@ -121,22 +164,50 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-spawn_beam["`**spawn_beam**`"]
+beam_step["`**beam_step**`"]
 
-update -.-> spawn_beam
+update -.-> beam_step
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
 
 map_info_res --> |belongs to| world
 
-spawn_beam ---> |reads `to_translation`| map_info_res
+beam_step ---> |reads `on_ground`| map_info_res
+beam_step ---> |reads `claimed_entities`| map_info_res
+```
+
+### Read MapInfo resource (claim tile)
+
+Used in the following systems:
+- **claim_tile**: used to look up the claimed tile entity via `MapInfo::claimed_entities` for the resolved `GridCoords`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+world@{ shape: st-rect, label: "World" }
+map_info_res@{ shape: doc, label: "MapInfo" }
+
+map_info_res --> |belongs to| world
+
+claim_tile ---> |reads `claimed_entities`| map_info_res
 ```
 
 ### Write commands — spawn Beam entity
 
 Used in the following systems:
-- **spawn_beam**: spawns a new `Beam` entity with all required components
+- **spawn_beam**: spawns a new `Beam` entity with grid position, beam data, and bounce effect
 
 ```mermaid
 ---
@@ -155,28 +226,22 @@ update -.-> spawn_beam
 beam_entity@{ shape: st-rect, label: "Beam (spawned)" }
 
 be_grid_coords>"`**GridCoords**`"]
-be_transform>"`**Transform**`"]
 be_beam>"`**Beam**`"]
-be_sprite>"`**Sprite**`"]
-be_tween_anim>"`**TweenAnim**`"]
+be_bounce>"`**BounceEffect**`"]
 
 be_grid_coords --> |spawned on| beam_entity
-be_transform --> |spawned on| beam_entity
 be_beam --> |spawned on| beam_entity
-be_sprite --> |spawned on| beam_entity
-be_tween_anim --> |spawned on| beam_entity
+be_bounce --> |spawned on| beam_entity
 
 spawn_beam ---> |spawns entity with| be_grid_coords
-spawn_beam ---> |spawns entity with| be_transform
 spawn_beam ---> |spawns entity with| be_beam
-spawn_beam ---> |spawns entity with| be_sprite
-spawn_beam ---> |spawns entity with| be_tween_anim
+spawn_beam ---> |spawns entity with| be_bounce
 ```
 
 ### Query Beam entities
 
 Used in the following systems:
-- **beam_step**: reads `Beam` (owner + direction) and writes `GridCoords` on all active beam entities each frame
+- **beam_step**: reads `Beam` (owner + direction) and writes `GridCoords` on all active beam entities each timer tick
 
 ```mermaid
 ---
@@ -210,7 +275,7 @@ beams_query ---> |writes| be_grid_coords
 ### Query ClaimedTile (beam step)
 
 Used in the following systems:
-- **beam_step**: checks whether the next ground tile entity already carries a `ClaimedTile` component to decide if the beam must stop
+- **beam_step**: checks whether the next ground tile's `ClaimedTile` already has an owner to decide if the beam must stop
 
 ```mermaid
 ---
@@ -230,39 +295,12 @@ update -.-> beam_step
 claimed_query{{"`claimed_query`"}}:::query
 beam_step ---> claimed_query
 
-ground_entity@{ shape: st-rect, label: "Ground Tile" }
+claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
 
-gt_claimed>"`**ClaimedTile**`"] --> |belongs to| ground_entity
+ct_claimed>"`**ClaimedTile**`"] --> |belongs to| claimed_tile_entity
+ct_owner>"`**owner**`"] --> |field of| ct_claimed
 
-claimed_query -..-> |filter With| gt_claimed
-```
-
-### Read MapInfo resource (beam step)
-
-Used in the following systems:
-- **beam_step**: used to check `on_ground()` for the next position and to resolve the ground tile entity via `ground_entities` HashMap
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-beam_step["`**beam_step**`"]
-
-update -.-> beam_step
-
-world@{ shape: st-rect, label: "World" }
-map_info_res@{ shape: doc, label: "MapInfo" }
-
-map_info_res --> |belongs to| world
-
-beam_step ---> |reads `on_ground`| map_info_res
-beam_step ---> |reads `ground_entities`| map_info_res
+claimed_query ---> |reads| ct_claimed
 ```
 
 ### Write BeamResolved messages
@@ -287,6 +325,37 @@ update -.-> beam_step
 beam_resolved_message(["`**BeamResolved**`"])
 
 beam_step ---> |writes| beam_resolved_message
+```
+
+### Write ClaimedTile (claim tile)
+
+Used in the following systems:
+- **claim_tile**: mutates `ClaimedTile::owner` on the matched claimed tile entity to record the new owning player
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+claimed_tiles_query{{"`claimed_tiles_query (mutable)`"}}:::query
+claim_tile ---> claimed_tiles_query
+
+claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
+
+ct_claimed>"`**ClaimedTile**`"] --> |belongs to| claimed_tile_entity
+ct_owner>"`**owner**`"] --> |field of| ct_claimed
+
+claimed_tiles_query ---> |writes| ct_owner
 ```
 
 ### Write commands — despawn Beam entity

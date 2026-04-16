@@ -165,15 +165,15 @@ fn on_death_effect_completed(
 
 fn apply_wave_effect(
     mut commands: Commands,
-    mut waves_query: Query<(&GridCoords, &BounceEffect), Changed<GridCoords>>,
+    mut wave_source_query: Query<(&GridCoords, &BounceEffect), Changed<GridCoords>>,
     mut effect_targets: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
     map_info: Res<MapInfo>,
 ) {
-    for (targeted_coords, bounce_effect) in &mut waves_query {
-        let Some(claimed_entity) = map_info.claimed_entities.get(targeted_coords) else {
+    for (source_coords, bounce_effect) in &mut wave_source_query {
+        let Some(claimed_entity) = map_info.claimed_entities.get(source_coords) else {
             continue;
         };
-        if let Ok((entity, grid_coords)) = effect_targets.get_mut(*claimed_entity) {
+        if let Ok((entity, target_coords)) = effect_targets.get_mut(*claimed_entity) {
             let BounceEffect {
                 intensity,
                 bounce_count,
@@ -183,7 +183,7 @@ fn apply_wave_effect(
             commands
                 .entity(entity)
                 .insert(TweenAnim::new(create_bounce_tween(
-                    grid_coords.to_translation_with_z_index(&map_info, z_index),
+                    target_coords.to_translation_with_z_index(&map_info, z_index),
                     intensity,
                     bounce_count,
                     decay,

@@ -1,42 +1,53 @@
 ---
 id: doc-8
-title: '[007] Claim plugin'
+title: '[008] Damage plugin'
 type: other
-created_date: '2026-03-08 17:04'
-updated_date: '2026-03-08 17:04'
+created_date: '2026-06-15 12:00'
+updated_date: '2026-06-15 12:00'
 ---
-# Claim Plugin
+# Damage Plugin
 
-Contains the system responsible for processing tile claim events. When a `BeamResolved` message is received, this plugin marks the corresponding ground tile entity with a `ClaimedTile` component and spawns a colored sprite overlay on that tile to visually indicate which player owns it.
+Contains systems responsible for applying damage to players standing on opponent-owned tiles, and for emitting `DamageableDied` messages when a player's health reaches zero. Damage is applied on a fixed timer cadence rather than every frame, giving players a brief window to move off a dangerous tile.
 
 ## Plugin workflow
 
+- Startup phase
+    - `setup_timer` inserts the `DamageTimer` resource — a repeating `Timer` with a 500 ms period.
 - Update phase
-    - On Tile Claimed:
-        - Reacts to `BeamResolved` message
+    - `apply_damage`:
+        - Ticks the `DamageTimer` each frame
+        - When the timer fires, iterates all `Player` entities and checks whether their current `GridCoords` sits on a tile owned by an opposing player
             - Reads:
-                - `MapInfo` resource (to resolve `GridCoords` → `TilePos` → tile `Entity` and compute world-space tile transform)
-                - `Player` component on the owning player entity (to determine the sprite atlas index)
+                - `DamageTimer` resource
+                - `Player` entity `GridCoords` and `Entity`
+                - `ClaimedTile` components on claimed tile entities (via `MapInfo::claimed_entities`)
+                - `MapInfo` resource (to resolve `GridCoords` → claimed tile entity)
             - Writes:
-                - Inserts `ClaimedTile` component on the ground tile entity
-                - Spawns a colored sprite overlay entity at the tile's world position
+                - Applies 1.0 damage to the player's `Health` component each tick while on an opponent tile
+                - Emits a `DamageableDied` message when the player's `Health` reaches zero
 
 ## Plugin Systems
 
-### On Tile Claimed
+### Setup Timer
 
-Reacts to `BeamResolved` messages. For each message it:
-1. Resolves the `GridCoords` position to a `TilePos` and looks up the corresponding ground tile entity via `MapInfo::ground_entities`.
-2. Looks up the owning `Player` to determine the correct sprite atlas index (index 6 for player 0, index 7 for player 1).
-3. Inserts a `ClaimedTile { owner }` component on the ground tile entity.
-4. Spawns a new overlay sprite entity at the tile's world-space center (z = −0.1) using the `grid_tiles2-Sheet.png` atlas.
+Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer` configured to fire every 500 ms — which gates how often the `apply_damage` system deals damage to players.
+
+### Apply Damage
+
+Runs every frame. Ticks the `DamageTimer` and, when the timer finishes:
+
+1. Iterates all `Player` entities, reading their `Entity` and `GridCoords`.
+2. Resolves the `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`.
+3. Reads the `ClaimedTile` component on that entity to determine the current owner.
+4. If the owner is a different player than the one standing on the tile, decrements that player's `Health` by 1.0.
+5. If the player's `Health` has reached zero, emits a `DamageableDied` message carrying the player's `Entity`.
 
 ## Components, Resources and Messages CRUD
 
-### Read BeamResolved messages
+### Read DamageTimer resource
 
 Used in the following systems:
-- **on_tile_claimed**: used to trigger tile ownership processing
+- **apply_damage**: ticks and checks the damage cadence timer each frame
 
 ```mermaid
 ---
@@ -46,25 +57,28 @@ config:
 
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
-classDef reader stroke-dasharray: 3 3
 
+startup(("`Startup`")):::system-group
 update(("`Update`")):::system-group
-on_tile_claimed["`**on_tile_claimed**`"]
+setup_timer["`**setup_timer**`"]
+apply_damage["`**apply_damage**`"]
 
-update -.-> on_tile_claimed
+startup -.-> setup_timer
+update -.-> apply_damage
 
-message_reader{{"MessageReader#60;BeamResolved#62;"}}:::reader
-on_tile_claimed ---> message_reader
+world@{ shape: st-rect, label: "World" }
+damage_timer_res@{ shape: doc, label: "DamageTimer" }
 
-tile_claimed_message(["`**BeamResolved**`"])
+damage_timer_res --> |belongs to| world
 
-message_reader ---> |reads| tile_claimed_message
+setup_timer ---> |inserts resource| damage_timer_res
+apply_damage ---> |reads & ticks| damage_timer_res
 ```
 
 ### Read MapInfo resource
 
 Used in the following systems:
-- **on_tile_claimed**: used to resolve `GridCoords` → `TilePos`, look up the ground tile entity via `ground_entities`, and compute the tile world-space transform via `center_in_world()`
+- **apply_damage**: used to resolve player `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`
 
 ```mermaid
 ---
@@ -76,22 +90,22 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-on_tile_claimed["`**on_tile_claimed**`"]
+apply_damage["`**apply_damage**`"]
 
-update -.-> on_tile_claimed
+update -.-> apply_damage
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
 
 map_info_res --> |belongs to| world
 
-on_tile_claimed ---> |reads `to_tile_pos` + `ground_entities` + `center_in_world`| map_info_res
+apply_damage ---> |reads `claimed_entities`| map_info_res
 ```
 
-### Query Player
+### Query Player entities
 
 Used in the following systems:
-- **on_tile_claimed**: reads the `Player` component on the owning entity to determine the correct sprite atlas index
+- **apply_damage**: reads the `Entity` and `GridCoords` of every `Player`-marked entity to determine their position each damage tick
 
 ```mermaid
 ---
@@ -104,24 +118,89 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-on_tile_claimed["`**on_tile_claimed**`"]
+apply_damage["`**apply_damage**`"]
 
-update -.-> on_tile_claimed
+update -.-> apply_damage
 
-players_query{{"`players_query`"}}:::query
-on_tile_claimed ---> players_query
+player_entities_query{{"`player_entities`"}}:::query
+apply_damage ---> player_entities_query
 
 player_entity@{ shape: st-rect, label: "Player" }
 
+pe_entity>"`**Entity**`"] --> |belongs to| player_entity
+pe_grid_coords>"`**GridCoords**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
 
-players_query ---> |reads| pe_player
+player_entities_query ---> |reads| pe_entity
+player_entities_query ---> |reads| pe_grid_coords
+player_entities_query -..-> |filter With| pe_player
 ```
 
-### Write ClaimedTile component
+### Query ClaimedTile entities
 
 Used in the following systems:
-- **on_tile_claimed**: inserts `ClaimedTile { owner }` on the ground tile entity to mark it as owned
+- **apply_damage**: reads `ClaimedTile::owner` on claimed tile entities to determine if a player is standing on an opponent-owned tile
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_damage["`**apply_damage**`"]
+
+update -.-> apply_damage
+
+claimed_entities_query{{"`claimed_entities`"}}:::query
+apply_damage ---> claimed_entities_query
+
+claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
+
+ct_claimed>"`**ClaimedTile**`"] --> |belongs to| claimed_tile_entity
+ct_owner>"`**owner**`"] --> |field of| ct_claimed
+
+claimed_entities_query ---> |reads| ct_claimed
+```
+
+### Write Health component
+
+Used in the following systems:
+- **apply_damage**: decrements the `Health` component of the player standing on an opponent tile by 1.0 on each damage tick
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_damage["`**apply_damage**`"]
+
+update -.-> apply_damage
+
+damageable_query{{"`damageable_entities`"}}:::query
+apply_damage ---> damageable_query
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+pe_health>"`**Health**`"] --> |belongs to| player_entity
+
+damageable_query ---> |writes| pe_health
+```
+
+### Write DamageableDied messages
+
+Used in the following systems:
+- **apply_damage**: emits a `DamageableDied` message carrying the player `Entity` when their `Health` reaches zero
 
 ```mermaid
 ---
@@ -133,51 +212,11 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-on_tile_claimed["`**on_tile_claimed**`"]
+apply_damage["`**apply_damage**`"]
 
-update -.-> on_tile_claimed
+update -.-> apply_damage
 
-ground_tile_entity@{ shape: st-rect, label: "Ground Tile" }
+damageable_died_message(["`**DamageableDied**`"])
 
-claimed_tile>"`**ClaimedTile**`"]
-ct_owner>"`**owner**`"]
-
-ct_owner --> |field of| claimed_tile
-claimed_tile --> |inserted on| ground_tile_entity
-
-on_tile_claimed ---> |inserts component| claimed_tile
-```
-
-### Write commands (spawn overlay sprite)
-
-Used in the following systems:
-- **on_tile_claimed**: spawns a colored sprite overlay entity at the claimed tile's world-space center
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-on_tile_claimed["`**on_tile_claimed**`"]
-
-update -.-> on_tile_claimed
-
-overlay_entity@{ shape: st-rect, label: "Claimed Tile Overlay (spawned)" }
-
-ov_name>"`**Name**`"]
-ov_transform>"`**Transform**`"]
-ov_sprite>"`**Sprite (TextureAtlas)**`"]
-
-ov_name --> |spawned on| overlay_entity
-ov_transform --> |spawned on| overlay_entity
-ov_sprite --> |spawned on| overlay_entity
-
-on_tile_claimed ---> |spawns entity with| ov_name
-on_tile_claimed ---> |spawns entity with| ov_transform
-on_tile_claimed ---> |spawns entity with| ov_sprite
+apply_damage ---> |writes| damageable_died_message
 ```
