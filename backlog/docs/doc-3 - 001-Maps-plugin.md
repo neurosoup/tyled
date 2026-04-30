@@ -370,6 +370,36 @@ initialize_claimed_tiles ---> |spawns entity with| ct_anchor
 initialize_claimed_tiles ---> |stores entity in claimed_entities| map_info_res
 ```
 
+### Query Sprite entities (initialize_hp_bars)
+
+Used in the following systems:
+- **initialize_hp_bars**: mutably accesses the `Sprite` component to set `custom_size` on the child sprite entity of each HP bar; no filter — matches any entity carrying a `Sprite`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+initialize_hp_bars["`**initialize_hp_bars**`"]
+
+update -.-> initialize_hp_bars
+
+sprite_query{{"`sprite_query`"}}:::query
+initialize_hp_bars ---> sprite_query
+
+sprite_entity@{ shape: st-rect, label: "Any Sprite Entity" }
+
+se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
+
+sprite_query ---> |writes custom_size| se_sprite
+```
+
 ### Write commands — initialize_hp_bars
 
 Used in systems:

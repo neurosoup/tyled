@@ -4,7 +4,7 @@
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
-    camera::{ScalingMode, Viewport, visibility::RenderLayers},
+    camera::{visibility::RenderLayers, ScalingMode, Viewport},
     post_process::dof::DepthOfField,
     prelude::*,
     window::WindowResized,
@@ -98,8 +98,6 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         Camera2d,
         IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
-            // viewport_origin: Vec2::new(0.0, 0.5),
-            // scale: 1.0 / HUD_SCALE,
             ..OrthographicProjection::default_2d()
         }),
         Camera {

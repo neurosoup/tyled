@@ -140,7 +140,7 @@ fn initialize_hp_bars(
     map_info: Res<MapInfo>,
     map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
     hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
-    mut sprite_query: Query<&mut Sprite, Without<HPBar>>,
+    mut sprite_query: Query<&mut Sprite>,
 ) {
     // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall
     let hp_container_width = 20.0 * 16.0 - 4.0;
