@@ -221,7 +221,7 @@ fn attach_player_animations(
     for message in messages.read() {
         let Ok((entity, player)) = players.get(message.origin) else {
             info!("Player not found for entity {:?}", message.origin);
-            return;
+            continue;
         };
 
         // Walk descendants to find the child that carries the Sprite
