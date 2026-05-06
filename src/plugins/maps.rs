@@ -248,7 +248,9 @@ fn initialize_claimed_tiles(
         // Collect keys first to avoid holding a borrow on map_info
         let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
 
-        let parent = commands.spawn(Name::new("ClaimedTiles")).id();
+        let parent = commands
+            .spawn((Name::new("ClaimedTiles"), Transform::default()))
+            .id();
 
         for grid_coords in grid_coords_list {
             let tile_transform =
