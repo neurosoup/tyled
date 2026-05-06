@@ -88,6 +88,14 @@ impl LookDirection {
         self.locked = !self.locked;
     }
 
+    pub fn lock(&mut self) {
+        self.locked = true;
+    }
+
+    pub fn unlock(&mut self) {
+        self.locked = false;
+    }
+
     pub fn to_grid_coords(&self) -> GridCoords {
         match self.direction {
             Some(Direction::Up) => GridCoords::new(0, 1),
