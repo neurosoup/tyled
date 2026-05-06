@@ -159,9 +159,9 @@ fn attach_claimed_tile_animations(
     mut animations: ResMut<Assets<Animation>>,
 ) {
     for (entity, _) in &unclaimed_tiles {
-        let image = assets.load("plates.png");
+        let image = assets.load("plates1.png");
         let spritesheet = Spritesheet::new(&image, 12, 3);
-        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 12, 3, None, None);
+        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 16), 12, 3, None, None);
         let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
         const FLIP_FRAME_MS: u32 = 20;

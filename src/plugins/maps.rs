@@ -225,7 +225,7 @@ fn initialize_players(
                     if let Some(&first_child) = children.first() {
                         commands
                             .entity(first_child)
-                            .insert(Anchor::from(Vec2::new(-0.05, -0.33)));
+                            .insert(Anchor::from(Vec2::new(0.0, -0.33)));
                     }
                 }
             }
@@ -262,7 +262,7 @@ fn initialize_claimed_tiles(
                     WaveEffectTarget,
                     grid_coords,
                     Transform::from_translation(tile_transform),
-                    Anchor::from(Vec2::new(-0.02, 0.18)),
+                    // Anchor::from(Vec2::new(-0.02, 0.18)),
                 ))
                 .id();
             commands.entity(parent).add_child(entity);

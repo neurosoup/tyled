@@ -47,9 +47,9 @@ fn spawn_beam(
                     speed: 1.0,
                 },
                 BounceEffect {
-                    intensity: 2.0,
-                    bounce_count: 5,
-                    decay: 0.5,
+                    intensity: 5.0,
+                    bounce_count: 2,
+                    decay: 0.3,
                     z_index: CLAIMED_TILE_Z_INDEX,
                 },
             ));

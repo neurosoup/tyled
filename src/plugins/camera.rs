@@ -4,7 +4,7 @@
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
-    camera::{visibility::RenderLayers, ScalingMode, Viewport},
+    camera::{ScalingMode, Viewport, visibility::RenderLayers},
     post_process::dof::DepthOfField,
     prelude::*,
     window::WindowResized,
@@ -49,8 +49,9 @@ pub(crate) fn plugin(app: &mut App) {
 }
 
 fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
-    let hue = rand::rng().random_range(0.0f32..360.0f32);
-    clear_color.0 = Color::hsl(hue, CLEAR_COLOR_SATURATION, CLEAR_COLOR_LIGHTNESS);
+    let hue = 235.0; //rand::rng().random_range(0.0f32..360.0f32);
+    // clear_color.0 = Color::hsl(hue, CLEAR_COLOR_SATURATION, CLEAR_COLOR_LIGHTNESS);
+    clear_color.0 = Color::hsl(hue, 0.28, 0.18);
     info!("HSL = {:?}", clear_color.0);
 }
 
