@@ -255,15 +255,15 @@ fn initialize_claimed_tiles(
                 grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX);
             let entity = commands
                 .spawn((
-                    Name::new("Unclaimed"),
+                    Name::new("Tiles"),
                     ClaimedTile { owner: None },
                     WaveEffectTarget,
                     grid_coords,
                     Transform::from_translation(tile_transform),
                     Anchor::from(Vec2::new(-0.02, 0.18)),
                 ))
-                .set_parent_in_place(parent)
                 .id();
+            commands.entity(parent).add_child(entity);
 
             map_info.claimed_entities.insert(grid_coords, entity);
         }
