@@ -70,7 +70,7 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Loading maps");
 
     commands.spawn((
-        TiledMap(asset_server.load("level0.tmx")),
+        TiledMap(asset_server.load("level1.tmx")),
         CurrentLevel,
         TilemapAnchor::Center,
     ));
@@ -106,7 +106,7 @@ fn initialize_map_info(
             continue;
         };
         let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
-            tilemap_query.iter().find(|(name, ..)| name.0 == "Atlas")
+            tilemap_query.iter().find(|(name, ..)| name.0 == "Atlas1")
         else {
             panic!("Atlas tilemap not found");
         };
@@ -248,6 +248,8 @@ fn initialize_claimed_tiles(
         // Collect keys first to avoid holding a borrow on map_info
         let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
 
+        let parent = commands.spawn(Name::new("ClaimedTiles")).id();
+
         for grid_coords in grid_coords_list {
             let tile_transform =
                 grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX);
@@ -260,6 +262,7 @@ fn initialize_claimed_tiles(
                     Transform::from_translation(tile_transform),
                     Anchor::from(Vec2::new(-0.02, 0.18)),
                 ))
+                .set_parent_in_place(parent)
                 .id();
 
             map_info.claimed_entities.insert(grid_coords, entity);
