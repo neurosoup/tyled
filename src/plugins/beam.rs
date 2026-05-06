@@ -30,7 +30,10 @@ fn spawn_beam(
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         // If we have already spawned a beam for this owner, skip
-        if let Ok(_beam) = beams_query.get(beam_fired_message.owner) {
+        if beams_query
+            .iter()
+            .any(|beam| beam.owner == beam_fired_message.owner)
+        {
             info!(
                 "Skipping beam spawn for owner {:?} - already spawned",
                 beam_fired_message.owner
