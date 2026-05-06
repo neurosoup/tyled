@@ -61,8 +61,10 @@ fn handle_players_input(
     timer.0.tick(time.delta());
 
     for (player_entity, action_state, player_grid_coords, mut look_direction) in &mut players {
-        if action_state.just_pressed(&Action::Lock) {
-            look_direction.toggle_lock();
+        if action_state.pressed(&Action::Lock) {
+            look_direction.lock();
+        } else {
+            look_direction.unlock();
         }
 
         if action_state.just_pressed(&Action::Shoot) {
