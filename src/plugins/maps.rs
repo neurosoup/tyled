@@ -144,7 +144,7 @@ fn initialize_hp_bars(
 ) {
     // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall
     let hp_container_width = 20.0 * 16.0 - 4.0;
-    let hp_container_height = 32.0;
+    let hp_container_height = 16.0;
 
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the current level
@@ -175,7 +175,7 @@ fn initialize_hp_bars(
                     };
                     commands
                         .entity(first_child)
-                        .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.25)),));
+                        .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.5)),));
                     if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
                         sprite.custom_size =
                             Some(Vec2::new(hp_container_width, hp_container_height));
@@ -249,7 +249,11 @@ fn initialize_claimed_tiles(
         let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
 
         let parent = commands
-            .spawn((Name::new("ClaimedTiles"), Transform::default()))
+            .spawn((
+                Name::new("ClaimedTiles"),
+                Transform::default(),
+                InheritedVisibility::default(),
+            ))
             .id();
 
         for grid_coords in grid_coords_list {

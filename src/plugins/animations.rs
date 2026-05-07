@@ -159,21 +159,21 @@ fn attach_claimed_tile_animations(
     mut animations: ResMut<Assets<Animation>>,
 ) {
     for (entity, _) in &unclaimed_tiles {
-        let image = assets.load("plates1.png");
-        let spritesheet = Spritesheet::new(&image, 12, 3);
-        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 16), 12, 3, None, None);
+        let image = assets.load("atlas1.png");
+        let spritesheet = Spritesheet::new(&image, 32, 16);
+        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 16), 32, 16, None, None);
         let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
         const FLIP_FRAME_MS: u32 = 20;
 
         let unclaimed_animation_handle =
-            animations.add(spritesheet.create_animation().add_cell(0, 0).build());
+            animations.add(spritesheet.create_animation().add_cell(0, 3).build());
         commands.insert_resource(ClaimedTileAnimations {
             unclaimed: unclaimed_animation_handle.clone(),
             to_player_one: animations.add(
                 spritesheet
                     .create_animation()
-                    .add_row(1)
+                    .add_partial_row(4, 0..=11)
                     .set_repetitions(AnimationRepeat::Times(1))
                     .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
                     .build(),
@@ -181,7 +181,7 @@ fn attach_claimed_tile_animations(
             to_player_two: animations.add(
                 spritesheet
                     .create_animation()
-                    .add_row(2)
+                    .add_partial_row(5, 0..=11)
                     .set_repetitions(AnimationRepeat::Times(1))
                     .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
                     .build(),
@@ -220,7 +220,10 @@ fn attach_player_animations(
 ) {
     for message in messages.read() {
         let Ok((entity, player)) = players.get(message.origin) else {
-            info!("Player not found for entity {:?}", message.origin);
+            info!(
+                "Cannot attach player animations: Player not found for entity {:?}",
+                message.origin
+            );
             continue;
         };
 
@@ -234,7 +237,10 @@ fn attach_player_animations(
         }
 
         let Some((sprite_entity, image)) = sprite_entity_and_image else {
-            info!("Sprite child not found for player {}", player.player_id);
+            info!(
+                "Cannot attach player animations: Sprite child not found for player {}",
+                player.player_id
+            );
             return;
         };
 

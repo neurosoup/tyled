@@ -70,7 +70,7 @@
 </data>
  </layer>
  <objectgroup id="3" name="Players">
-  <object id="13" gid="1" x="256" y="122" width="16" height="16">
+  <object id="13" gid="1" x="256" y="128" width="16" height="16">
    <properties>
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>

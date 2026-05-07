@@ -1,23 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.0" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="8" nextobjectid="19">
+<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="9" nextobjectid="25">
  <tileset firstgid="1" source="atlas.tsx"/>
- <tileset firstgid="513" source="HP.tsx"/>
- <tileset firstgid="517" source="Hud.tsx"/>
- <layer id="1" name="HPContainer" width="48" height="4">
+ <tileset firstgid="513" source="atlas1.tsx"/>
+ <tileset firstgid="1025" source="Hud1.tsx"/>
+ <layer id="8" name="Power" width="48" height="4">
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,517,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,519,0,0,0,0,517,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,518,519,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,520,521,521,521,521,521,521,522,0,0,0,0,520,521,521,521,521,521,521,522,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1281,1281,1281,1250,0,0,0,0,1249,1281,1281,1281,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+</data>
+ </layer>
+ <layer id="1" name="HPContainer" width="48" height="4">
+  <data encoding="csv">
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,1217,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1219,0,0,0,0,1217,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1218,1219,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
  <objectgroup id="7" name="HPBar">
-  <object id="11" gid="513" x="349" y="48" width="1" height="32">
+  <object id="22" name="HPBar Player 1" gid="1220" x="350" y="32" width="2" height="16">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
    </properties>
   </object>
-  <object id="12" gid="514" x="418" y="48" width="1" height="32">
+  <object id="23" name="HPBar Player 2" gid="1220" x="416" y="32" width="2" height="16">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar">
      <properties>
@@ -26,7 +34,5 @@
     </property>
    </properties>
   </object>
-  <object id="17" gid="515" x="342.432" y="64" width="7.56818" height="32"/>
-  <object id="18" gid="515" x="418" y="64" width="45.6364" height="32"/>
  </objectgroup>
 </map>
