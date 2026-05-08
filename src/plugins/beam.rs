@@ -29,33 +29,27 @@ fn spawn_beam(
     players_query: Query<&Player>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
-        // If we have already spawned a beam for this owner, skip
-        if beams_query
+        let owner_has_active_beam = beams_query
             .iter()
-            .any(|beam| beam.owner == beam_fired_message.owner)
-        {
-            info!(
-                "Skipping beam spawn for owner {:?} - already spawned",
-                beam_fired_message.owner
-            );
-            continue;
-        }
+            .any(|beam| beam.owner == beam_fired_message.owner);
 
         if let Ok(_) = players_query.get(beam_fired_message.owner) {
-            commands.spawn((
+            let mut entity_commands = commands.spawn((
                 beam_fired_message.origin,
                 Beam {
                     owner: beam_fired_message.owner,
                     direction: beam_fired_message.direction,
                     speed: 1.0,
                 },
-                BounceEffect {
+            ));
+            if !owner_has_active_beam {
+                entity_commands.insert(BounceEffect {
                     intensity: 5.0,
                     bounce_count: 2,
                     decay: 0.3,
                     z_index: CLAIMED_TILE_Z_INDEX,
-                },
-            ));
+                });
+            }
         }
     }
 }
