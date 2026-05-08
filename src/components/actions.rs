@@ -30,7 +30,7 @@ impl Action {
         input_map.insert(
             Action::Lock,
             match player.player_id {
-                0 => KeyCode::KeyQ,
+                0 => KeyCode::Tab,
                 1 => KeyCode::ShiftRight,
                 _ => KeyCode::KeyQ,
             },
@@ -40,7 +40,7 @@ impl Action {
         input_map.insert(
             Action::Shoot,
             match player.player_id {
-                0 => KeyCode::Tab,
+                0 => KeyCode::KeyQ,
                 1 => KeyCode::Slash,
                 _ => KeyCode::Tab,
             },
@@ -82,10 +82,6 @@ impl LookDirection {
             direction: Some(direction),
             locked: false,
         }
-    }
-
-    pub fn toggle_lock(&mut self) {
-        self.locked = !self.locked;
     }
 
     pub fn lock(&mut self) {
