@@ -191,7 +191,7 @@ fn initialize_players(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
-    players_query: Query<(Entity, &Player, &Transform)>,
+    mut players_query: Query<(Entity, &Player, &mut Transform)>,
     children_query: Query<&Children>,
 ) {
     for map_created_message in map_created_reader.read() {
@@ -200,7 +200,7 @@ fn initialize_players(
             continue;
         };
 
-        for (entity, player, transform) in &players_query {
+        for (entity, player, mut transform) in &mut players_query {
             let look_direction = LookDirection::new(match player.player_id {
                 0 => Direction::Down,
                 1 => Direction::Up,
@@ -221,11 +221,13 @@ fn initialize_players(
                     },
                 ));
 
+                transform.scale = Vec3::new(1.1, 1.1, 1.0);
+
                 if let Ok(children) = children_query.get(entity) {
                     if let Some(&first_child) = children.first() {
                         commands
                             .entity(first_child)
-                            .insert(Anchor::from(Vec2::new(0.0, -0.33)));
+                            .insert(Anchor::from(Vec2::new(0.0, -0.25)));
                     }
                 }
             }
