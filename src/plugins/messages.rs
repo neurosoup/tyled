@@ -6,6 +6,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<EntityMoved>();
     app.add_message::<BeamFired>();
     app.add_message::<BeamResolved>();
+    app.add_message::<BeamChargesChanged>();
     app.add_message::<DamageableDied>();
 }
 
@@ -27,6 +28,13 @@ pub struct BeamFired {
 pub struct BeamResolved {
     pub position: GridCoords,
     pub owner: Entity,
+}
+
+#[derive(Message)]
+pub struct BeamChargesChanged {
+    pub player: Entity,
+    pub current: u32,
+    pub max: u32,
 }
 
 #[derive(Message)]

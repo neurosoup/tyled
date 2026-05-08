@@ -85,7 +85,7 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn initialize_map_info(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     mut map_info: ResMut<MapInfo>,
-    map_query: Query<&TiledMapLayerZOffset, (With<TiledMap>, With<CurrentLevel>)>,
+    current_level_query: Query<&TiledMapLayerZOffset, (With<TiledMap>, With<CurrentLevel>)>,
     tilemap_query: Query<
         (
             &TiledName,
@@ -102,7 +102,7 @@ fn initialize_map_info(
 ) {
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the current level
-        let Ok(z_offset) = map_query.get(map_created_message.origin) else {
+        let Ok(z_offset) = current_level_query.get(map_created_message.origin) else {
             continue;
         };
         let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
@@ -119,6 +119,8 @@ fn initialize_map_info(
             .iter()
             .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
             .collect();
+
+        info!("map_size: {:?}", *map_size);
 
         *map_info = MapInfo {
             ground_entities,
@@ -138,7 +140,7 @@ fn initialize_hp_bars(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
+    hud_map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
     hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
@@ -147,8 +149,8 @@ fn initialize_hp_bars(
     let hp_container_height = 16.0;
 
     for map_created_message in map_created_reader.read() {
-        // Skip maps that are not the current level
-        let Ok(_) = map_query.get(map_created_message.origin) else {
+        // Skip maps that are not the HUD map
+        let Ok(_) = hud_map_query.get(map_created_message.origin) else {
             continue;
         };
 
@@ -190,13 +192,13 @@ fn initialize_players(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
+    current_level_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     mut players_query: Query<(Entity, &Player, &mut Transform)>,
     children_query: Query<&Children>,
 ) {
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the current level
-        let Ok(_) = map_query.get(map_created_message.origin) else {
+        let Ok(_) = current_level_query.get(map_created_message.origin) else {
             continue;
         };
 
@@ -219,6 +221,7 @@ fn initialize_players(
                         current: 20.0,
                         max: 100.0,
                     },
+                    BeamCharges::new(10),
                 ));
 
                 transform.scale = Vec3::new(1.1, 1.1, 1.0);

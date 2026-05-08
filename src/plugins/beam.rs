@@ -148,6 +148,8 @@ pub(crate) fn beam_step(
 fn claim_tile(
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     mut claimed_query: Query<&mut ClaimedTile>,
+    mut charges_query: Query<&mut BeamCharges>,
+    mut charges_changed_writer: MessageWriter<BeamChargesChanged>,
     map_info: Res<MapInfo>,
 ) {
     for tile_claimed_message in beam_resolved_reader.read() {
@@ -157,6 +159,15 @@ fn claim_tile(
         {
             if let Ok(mut claimed_tile) = claimed_query.get_mut(*claimed_entity) {
                 claimed_tile.owner = Some(tile_claimed_message.owner);
+
+                if let Ok(mut charges) = charges_query.get_mut(tile_claimed_message.owner) {
+                    charges.current = charges.current.saturating_sub(1);
+                    charges_changed_writer.write(BeamChargesChanged {
+                        player: tile_claimed_message.owner,
+                        current: charges.current,
+                        max: charges.max,
+                    });
+                }
             }
         }
     }

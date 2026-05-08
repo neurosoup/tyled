@@ -1,5 +1,6 @@
 mod actions;
 mod beam;
+mod beam_charges;
 mod claim;
 mod effects;
 mod grid_coords;
@@ -9,6 +10,7 @@ mod player;
 
 pub use actions::*;
 pub use beam::*;
+pub use beam_charges::*;
 pub use claim::*;
 pub use effects::*;
 pub use grid_coords::*;

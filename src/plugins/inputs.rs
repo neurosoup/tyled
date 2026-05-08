@@ -52,6 +52,7 @@ fn handle_players_input(
             &ActionState<Action>,
             &GridCoords,
             &mut LookDirection,
+            Option<&BeamCharges>,
         ),
         With<Player>,
     >,
@@ -60,7 +61,9 @@ fn handle_players_input(
 ) {
     timer.0.tick(time.delta());
 
-    for (player_entity, action_state, player_grid_coords, mut look_direction) in &mut players {
+    for (player_entity, action_state, player_grid_coords, mut look_direction, beam_charges) in
+        &mut players
+    {
         if action_state.pressed(&Action::Lock) {
             look_direction.lock();
         } else {
@@ -68,11 +71,14 @@ fn handle_players_input(
         }
 
         if action_state.just_pressed(&Action::Shoot) {
-            beam_fired_writer.write(BeamFired {
-                owner: player_entity,
-                origin: *player_grid_coords,
-                direction: look_direction.to_grid_coords(),
-            });
+            let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
+            if has_charges {
+                beam_fired_writer.write(BeamFired {
+                    owner: player_entity,
+                    origin: *player_grid_coords,
+                    direction: look_direction.to_grid_coords(),
+                });
+            }
         }
 
         if !timer.0.is_finished() {
