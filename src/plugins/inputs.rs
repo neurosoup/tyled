@@ -17,7 +17,7 @@ use leafwing_input_manager::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
     app.add_plugins(TweeningPlugin);
-    app.add_systems(Startup, setup_timer);
+    app.add_systems(Startup, setup_input_timer);
     app.add_systems(PreUpdate, attach_players_actions);
     app.add_systems(Update, handle_players_input);
 }
@@ -25,7 +25,7 @@ pub(crate) fn plugin(app: &mut App) {
 #[derive(Resource)]
 pub struct InputTimer(Timer);
 
-fn setup_timer(mut commands: Commands) {
+fn setup_input_timer(mut commands: Commands) {
     commands.insert_resource(InputTimer(Timer::from_seconds(
         0.0625,
         TimerMode::Repeating,
