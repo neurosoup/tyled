@@ -220,10 +220,6 @@ fn attach_player_animations(
 ) {
     for message in messages.read() {
         let Ok((entity, player)) = players.get(message.origin) else {
-            info!(
-                "Cannot attach player animations: Player not found for entity {:?}",
-                message.origin
-            );
             continue;
         };
 
