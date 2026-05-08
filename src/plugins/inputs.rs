@@ -27,7 +27,6 @@ pub struct InputTimer(Timer);
 
 fn setup_input_timer(mut commands: Commands) {
     commands.insert_resource(InputTimer(Timer::from_seconds(
-        // 0.0625,
         0.075,
         TimerMode::Repeating,
     )));
