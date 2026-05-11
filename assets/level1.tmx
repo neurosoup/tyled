@@ -72,13 +72,13 @@
  <objectgroup id="3" name="Players">
   <object id="13" gid="1" x="256" y="128" width="16" height="16">
    <properties>
-    <property name="Character" type="class" propertytype="tyled::components::player::Character"/>
+    <property name="Character" type="class" propertytype="tyled::components::markers::Character"/>
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
   <object id="39" gid="43" x="288" y="400" width="16" height="16">
    <properties>
-    <property name="Character" type="class" propertytype="tyled::components::player::Character"/>
+    <property name="Character" type="class" propertytype="tyled::components::markers::Character"/>
     <property name="Player" type="class" propertytype="tyled::components::player::Player">
      <properties>
       <property name="player_id" type="int" value="1"/>
