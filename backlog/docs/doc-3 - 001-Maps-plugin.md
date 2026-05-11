@@ -12,7 +12,7 @@ Contains systems related to map loading and entity-related initializations. This
 ## Plugin workflow
 
 - Startup phase
-    - `load_maps` spawns two `TiledMap` entities: one for `level0.tmx` (tagged `CurrentLevel`) and one for `hud.tmx` (tagged `HudMap`).
+    - `load_maps` spawns two `TiledMap` entities: one for `level1.tmx` (tagged `CurrentLevel`) and one for `hud.tmx` (tagged `HudMap`).
     - The `TiledPlugin` later emits `TiledEvent<MapCreated>` for each loaded map.
 - Update phase (chained)
     - `initialize_map_info`:
@@ -22,7 +22,7 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:100,max:100}`
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:10,max:10}`
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
@@ -38,7 +38,7 @@ Contains systems related to map loading and entity-related initializations. This
 ### Load Maps
 
 Spawns two `TiledMap` entities at startup:
-- `level0.tmx` — the current game level, tagged with the `CurrentLevel` marker component.
+- `level1.tmx` — the current game level, tagged with the `CurrentLevel` marker component.
 - `hud.tmx` — the heads-up display overlay map, tagged with the `HudMap` marker component.
 
 ### Initialize Map Info
@@ -50,7 +50,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads t
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, and `Health{current:20, max:100}` on the player entity.
+3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20, max:100}`, and `BeamCharges{current:10, max:10}` on the player entity.
 4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
 
 ### Initialize Claimed Tiles
@@ -287,7 +287,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}` on each `Player` entity, and inserts `Anchor` on the first child sprite entity
+- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:10,max:10}` on each `Player` entity, and inserts `Anchor` on the first child sprite entity
 
 ```mermaid
 ---
@@ -311,6 +311,7 @@ pe_look_direction>"`**LookDirection**`"]
 pe_translate_effect>"`**TranslateEffectTarget**`"]
 pe_damage_effect>"`**DamageEffectTarget**`"]
 pe_health>"`**Health**`"]
+pe_beam_charges>"`**BeamCharges**`"]
 ce_anchor>"`**Anchor**`"]
 
 pe_grid_coords --> |inserted on| player_entity
@@ -318,6 +319,7 @@ pe_look_direction --> |inserted on| player_entity
 pe_translate_effect --> |inserted on| player_entity
 pe_damage_effect --> |inserted on| player_entity
 pe_health --> |inserted on| player_entity
+pe_beam_charges --> |inserted on| player_entity
 ce_anchor --> |inserted on| child_entity
 
 initialize_players ---> |inserts component| pe_grid_coords
@@ -325,6 +327,7 @@ initialize_players ---> |inserts component| pe_look_direction
 initialize_players ---> |inserts component| pe_translate_effect
 initialize_players ---> |inserts component| pe_damage_effect
 initialize_players ---> |inserts component| pe_health
+initialize_players ---> |inserts component| pe_beam_charges
 initialize_players ---> |inserts component| ce_anchor
 ```
 

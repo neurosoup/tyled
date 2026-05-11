@@ -35,8 +35,11 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
             - Reads:
                 - `BeamResolved` message fields (`position`, `owner`)
                 - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
+                - `BeamCharges` component on the firing player entity
             - Writes:
                 - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
+                - Decrements `BeamCharges::current` on the firing player (saturating at zero)
+                - Emits a `BeamChargesChanged` message with the updated charge values
 
 ## Plugin Systems
 
@@ -59,7 +62,7 @@ If neither rule fires, the beam advances: `GridCoords` is overwritten with the n
 
 ### Claim Tile
 
-Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance.
+Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance. After claiming the tile, it also decrements the firing player's `BeamCharges::current` (saturating at zero) and emits a `BeamChargesChanged` message so that future display systems can react.
 
 ## Components, Resources and Messages CRUD
 
@@ -380,4 +383,59 @@ update -.-> beam_step
 beam_entity@{ shape: st-rect, label: "Beam" }
 
 beam_step ---> |despawns| beam_entity
+```
+
+### Query BeamCharges (claim tile)
+
+Used in the following systems:
+- **claim_tile**: reads and mutably decrements the `BeamCharges` component on the firing player entity after a tile is claimed
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+charges_query{{"`charges_query`"}}:::query
+claim_tile ---> charges_query
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+pe_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
+pe_current>"`**current**`"] --> |field of| pe_charges
+
+charges_query ---> |"writes (decrements)"| pe_current
+```
+
+### Write BeamChargesChanged messages
+
+Used in the following systems:
+- **claim_tile**: emits a `BeamChargesChanged` message after decrementing the firing player's charges so display systems can react
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+beam_charges_changed_message(["`**BeamChargesChanged**`"])
+
+claim_tile ---> |writes| beam_charges_changed_message
 ```

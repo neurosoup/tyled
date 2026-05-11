@@ -12,20 +12,20 @@ Contains systems related to player input handling. This plugin registers the `In
 ## Plugin workflow
 
 - Startup phase
-    - Setup Input Timer creates the `InputTimer` repeating resource (16ms throttle).
+    - Setup Input Timer creates the `InputTimer` repeating resource (75ms throttle).
 - PreUpdate phase
     - Attach Players Actions reacts to newly added `Player` entities (without `InputMap`) and inserts the appropriate `InputMap<Action>`.
 - Update phase
     - Handle Players Input ticks the timer and, for each player:
         - Handles `Action::Lock` (toggles look-direction lock)
-        - Handles `Action::Shoot` (writes a `BeamFired` message)
+        - Handles `Action::Shoot` (writes a `BeamFired` message only if the player's `BeamCharges` is not exhausted)
         - When the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
 
 ## Plugin Systems
 
 ### Setup Input Timer
 
-Inserts the `InputTimer` resource, a repeating `Timer` with a 62.5ms period that acts as a throttle on movement inputs.
+Inserts the `InputTimer` resource, a repeating `Timer` with a 75ms period that acts as a throttle on movement inputs.
 
 ### Attach Players Actions
 
@@ -33,7 +33,7 @@ Runs in `PreUpdate`. Detects newly spawned `Player` entities that do not yet hav
 
 ### Handle Players Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all players. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` (emits a `BeamFired` message). When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
+Runs in `Update`. Ticks the `InputTimer` and iterates over all players. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the player's `BeamCharges::current > 0`. When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
 
 ## Components, Resources and Messages CRUD
 
@@ -161,11 +161,13 @@ pe_action_state>"`**ActionState#60;Action#62;**`"] --> |belongs to| player_entit
 pe_grid_coords>"`**GridCoords**`"] --> |belongs to| player_entity
 pe_look_direction>"`**LookDirection**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
+pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_action_state
 players_query ---> |reads| pe_grid_coords
 players_query ---> |writes| pe_look_direction
+players_query ---> |"reads (optional)"| pe_beam_charges
 players_query -..-> |filter With| pe_player
 ```
 

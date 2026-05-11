@@ -28,9 +28,9 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `messages` | Registers all game-wide `Message` types |
 | `maps` | Loads Tiled maps, populates `MapInfo` resource, initializes players/tiles/HP bars |
 | `camera` | Main camera (dynamic zoom tracking player barycenter) + HUD camera on `RenderLayers(1)` |
-| `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages |
+| `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages; gates `BeamFired` when player's `BeamCharges` is exhausted |
 | `controller` | Reads `EntityMoved` messages, validates against `MapInfo`, updates player `GridCoords` |
-| `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, claims tiles — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
+| `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, claims tiles, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied` |
 | `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
 | `animations` | `bevy_spritesheet_animation` setup; attaches and switches player/tile sprite animations |
@@ -44,6 +44,7 @@ Systems communicate via **messages** (from `bevy_ecs_tiled`), not direct queries
 - `EntityMoved { entity, position }` — player wants to move
 - `BeamFired { owner, origin, direction }` — player fired a beam
 - `BeamResolved { position, owner }` — beam landed on a tile
+- `BeamChargesChanged { player, current, max }` — a player's beam charge count changed
 - `DamageableDied { entity }` — an entity's HP hit zero
 
 ### Grid coordinate system
@@ -81,7 +82,7 @@ Effects are driven by marker components rather than events:
 | Lock direction | Q | Right Shift |
 | Shoot | Tab | / |
 
-Input and beam step both tick at 16ms intervals (0.0625s timer).
+Input ticks at 75ms intervals; beam step ticks at 62.5ms (0.0625s).
 
 ### Asset pipeline
 

@@ -12,7 +12,7 @@ This document summarises how the game's plugins are connected to each other thro
 There are two categories of messages in this codebase:
 
 - **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Maps, Camera, and Animations plugins respectively to react to map and object loading completion.
-- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic.
+- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `BeamChargesChanged`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic.
 
 The diagram below shows every plugin as a node, every message type as a distinct node, and the write/read relationships as directed edges. The flow generally moves from left to right: external events bootstrap the world, player input drives movement and combat, beam collisions trigger tile ownership changes, damage accumulates on claimed tiles, and visual effects react to the resulting state changes.
 
@@ -43,6 +43,7 @@ object_created_message(["`**TiledEvent#60;ObjectCreated#62;**`"])
 entity_moved_message(["`**EntityMoved**`"])
 beam_fired_message(["`**BeamFired**`"])
 beam_resolved_message(["`**BeamResolved**`"])
+beam_charges_changed_message(["`**BeamChargesChanged**`"])
 damageable_died_message(["`**DamageableDied**`"])
 
 tiled_plugin ---> |writes| map_created_message
@@ -64,6 +65,8 @@ beam_plugin ---> |writes| beam_resolved_message
 
 beam_resolved_message ---> |reads claim_tile| beam_plugin
 beam_resolved_message ---> |reads| animations_plugin
+
+beam_plugin ---> |writes| beam_charges_changed_message
 
 damage_plugin ---> |writes| damageable_died_message
 
