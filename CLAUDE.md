@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Tyled is a 2-player local real-time strategy game built with Bevy 0.18. Players shoot beams to claim tiles; claimed tiles damage opponents who walk on them. See README.md for full gameplay rules.
 
+## Tooling
+
+Prefer the `rust-analyzer` LSP (via the `LSP` tool) over `grep` when navigating code — go-to-definition, find-references, and hover give accurate, type-aware results without false positives from text search.
+
 ## Commands
 
 ```bash
@@ -83,6 +87,10 @@ Effects are driven by marker components rather than events:
 | Shoot | Tab | / |
 
 Input ticks at 75ms intervals; beam step ticks at 62.5ms (0.0625s).
+
+### Documentation
+
+Each plugin and component has a corresponding doc in `backlog/docs/`. When modifying a plugin or component — adding/removing systems, changing queries, altering message fields, renaming things — update the matching doc to keep the workflow descriptions, system descriptions, and CRUD/mermaid diagrams in sync.
 
 ### Asset pipeline
 
