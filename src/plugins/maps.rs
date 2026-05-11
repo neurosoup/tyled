@@ -141,7 +141,7 @@ fn initialize_hp_bars(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     hud_map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
-    hp_bars_query: Query<(Entity, &HPBar, &Transform, Option<&Children>)>,
+    hp_bars_query: Query<(Entity, &Player, &Transform, Option<&Children>), With<HPBar>>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
     // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall
@@ -154,11 +154,11 @@ fn initialize_hp_bars(
             continue;
         };
 
-        for (entity, hp_bar, transform, children) in &hp_bars_query {
+        for (entity, player, transform, children) in &hp_bars_query {
             if let Some(grid_coords) =
                 GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {
-                let player_one_offset = match hp_bar.player_id {
+                let player_one_offset = match player.player_id {
                     0 => Vec3::X,
                     _ => Vec3::ZERO,
                 };
@@ -170,7 +170,7 @@ fn initialize_hp_bars(
 
                 if let Some(first_child) = children.and_then(|c| c.first()).copied() {
                     let anchor_x = 0.5;
-                    let offset_direction = match hp_bar.player_id {
+                    let offset_direction = match player.player_id {
                         0 => 1.0,
                         1 => -1.0,
                         _ => 0.0,
