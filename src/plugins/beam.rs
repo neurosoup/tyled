@@ -25,12 +25,20 @@ fn setup_beam_step_timer(mut commands: Commands) {
 fn spawn_beam(
     mut commands: Commands,
     mut beam_fired_reader: MessageReader<BeamFired>,
-    beams_query: Query<&Beam>,
+    beams_query: Query<(&Beam, &GridCoords)>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
-        let owner_has_active_beam = beams_query
-            .iter()
-            .any(|beam| beam.owner == beam_fired_message.owner);
+        let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
+            if beam.owner != beam_fired_message.owner {
+                return false;
+            }
+            // Horizontal new beam: overlapping if existing beam is on same row (Y) and horizontal
+            if beam_fired_message.direction.x != 0 {
+                return coords.y == beam_fired_message.origin.y && beam.direction.x != 0;
+            }
+            // Vertical new beam: overlapping if existing beam is on same column (X) and vertical
+            coords.x == beam_fired_message.origin.x && beam.direction.y != 0
+        });
 
         let mut entity_commands = commands.spawn((
             beam_fired_message.origin,
