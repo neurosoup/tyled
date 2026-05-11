@@ -18,10 +18,10 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
         - Reacts to `BeamFired` message
             - Reads:
                 - `BeamFired` message fields (`owner`, `origin`, `direction`)
-                - `Beam` components on active beams (to check if owner already has one)
+                - `Beam` and `GridCoords` components on active beams (to detect lane overlap)
             - Writes:
                 - Always spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed}`
-                - Also inserts `BounceEffect` only when the owner has no other active beam
+                - Also inserts `BounceEffect` unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire)
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
             - Reads:
@@ -51,7 +51,7 @@ Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Time
 
 ### Spawn Beam
 
-Reacts to `BeamFired` messages emitted by the input system. For each message, always spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner does not already have an active beam — this prevents a visual bounce storm if multiple beams are fired in quick succession. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
+Reacts to `BeamFired` messages emitted by the input system. For each message, always spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner has no existing beam traveling on the same lane — a horizontal beam suppresses `BounceEffect` if another of the owner's beams shares the same row (Y coordinate) and is also horizontal; a vertical beam suppresses it if another shares the same column (X coordinate) and is also vertical. This prevents overlapping visual effects when beams travel the same path. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
 
 ### Beam Step
 
@@ -154,6 +154,38 @@ pe_character>"`**Character**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_player
 players_query -..-> |filter With| pe_character
+```
+
+### Query Beam entities (spawn)
+
+Used in the following systems:
+- **spawn_beam**: reads `Beam.owner`, `Beam.direction`, and `GridCoords` of all active beams to detect lane overlap before deciding whether to insert `BounceEffect`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+spawn_beam["`**spawn_beam**`"]
+
+update -.-> spawn_beam
+
+beams_query{{"`beams_query`"}}:::query
+spawn_beam ---> beams_query
+
+beam_entity@{ shape: st-rect, label: "Beam" }
+
+be_beam>"`**Beam**`"] --> |belongs to| beam_entity
+be_grid_coords>"`**GridCoords**`"] --> |belongs to| beam_entity
+
+beams_query ---> |reads| be_beam
+beams_query ---> |reads| be_grid_coords
 ```
 
 ### Read MapInfo resource (beam step)
