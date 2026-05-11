@@ -11,9 +11,7 @@ pub struct Ground;
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
-pub struct HPBar {
-    pub player_id: u8,
-}
+pub struct HPBar;
 
 #[derive(Component, Default)]
 pub struct CurrentLevel;
@@ -23,3 +21,7 @@ pub struct HudMap;
 
 #[derive(Component)]
 pub struct IsDead;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct Character;
