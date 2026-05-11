@@ -3,7 +3,7 @@ id: doc-9
 title: '[000] Plugin message relationships'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-05-11 00:00'
 ---
 # Plugin Message Relationships
 
@@ -67,6 +67,8 @@ beam_resolved_message ---> |reads claim_tile| beam_plugin
 beam_resolved_message ---> |reads| animations_plugin
 
 beam_plugin ---> |writes| beam_charges_changed_message
+
+beam_charges_changed_message ---> |reads| animations_plugin
 
 damage_plugin ---> |writes| damageable_died_message
 

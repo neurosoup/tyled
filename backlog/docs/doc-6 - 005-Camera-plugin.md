@@ -21,7 +21,7 @@ Contains systems related to camera initialization and runtime updates. The plugi
         - Reacts to `TiledEvent<MapCreated>` for the `HudMap` entity only
         - Inserts `Propagate(RenderLayers)` on the HUD map root entity so all its children are rendered exclusively in the HUD camera layer
     - `update_camera`:
-        - Reads all `Player` transforms, computes the barycenter and max inter-player distance
+        - Reads all `Character` transforms, computes the barycenter and max inter-player distance
         - Smoothly nudges the main camera `Transform` toward the barycenter and lerps the orthographic zoom scale
     - `update_hud_viewport`:
         - Reacts to `WindowResized` events
@@ -46,7 +46,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to the `HudMap` entity only. Inserts
 
 ### Update Camera
 
-Runs every frame. Reads the `Transform` of every `Player` entity to compute:
+Runs every frame. Reads the `Transform` of every `Character` entity to compute:
 - The **barycenter** (average position) — the camera target.
 - The **max inter-player distance** — used to derive the desired zoom scale.
 
@@ -141,10 +141,10 @@ window_resized_event(["`**WindowResized**`"])
 event_reader ---> |reads| window_resized_event
 ```
 
-### Query Player transforms
+### Query Character transforms
 
 Used in the following systems:
-- **update_camera**: reads all `Transform` components on `Player`-marked entities to compute the camera target position and zoom level
+- **update_camera**: reads all `Transform` components on `Character`-marked entities to compute the camera target position and zoom level
 
 ```mermaid
 ---
@@ -161,16 +161,16 @@ update_camera["`**update_camera**`"]
 
 update -.-> update_camera
 
-players_query{{"`players_query (ParamSet)`"}}:::query
-update_camera ---> players_query
+characters_query{{"`characters_query (ParamSet)`"}}:::query
+update_camera ---> characters_query
 
-player_entity@{ shape: st-rect, label: "Player" }
+character_entity@{ shape: st-rect, label: "Character" }
 
-pe_transform>"`**Transform**`"] --> |belongs to| player_entity
-pe_player>"`**Player**`"] --> |belongs to| player_entity
+ce_transform>"`**Transform**`"] --> |belongs to| character_entity
+ce_character>"`**Character**`"] --> |belongs to| character_entity
 
-players_query ---> |reads| pe_transform
-players_query -..-> |filter With| pe_player
+characters_query ---> |reads| ce_transform
+characters_query -..-> |filter With| ce_character
 ```
 
 ### Write Camera components (main)

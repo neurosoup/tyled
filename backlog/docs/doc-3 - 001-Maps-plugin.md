@@ -22,7 +22,7 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:10,max:10}`
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}`
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
@@ -47,7 +47,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads t
 
 ### Initialize Players
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity it:
+Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
 3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20, max:100}`, and `BeamCharges{current:10, max:10}` on the player entity.
@@ -233,11 +233,13 @@ pe_entity>"`**Entity**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
 pe_transform>"`**Transform**`"] --> |belongs to| player_entity
 pe_tiled_object>"`**TiledObject**`"] --> |belongs to| player_entity
+pe_character>"`**Character**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_player
 players_query ---> |reads| pe_transform
 players_query -..-> |filter With| pe_tiled_object
+players_query -..-> |filter With| pe_character
 ```
 
 ### Write MapInfo resource
@@ -287,7 +289,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:10,max:10}` on each `Player` entity, and inserts `Anchor` on the first child sprite entity
+- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}` on each `Player` entity, and inserts `Anchor` on the first child sprite entity
 
 ```mermaid
 ---

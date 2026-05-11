@@ -18,9 +18,10 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
         - Reacts to `BeamFired` message
             - Reads:
                 - `BeamFired` message fields (`owner`, `origin`, `direction`)
-                - `Player` component of the firing player (for beam metadata)
+                - `Beam` components on active beams (to check if owner already has one)
             - Writes:
-                - Spawns a new `Beam` entity with `GridCoords`, `Beam{owner,direction,speed}`, and `BounceEffect`
+                - Always spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed}`
+                - Also inserts `BounceEffect` only when the owner has no other active beam
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
             - Reads:
@@ -35,11 +36,12 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
             - Reads:
                 - `BeamResolved` message fields (`position`, `owner`)
                 - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
+                - `Player` component (with `Character` filter) on the firing player entity (to get `player_id`)
                 - `BeamCharges` component on the firing player entity
             - Writes:
                 - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
                 - Decrements `BeamCharges::current` on the firing player (saturating at zero)
-                - Emits a `BeamChargesChanged` message with the updated charge values
+                - Emits a `BeamChargesChanged { player_id, current, max }` message
 
 ## Plugin Systems
 
@@ -49,7 +51,7 @@ Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Time
 
 ### Spawn Beam
 
-Reacts to `BeamFired` messages emitted by the input system. For each message, checks that the firing player does not already have an active `Beam` entity. If none exists, spawns a new `Beam` entity carrying `GridCoords` (set to `origin`), `Beam{owner, direction, speed}`, and `BounceEffect` (to trigger the visual bounce when the beam moves). No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
+Reacts to `BeamFired` messages emitted by the input system. For each message, always spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner does not already have an active beam — this prevents a visual bounce storm if multiple beams are fired in quick succession. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
 
 ### Beam Step
 
@@ -122,10 +124,10 @@ beam_resolved_message(["`**BeamResolved**`"])
 message_reader ---> |reads| beam_resolved_message
 ```
 
-### Query Player (spawn)
+### Query Player (claim tile)
 
 Used in the following systems:
-- **spawn_beam**: reads the `Player` component of the firing entity to validate ownership and set beam metadata
+- **claim_tile**: reads `Player::player_id` from the firing player entity (filtered `With<Character>`) to populate `BeamChargesChanged.player_id`
 
 ```mermaid
 ---
@@ -138,18 +140,20 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-spawn_beam["`**spawn_beam**`"]
+claim_tile["`**claim_tile**`"]
 
-update -.-> spawn_beam
+update -.-> claim_tile
 
 players_query{{"`players_query`"}}:::query
-spawn_beam ---> players_query
+claim_tile ---> players_query
 
 player_entity@{ shape: st-rect, label: "Player" }
 
 pe_player>"`**Player**`"] --> |belongs to| player_entity
+pe_character>"`**Character**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_player
+players_query -..-> |filter With| pe_character
 ```
 
 ### Read MapInfo resource (beam step)

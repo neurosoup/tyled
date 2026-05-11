@@ -7,7 +7,7 @@ updated_date: '2026-06-15 12:00'
 ---
 # Animations Plugin
 
-Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages.
+Contains systems responsible for attaching and updating spritesheet animations on player entities, claimed tile entities, and HUD digit entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player and per-digit animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, manages animations for claimed tiles in reaction to `BeamResolved` messages, and drives flip-counter animations on `Digit` entities in reaction to `BeamChargesChanged` messages.
 
 ## Plugin workflow
 
@@ -45,6 +45,25 @@ Contains systems responsible for attaching and updating spritesheet animations o
             - Writes:
                 - Switches `SpritesheetAnimation` clip on the claimed tile entity to the player-color animation
                 - Inserts `BounceEffectTarget` on the claimed tile entity
+    - Attach Digit Animations:
+        - Reacts to `TiledEvent<ObjectCreated>` message
+            - Reads:
+                - All `Digit`-marked `TiledObject` entities and their `Entity` components
+                - The `Sprite` component on each digit's child sprite entity (to get the image handle)
+            - Writes:
+                - Builds all 90 from→to transition animation handles (for all `from != to` in `0..10`) using a single `make_anim` closure
+                - Inserts `DigitAnimations` resource into the world
+                - Inserts `SpritesheetAnimation` on the child sprite entity
+    - Update Digit Animation:
+        - Reacts to `BeamChargesChanged` messages
+            - Reads:
+                - `BeamChargesChanged` message fields (`player_id`, `current`)
+                - All `Digit`-marked entities with `Player` and `Digit` components
+                - `DigitAnimations` resource (optional/`If`)
+            - Writes:
+                - Computes per-digit target value from `current` by position (`(current / 10^position) % 10`)
+                - Switches `SpritesheetAnimation` on the child sprite entity to the matching from→to transition clip
+                - Updates `Digit::value` to the new digit
 
 ## Plugin Systems
 
@@ -63,6 +82,14 @@ Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed til
 ### Update Claimed Tile Animation
 
 Reads `BeamResolved` messages. For each message, resolves the claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position. Reads the `ClaimedTileAnimations` resource to select the correct player-color clip based on the owning player id, then switches the `SpritesheetAnimation` clip on the claimed tile entity. Also inserts `BounceEffectTarget` on the claimed tile entity to trigger the bounce visual effect.
+
+### Attach Digit Animations
+
+Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 8)` + `add_partial_row(8, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
+
+### Update Digit Animation
+
+Reads `BeamChargesChanged` messages. For each message, iterates all `Digit`-marked entities whose `Player::player_id` matches `message.player_id`. For each digit, computes the target value as `(message.current / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, then walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip. Updates `Digit::value` to the new digit value.
 
 ## Components, Resources and Messages CRUD
 
@@ -229,6 +256,8 @@ claimed_tiles_query -..-> |filter Added| ct_claimed
 Used in the following systems:
 - **attach_player_animations**: used to walk descendants via `iter_descendants` to find the child sprite entity
 - **update_players_animation**: used to walk descendants via `iter_descendants` to find the child sprite entity
+- **attach_digit_animations**: used to walk descendants via `iter_descendants` to find the child sprite entity
+- **update_digit_animation**: used to walk descendants via `iter_descendants` to find the child `SpritesheetAnimation`
 
 ```mermaid
 ---
@@ -243,13 +272,19 @@ classDef query stroke-dasharray: 3 3
 update(("`Update`")):::system-group
 attach_player_animations["`**attach_player_animations**`"]
 update_players_animation["`**update_players_animation**`"]
+attach_digit_animations["`**attach_digit_animations**`"]
+update_digit_animation["`**update_digit_animation**`"]
 
 update -.-> attach_player_animations
 update -.-> update_players_animation
+update -.-> attach_digit_animations
+update -.-> update_digit_animation
 
 children_query{{"`children_query`"}}:::query
 attach_player_animations ---> children_query
 update_players_animation ---> children_query
+attach_digit_animations ---> children_query
+update_digit_animation ---> children_query
 
 child_entity@{ shape: st-rect, label: "Any Child Entity" }
 
@@ -596,4 +631,244 @@ ct_bounce_target --> |inserted on| claimed_tile_entity
 
 claimed_tiles_query ---> |writes| ct_anim
 update_claimed_tile_animation ---> |inserts component| ct_bounce_target
+```
+
+### Read TiledEvent ObjectCreated messages (digits)
+
+Used in the following systems:
+- **attach_digit_animations**: used to trigger animation setup when a digit Tiled object is created
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+attach_digit_animations["`**attach_digit_animations**`"]
+
+update -.-> attach_digit_animations
+
+message_reader{{"MessageReader#60;TiledEvent#60;ObjectCreated#62;#62;"}}:::reader
+attach_digit_animations ---> message_reader
+
+object_created_message(["`**TiledEvent#60;ObjectCreated#62;**`"])
+
+message_reader ---> |reads| object_created_message
+```
+
+### Read BeamChargesChanged messages
+
+Used in the following systems:
+- **update_digit_animation**: used to trigger digit flip-counter animation when a player's beam charges change
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+update_digit_animation["`**update_digit_animation**`"]
+
+update -.-> update_digit_animation
+
+message_reader{{"MessageReader#60;BeamChargesChanged#62;"}}:::reader
+update_digit_animation ---> message_reader
+
+beam_charges_changed_message(["`**BeamChargesChanged**`"])
+
+message_reader ---> |reads| beam_charges_changed_message
+```
+
+### Query Digit entities (attach)
+
+Used in the following systems:
+- **attach_digit_animations**: detects newly created `Digit`-marked `TiledObject` entities and initializes their animation components
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+attach_digit_animations["`**attach_digit_animations**`"]
+
+update -.-> attach_digit_animations
+
+digits_query{{"`digits_query`"}}:::query
+attach_digit_animations ---> digits_query
+
+digit_entity@{ shape: st-rect, label: "Digit (TiledObject)" }
+
+de_entity>"`**Entity**`"] --> |belongs to| digit_entity
+de_digit>"`**Digit**`"] --> |belongs to| digit_entity
+
+digits_query ---> |reads| de_entity
+digits_query -..-> |filter With| de_digit
+```
+
+### Query Digit entities (update)
+
+Used in the following systems:
+- **update_digit_animation**: reads `Player::player_id`, `Digit::position`, and mutably updates `Digit::value` for all digit entities matching the message's player
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+update_digit_animation["`**update_digit_animation**`"]
+
+update -.-> update_digit_animation
+
+digits_query{{"`digits_query`"}}:::query
+update_digit_animation ---> digits_query
+
+digit_entity@{ shape: st-rect, label: "Digit Entity" }
+
+de_entity>"`**Entity**`"] --> |belongs to| digit_entity
+de_player>"`**Player**`"] --> |belongs to| digit_entity
+de_digit>"`**Digit**`"] --> |belongs to| digit_entity
+
+digits_query ---> |reads| de_entity
+digits_query ---> |reads| de_player
+digits_query ---> |writes| de_digit
+```
+
+### Read DigitAnimations resource
+
+Used in the following systems:
+- **update_digit_animation**: used to retrieve the from→to transition animation handle for each digit; accessed via `If<Res<...>>` (optional — skipped if not yet inserted)
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+update_digit_animation["`**update_digit_animation**`"]
+
+update -.-> update_digit_animation
+
+world@{ shape: st-rect, label: "World" }
+digit_anims_res@{ shape: doc, label: "DigitAnimations" }
+
+da_handles>"`**handles #91;#91;Handle#60;Animation#62;; 10#93;; 10#93;**`"]
+
+digit_anims_res --> |belongs to| world
+da_handles --> |field of| digit_anims_res
+
+update_digit_animation ---> |reads `get(from, to)`| digit_anims_res
+```
+
+### Write DigitAnimations resource
+
+Used in the following systems:
+- **attach_digit_animations**: builds all 90 from→to transition animation handles and inserts the `DigitAnimations` resource into the world
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+attach_digit_animations["`**attach_digit_animations**`"]
+
+update -.-> attach_digit_animations
+
+world@{ shape: st-rect, label: "World" }
+digit_anims_res@{ shape: doc, label: "DigitAnimations" }
+
+da_handles>"`**handles #91;#91;Handle#60;Animation#62;; 10#93;; 10#93;**`"]
+
+digit_anims_res --> |belongs to| world
+da_handles --> |field of| digit_anims_res
+
+attach_digit_animations ---> |inserts resource| digit_anims_res
+```
+
+### Write commands (attach digit animations)
+
+Used in the following systems:
+- **attach_digit_animations**: inserts `SpritesheetAnimation` on the child sprite entity of each `Digit` entity
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+attach_digit_animations["`**attach_digit_animations**`"]
+
+update -.-> attach_digit_animations
+
+digit_child_entity@{ shape: st-rect, label: "Digit Child (Sprite)" }
+
+dc_anim>"`**SpritesheetAnimation**`"]
+
+dc_anim --> |inserted on| digit_child_entity
+
+attach_digit_animations ---> |inserts component| dc_anim
+```
+
+### Write SpritesheetAnimation (update digit)
+
+Used in the following systems:
+- **update_digit_animation**: switches the `SpritesheetAnimation` clip on the digit child sprite entity to the from→to transition clip
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+update_digit_animation["`**update_digit_animation**`"]
+
+update -.-> update_digit_animation
+
+sprite_animations_query{{"`sprite_animations_query (mutable)`"}}:::query
+update_digit_animation ---> sprite_animations_query
+
+digit_child_entity@{ shape: st-rect, label: "Digit Child (Sprite)" }
+
+dc_anim>"`**SpritesheetAnimation**`"] --> |belongs to| digit_child_entity
+
+sprite_animations_query ---> |writes (switches clip)| dc_anim
 ```

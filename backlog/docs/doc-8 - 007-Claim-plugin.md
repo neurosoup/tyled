@@ -3,7 +3,7 @@ id: doc-8
 title: '[008] Damage plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-05-11 00:00'
 ---
 # Damage Plugin
 
@@ -16,10 +16,10 @@ Contains systems responsible for applying damage to players standing on opponent
 - Update phase
     - `apply_damage`:
         - Ticks the `DamageTimer` each frame
-        - When the timer fires, iterates all `Player` entities and checks whether their current `GridCoords` sits on a tile owned by an opposing player
+        - When the timer fires, iterates all `Character` entities and checks whether their current `GridCoords` sits on a tile owned by an opposing player
             - Reads:
                 - `DamageTimer` resource
-                - `Player` entity `GridCoords` and `Entity`
+                - `Character` entity `GridCoords` and `Entity`
                 - `ClaimedTile` components on claimed tile entities (via `MapInfo::claimed_entities`)
                 - `MapInfo` resource (to resolve `GridCoords` → claimed tile entity)
             - Writes:
@@ -36,7 +36,7 @@ Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer`
 
 Runs every frame. Ticks the `DamageTimer` and, when the timer finishes:
 
-1. Iterates all `Player` entities, reading their `Entity` and `GridCoords`.
+1. Iterates all `Character` entities, reading their `Entity` and `GridCoords`.
 2. Resolves the `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`.
 3. Reads the `ClaimedTile` component on that entity to determine the current owner.
 4. If the owner is a different player than the one standing on the tile, decrements that player's `Health` by 1.0.
@@ -102,10 +102,10 @@ map_info_res --> |belongs to| world
 apply_damage ---> |reads `claimed_entities`| map_info_res
 ```
 
-### Query Player entities
+### Query Character entities
 
 Used in the following systems:
-- **apply_damage**: reads the `Entity` and `GridCoords` of every `Player`-marked entity to determine their position each damage tick
+- **apply_damage**: reads the `Entity` and `GridCoords` of every `Character`-marked entity to determine their position each damage tick
 
 ```mermaid
 ---
@@ -122,18 +122,18 @@ apply_damage["`**apply_damage**`"]
 
 update -.-> apply_damage
 
-player_entities_query{{"`player_entities`"}}:::query
-apply_damage ---> player_entities_query
+characters_query{{"`characters`"}}:::query
+apply_damage ---> characters_query
 
-player_entity@{ shape: st-rect, label: "Player" }
+character_entity@{ shape: st-rect, label: "Character" }
 
-pe_entity>"`**Entity**`"] --> |belongs to| player_entity
-pe_grid_coords>"`**GridCoords**`"] --> |belongs to| player_entity
-pe_player>"`**Player**`"] --> |belongs to| player_entity
+pe_entity>"`**Entity**`"] --> |belongs to| character_entity
+pe_grid_coords>"`**GridCoords**`"] --> |belongs to| character_entity
+pe_character>"`**Character**`"] --> |belongs to| character_entity
 
-player_entities_query ---> |reads| pe_entity
-player_entities_query ---> |reads| pe_grid_coords
-player_entities_query -..-> |filter With| pe_player
+characters_query ---> |reads| pe_entity
+characters_query ---> |reads| pe_grid_coords
+characters_query -..-> |filter With| pe_character
 ```
 
 ### Query ClaimedTile entities

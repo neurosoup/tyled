@@ -3,7 +3,7 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-05-11 00:00'
 ---
 # Input Plugin
 
@@ -14,9 +14,9 @@ Contains systems related to player input handling. This plugin registers the `In
 - Startup phase
     - Setup Input Timer creates the `InputTimer` repeating resource (75ms throttle).
 - PreUpdate phase
-    - Attach Players Actions reacts to newly added `Player` entities (without `InputMap`) and inserts the appropriate `InputMap<Action>`.
+    - Attach Players Actions reacts to newly added `Player` + `Character` entities (without `InputMap`) and inserts the appropriate `InputMap<Action>`.
 - Update phase
-    - Handle Players Input ticks the timer and, for each player:
+    - Handle Characters Input ticks the timer and, for each character:
         - Handles `Action::Lock` (toggles look-direction lock)
         - Handles `Action::Shoot` (writes a `BeamFired` message only if the player's `BeamCharges` is not exhausted)
         - When the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
@@ -29,18 +29,18 @@ Inserts the `InputTimer` resource, a repeating `Timer` with a 75ms period that a
 
 ### Attach Players Actions
 
-Runs in `PreUpdate`. Detects newly spawned `Player` entities that do not yet have an `InputMap<Action>` and inserts the appropriate `InputMap<Action>` derived from the player's data.
+Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that do not yet have an `InputMap<Action>` and inserts the appropriate `InputMap<Action>` derived from the player's data.
 
-### Handle Players Input
+### Handle Characters Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all players. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the player's `BeamCharges::current > 0`. When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
+Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the character's `BeamCharges::current > 0`. When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
 
 ## Components, Resources and Messages CRUD
 
 ### Read InputTimer resource
 
 Used in the following systems:
-- **handle_players_input**: ticks and checks the throttle timer each frame
+- **handle_characters_input**: ticks and checks the throttle timer each frame
 
 ```mermaid
 ---
@@ -54,10 +54,10 @@ classDef system-group stroke-dasharray: 5 5
 startup(("`Startup`")):::system-group
 update(("`Update`")):::system-group
 setup_input_timer["`**setup_input_timer**`"]
-handle_players_input["`**handle_players_input**`"]
+handle_characters_input["`**handle_characters_input**`"]
 
 startup -.-> setup_input_timer
-update -.-> handle_players_input
+update -.-> handle_characters_input
 
 world@{ shape: st-rect, label: "World" }
 input_timer_res@{ shape: doc, label: "InputTimer" }
@@ -65,13 +65,13 @@ input_timer_res@{ shape: doc, label: "InputTimer" }
 input_timer_res --> |belongs to| world
 
 setup_input_timer ---> |inserts resource| input_timer_res
-handle_players_input ---> |reads & ticks| input_timer_res
+handle_characters_input ---> |reads & ticks| input_timer_res
 ```
 
 ### Query Player entities for action attachment
 
 Used in the following systems:
-- **attach_players_actions**: detects `Player` entities that were just added and do not yet carry an `InputMap<Action>`
+- **attach_players_actions**: detects `Player` + `Character` entities that were just added and do not yet carry an `InputMap<Action>`
 
 ```mermaid
 ---
@@ -99,8 +99,13 @@ pe_input_map>"`**InputMap#60;Action#62;**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_player
+pe_character>"`**Character**`"] --> |belongs to| player_entity
+
+players_query ---> |reads| pe_entity
+players_query ---> |reads| pe_player
 players_query -..-> |filter Added| pe_player
 players_query -..-> |filter Without| pe_input_map
+players_query -..-> |filter With| pe_character
 ```
 
 ### Write commands — attach InputMap
@@ -131,10 +136,10 @@ pe_input_map --> |inserted on| player_entity
 attach_players_actions ---> |inserts component| pe_input_map
 ```
 
-### Query Player entities for input handling
+### Query Character entities for input handling
 
 Used in the following systems:
-- **handle_players_input**: reads action state and grid coords, mutably updates look direction for all `Player` entities
+- **handle_characters_input**: reads action state and grid coords, mutably updates look direction for all `Character` entities
 
 ```mermaid
 ---
@@ -147,34 +152,35 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-handle_players_input["`**handle_players_input**`"]
+handle_characters_input["`**handle_characters_input**`"]
 
-update -.-> handle_players_input
+update -.-> handle_characters_input
 
 players_query{{"`players`"}}:::query
-handle_players_input ---> players_query
+handle_characters_input ---> players_query
 
-player_entity@{ shape: st-rect, label: "Player" }
+character_entity@{ shape: st-rect, label: "Character" }
 
-pe_entity>"`**Entity**`"] --> |belongs to| player_entity
-pe_action_state>"`**ActionState#60;Action#62;**`"] --> |belongs to| player_entity
-pe_grid_coords>"`**GridCoords**`"] --> |belongs to| player_entity
-pe_look_direction>"`**LookDirection**`"] --> |belongs to| player_entity
-pe_player>"`**Player**`"] --> |belongs to| player_entity
-pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
+pe_entity>"`**Entity**`"] --> |belongs to| character_entity
+pe_action_state>"`**ActionState#60;Action#62;**`"] --> |belongs to| character_entity
+pe_grid_coords>"`**GridCoords**`"] --> |belongs to| character_entity
+pe_look_direction>"`**LookDirection**`"] --> |belongs to| character_entity
+pe_character>"`**Character**`"] --> |belongs to| character_entity
+pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| character_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_action_state
 players_query ---> |reads| pe_grid_coords
 players_query ---> |writes| pe_look_direction
 players_query ---> |"reads (optional)"| pe_beam_charges
-players_query -..-> |filter With| pe_player
+players_query -..-> |filter With| pe_character
 ```
 
 ### Write EntityMoved messages
 
 Used in the following systems:
-- **handle_players_input**: emits an `EntityMoved` message when the movement axis is non-zero and the input timer has finished
+- **handle_characters_input**: emits an `EntityMoved` message when the movement axis is non-zero and the input timer has finished
+
 
 ```mermaid
 ---
@@ -186,19 +192,20 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-handle_players_input["`**handle_players_input**`"]
+handle_characters_input["`**handle_characters_input**`"]
 
-update -.-> handle_players_input
+update -.-> handle_characters_input
 
 entity_moved_message(["`**EntityMoved**`"])
 
-handle_players_input ---> |writes| entity_moved_message
+handle_characters_input ---> |writes| entity_moved_message
 ```
 
 ### Write BeamFired messages
 
 Used in the following systems:
-- **handle_players_input**: emits a `BeamFired` message when `Action::Shoot` is just pressed
+- **handle_characters_input**: emits a `BeamFired` message when `Action::Shoot` is just pressed
+
 
 ```mermaid
 ---
@@ -210,11 +217,11 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-handle_players_input["`**handle_players_input**`"]
+handle_characters_input["`**handle_characters_input**`"]
 
-update -.-> handle_players_input
+update -.-> handle_characters_input
 
 beam_fired_message(["`**BeamFired**`"])
 
-handle_players_input ---> |writes| beam_fired_message
+handle_characters_input ---> |writes| beam_fired_message
 ```
