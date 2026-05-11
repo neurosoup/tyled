@@ -7240,9 +7240,9 @@
                             "z_axis": null
                         },
                         "translation": {
-                            "x": 0,
-                            "y": 0,
-                            "z": 0
+                            "x": null,
+                            "y": null,
+                            "z": null
                         }
                     }
                 }
@@ -10664,19 +10664,19 @@
                     "type": "class",
                     "value": {
                         "x_axis": {
-                            "x": 1,
-                            "y": 0,
-                            "z": 0
+                            "x": null,
+                            "y": null,
+                            "z": null
                         },
                         "y_axis": {
-                            "x": 0,
-                            "y": 1,
-                            "z": 0
+                            "x": null,
+                            "y": null,
+                            "z": null
                         },
                         "z_axis": {
-                            "x": 0,
-                            "y": 0,
-                            "z": 1
+                            "x": null,
+                            "y": null,
+                            "z": null
                         }
                     }
                 },
@@ -11104,10 +11104,39 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 543,
+            "members": [
+            ],
+            "name": "tyled::components::markers::ForbiddenArea",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 520,
             "members": [
             ],
             "name": "tyled::components::markers::Ground",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 544,
+            "members": [
+                {
+                    "name": "player_id",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::markers::HPBar",
             "type": "class",
             "useAs": [
                 "property"
@@ -11162,10 +11191,15 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 543,
+            "id": 545,
             "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
             ],
-            "name": "tyled::components::markers::ForbiddenArea",
+            "name": "bevy_ecs_tiled::tiled::layer::TiledLayerId",
             "type": "class",
             "useAs": [
                 "property"
@@ -11174,15 +11208,136 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 544,
+            "id": 546,
             "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObjectId",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 547,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::tile::TiledTileId",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 548,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::tile::TiledTilesetId",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 549,
+            "members": [
+                {
+                    "name": "digit_position",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "player_id",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::beam::BeamChargesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 550,
+            "members": [
+                {
+                    "name": "digit",
+                    "propertyType": "tyled::components::digits::Digit",
+                    "type": "class",
+                    "value": {
+                        "position": 0,
+                        "value": 0
+                    }
+                },
                 {
                     "name": "player_id",
                     "type": "int",
                     "value": 0
                 }
             ],
-            "name": "tyled::components::markers::HPBar",
+            "name": "tyled::components::digits::BeamChargesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 551,
+            "members": [
+                {
+                    "name": "position",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::digits::Digit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 552,
+            "members": [
+            ],
+            "name": "tyled::components::player::Character",
             "type": "class",
             "useAs": [
                 "property"

@@ -5,25 +5,25 @@
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,226,0,0,0,0,225,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,282,0,0,0,0,281,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
  <layer id="1" name="HPContainer" width="48" height="4">
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,193,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,195,0,0,0,0,193,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,195,0,0,
+0,0,241,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,243,0,0,0,0,241,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,242,243,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
  <objectgroup id="7" name="HPBar">
-  <object id="27" name="HPBar Player 1" gid="196" x="350" y="32" width="2" height="16">
+  <object id="27" name="HPBar Player 1" gid="244" x="350" y="32" width="2" height="16">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
    </properties>
   </object>
-  <object id="28" name="HPBar Player 2" gid="196" x="416" y="32" width="2" height="16">
+  <object id="28" name="HPBar Player 2" gid="244" x="416" y="32" width="2" height="16">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar">
      <properties>
@@ -34,11 +34,73 @@
   </object>
  </objectgroup>
  <objectgroup id="9" name="Numbers">
-  <object id="29" gid="257" x="288" y="48" width="16" height="16"/>
-  <object id="30" gid="257" x="304" y="48" width="16" height="16"/>
-  <object id="31" gid="257" x="320" y="48" width="16" height="16"/>
-  <object id="32" gid="257" x="432" y="48" width="16" height="16"/>
-  <object id="33" gid="257" x="448" y="48" width="16" height="16"/>
-  <object id="34" gid="257" x="464" y="48" width="16" height="16"/>
+  <object id="29" gid="321" x="288" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit">
+     <properties>
+      <property name="position" type="int" value="2"/>
+     </properties>
+    </property>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="30" gid="321" x="304" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit">
+     <properties>
+      <property name="position" type="int" value="1"/>
+     </properties>
+    </property>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="31" gid="321" x="320" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="32" gid="321" x="432" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit">
+     <properties>
+      <property name="position" type="int" value="2"/>
+     </properties>
+    </property>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+   </properties>
+  </object>
+  <object id="33" gid="321" x="448" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit">
+     <properties>
+      <property name="position" type="int" value="1"/>
+     </properties>
+    </property>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+   </properties>
+  </object>
+  <object id="34" gid="321" x="464" y="48" width="16" height="16">
+   <properties>
+    <property name="Digit" type="class" propertytype="tyled::components::digits::Digit">
+     <properties>
+      <property name="position" type="int" value="0"/>
+     </properties>
+    </property>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+   </properties>
+  </object>
  </objectgroup>
 </map>
