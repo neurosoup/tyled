@@ -28,9 +28,9 @@ fn apply_damage(
     time: Res<Time>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
-    player_entities: Query<(Entity, &GridCoords), With<Player>>,
-    mut damageable_entities: Query<&mut Health>,
-    claimed_entities: Query<&ClaimedTile>,
+    characters: Query<(Entity, &GridCoords), With<Character>>,
+    mut damageables: Query<&mut Health>,
+    claimed_tiles: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
 ) {
     timer.0.tick(time.delta());
@@ -38,12 +38,12 @@ fn apply_damage(
         return;
     }
 
-    // Apply damage to damageable entities that are in claimed areas but not owned by the player
-    for (entity, position) in &player_entities {
+    // Apply damage to damageable entities that are in claimed areas but not owned by the character
+    for (entity, position) in &characters {
         if let Some(claimed_entity) = map_info.get_claimed_entity_by_position(*position) {
-            if let Ok(claimed_tile) = claimed_entities.get(claimed_entity) {
+            if let Ok(claimed_tile) = claimed_tiles.get(claimed_entity) {
                 if claimed_tile.owner.is_some_and(|owner| owner != entity) {
-                    if let Ok(mut health) = damageable_entities.get_mut(entity) {
+                    if let Ok(mut health) = damageables.get_mut(entity) {
                         if health.current <= 0.0 {
                             return;
                         }

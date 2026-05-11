@@ -32,7 +32,7 @@ pub struct BeamResolved {
 
 #[derive(Message)]
 pub struct BeamChargesChanged {
-    pub player: Entity,
+    pub player_id: u8,
     pub current: u32,
     pub max: u32,
 }

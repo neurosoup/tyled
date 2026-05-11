@@ -19,22 +19,19 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TweeningPlugin);
     app.add_systems(Startup, setup_input_timer);
     app.add_systems(PreUpdate, attach_players_actions);
-    app.add_systems(Update, handle_players_input);
+    app.add_systems(Update, handle_characters_input);
 }
 
 #[derive(Resource)]
 pub struct InputTimer(Timer);
 
 fn setup_input_timer(mut commands: Commands) {
-    commands.insert_resource(InputTimer(Timer::from_seconds(
-        0.075,
-        TimerMode::Repeating,
-    )));
+    commands.insert_resource(InputTimer(Timer::from_seconds(0.075, TimerMode::Repeating)));
 }
 
 fn attach_players_actions(
     mut commands: Commands,
-    players: Query<(Entity, &Player), (Added<Player>, Without<InputMap<Action>>)>,
+    players: Query<(Entity, &Player), (Added<Player>, Without<InputMap<Action>>, With<Character>)>,
 ) {
     for (entity, player) in &players {
         commands
@@ -43,10 +40,10 @@ fn attach_players_actions(
     }
 }
 
-fn handle_players_input(
+fn handle_characters_input(
     time: Res<Time>,
     mut timer: ResMut<InputTimer>,
-    mut players: Query<
+    mut characters: Query<
         (
             Entity,
             &ActionState<Action>,
@@ -54,16 +51,14 @@ fn handle_players_input(
             &mut LookDirection,
             Option<&BeamCharges>,
         ),
-        With<Player>,
+        With<Character>,
     >,
-    mut player_moved_writer: MessageWriter<EntityMoved>,
+    mut entity_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,
 ) {
     timer.0.tick(time.delta());
 
-    for (player_entity, action_state, player_grid_coords, mut look_direction, beam_charges) in
-        &mut players
-    {
+    for (entity, action_state, grid_coords, mut look_direction, beam_charges) in &mut characters {
         if action_state.pressed(&Action::Lock) {
             look_direction.lock();
         } else {
@@ -74,8 +69,8 @@ fn handle_players_input(
             let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
             if has_charges {
                 beam_fired_writer.write(BeamFired {
-                    owner: player_entity,
-                    origin: *player_grid_coords,
+                    owner: entity,
+                    origin: *grid_coords,
                     direction: look_direction.to_grid_coords(),
                 });
             }
@@ -89,11 +84,8 @@ fn handle_players_input(
             let axis = action_state.clamped_axis_pair(&Action::Move);
             look_direction.look_at(axis);
             let direction = GridCoords::new(axis.x as i32, axis.y as i32);
-            let position = *player_grid_coords + direction;
-            player_moved_writer.write(EntityMoved {
-                entity: player_entity,
-                position,
-            });
+            let position = *grid_coords + direction;
+            entity_moved_writer.write(EntityMoved { entity, position });
         }
     }
 }

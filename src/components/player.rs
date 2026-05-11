@@ -5,5 +5,9 @@ use bevy_ecs_tiled::prelude::*;
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Player {
-    pub player_id: usize,
+    pub player_id: u8,
 }
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct Character;

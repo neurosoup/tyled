@@ -193,7 +193,7 @@ fn initialize_players(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     current_level_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
-    mut players_query: Query<(Entity, &Player, &mut Transform)>,
+    mut players_query: Query<(Entity, &Player, &mut Transform), With<Character>>,
     children_query: Query<&Children>,
 ) {
     for map_created_message in map_created_reader.read() {
@@ -221,7 +221,7 @@ fn initialize_players(
                         current: 20.0,
                         max: 100.0,
                     },
-                    BeamCharges::new(10),
+                    BeamCharges::new(999),
                 ));
 
                 transform.scale = Vec3::new(1.1, 1.1, 1.0);

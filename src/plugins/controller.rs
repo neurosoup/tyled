@@ -11,12 +11,12 @@ use bevy_tweening::{lens::TransformPositionLens, *};
 use crate::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, move_players);
+    app.add_systems(Update, move_characters);
 }
 
-fn move_players(
+fn move_characters(
     mut entity_moved_reader: MessageReader<EntityMoved>,
-    mut players: Query<&mut GridCoords, With<Player>>,
+    mut characters: Query<&mut GridCoords, With<Character>>,
     map_info: Res<MapInfo>,
 ) {
     for entity_moved_message in entity_moved_reader.read() {
@@ -24,8 +24,8 @@ fn move_players(
         let position = entity_moved_message.position;
 
         if map_info.on_ground(position) {
-            if let Ok(mut player_grid_coords) = players.get_mut(entity) {
-                *player_grid_coords = position;
+            if let Ok(mut grid_coords) = characters.get_mut(entity) {
+                *grid_coords = position;
             }
         }
     }

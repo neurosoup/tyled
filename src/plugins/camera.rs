@@ -133,40 +133,40 @@ fn update_hud_viewport(
 fn update_camera(
     mut set: ParamSet<(
         Single<(&mut Transform, &mut Projection), (With<Camera2d>, Without<RenderLayers>)>,
-        Query<&Transform, With<Player>>,
+        Query<&Transform, With<Character>>,
     )>,
     time: Res<Time>,
 ) {
     // Calculate barycenter of all player positions
-    let player_count = set.p1().count() as f32;
-    if player_count == 0.0 {
+    let character_count = set.p1().count() as f32;
+    if character_count == 0.0 {
         return;
     }
 
     let mut total_x = 0.0;
     let mut total_y = 0.0;
 
-    // Collect player positions for barycenter and distance calculations
-    let player_positions: Vec<Vec2> = {
+    // Collect characters positions for barycenter and distance calculations
+    let character_positions: Vec<Vec2> = {
         set.p1()
             .iter()
             .map(|transform| Vec2::new(transform.translation.x, transform.translation.y))
             .collect()
     };
 
-    for position in &player_positions {
+    for position in &character_positions {
         total_x += position.x;
         total_y += position.y;
     }
 
-    let barycenter = Vec2::new(total_x / player_count, total_y / player_count);
+    let barycenter = Vec2::new(total_x / character_count, total_y / character_count);
 
     // Calculate the maximum distance between any two players
-    let max_distance = if player_positions.len() > 1 {
+    let max_distance = if character_positions.len() > 1 {
         let mut max_dist = 0.0;
-        for i in 0..player_positions.len() {
-            for j in (i + 1)..player_positions.len() {
-                let distance = player_positions[i].distance(player_positions[j]);
+        for i in 0..character_positions.len() {
+            for j in (i + 1)..character_positions.len() {
+                let distance = character_positions[i].distance(character_positions[j]);
                 if distance > max_dist {
                     max_dist = distance;
                 }
@@ -177,7 +177,7 @@ fn update_camera(
         BASE_ZOOM_DISTANCE // Default distance for single player
     };
 
-    // Calculate desired zoom scale based on player spread
+    // Calculate desired zoom scale based on characters spread
     let zoom_factor = (max_distance / BASE_ZOOM_DISTANCE).clamp(0.5, 3.0);
     let target_scale = (MIN_ZOOM_SCALE * zoom_factor).clamp(MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
 
