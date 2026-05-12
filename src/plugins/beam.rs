@@ -8,7 +8,7 @@ use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
-    app.add_systems(Update, (spawn_beam, beam_step, claim_tile));
+    app.add_systems(Update, (spawn_beam, beam_step, claim_tile, decrement_beam_charges));
 }
 
 #[derive(Resource)]
@@ -153,7 +153,6 @@ pub(crate) fn beam_step(
 fn claim_tile(
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     mut claimed_tiles: Query<&mut ClaimedTile>,
-    mut beam_charges: Query<&mut BeamCharges>,
     map_info: Res<MapInfo>,
 ) {
     for tile_claimed_message in beam_resolved_reader.read() {
@@ -163,11 +162,18 @@ fn claim_tile(
         {
             if let Ok(mut claimed_tile) = claimed_tiles.get_mut(*claimed_entity) {
                 claimed_tile.owner = Some(tile_claimed_message.owner);
-
-                if let Ok(mut charges) = beam_charges.get_mut(tile_claimed_message.owner) {
-                    charges.current = charges.current.saturating_sub(1);
-                }
             }
+        }
+    }
+}
+
+fn decrement_beam_charges(
+    mut beam_resolved_reader: MessageReader<BeamResolved>,
+    mut beam_charges: Query<&mut BeamCharges>,
+) {
+    for message in beam_resolved_reader.read() {
+        if let Ok(mut charges) = beam_charges.get_mut(message.owner) {
+            charges.current = charges.current.saturating_sub(1);
         }
     }
 }
