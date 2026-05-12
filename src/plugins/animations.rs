@@ -61,20 +61,20 @@ impl DigitAnimations {
 }
 
 fn update_digit_animation(
-    mut beam_charges_reader: MessageReader<BeamChargesChanged>,
+    players: Query<(&Player, &BeamCharges), Changed<BeamCharges>>,
     mut digits_query: Query<(Entity, &Player, &mut Digit)>,
     children_query: Query<&Children>,
     mut sprite_animations: Query<&mut SpritesheetAnimation>,
     digit_animations: If<Res<DigitAnimations>>,
 ) {
-    for message in beam_charges_reader.read() {
+    for (player, beam_charges) in &players {
         for (entity, digit_player, mut digit) in &mut digits_query {
-            if digit_player.player_id != message.player_id {
+            if digit_player.player_id != player.player_id {
                 continue;
             }
 
             let divisor = 10u32.pow(digit.position as u32);
-            let to = ((message.current / divisor) % 10) as u8;
+            let to = ((beam_charges.current / divisor) % 10) as u8;
 
             let from = digit.value;
             let Some(handle) = digit_animations.get(from, to) else {

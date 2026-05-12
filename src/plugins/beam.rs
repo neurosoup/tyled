@@ -153,17 +153,10 @@ pub(crate) fn beam_step(
 fn claim_tile(
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     mut claimed_tiles: Query<&mut ClaimedTile>,
-    players: Query<&Player, With<Character>>,
     mut beam_charges: Query<&mut BeamCharges>,
-    mut charges_changed_writer: MessageWriter<BeamChargesChanged>,
     map_info: Res<MapInfo>,
 ) {
     for tile_claimed_message in beam_resolved_reader.read() {
-        // Query the player id
-        let Ok(player) = players.get(tile_claimed_message.owner) else {
-            panic!("Did not find the player associated with the claim")
-        };
-
         if let Some(claimed_entity) = map_info
             .claimed_entities
             .get(&tile_claimed_message.position)
@@ -173,11 +166,6 @@ fn claim_tile(
 
                 if let Ok(mut charges) = beam_charges.get_mut(tile_claimed_message.owner) {
                     charges.current = charges.current.saturating_sub(1);
-                    charges_changed_writer.write(BeamChargesChanged {
-                        player_id: player.player_id,
-                        current: charges.current,
-                        max: charges.max,
-                    });
                 }
             }
         }
