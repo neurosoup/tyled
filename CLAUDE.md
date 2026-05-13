@@ -37,8 +37,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, claims tiles, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied` |
 | `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
-| `animations` | `bevy_spritesheet_animation` setup; attaches and switches player/tile sprite animations |
-| `hud` | Lerps HP bar `scale.x` to match `Health.ratio()` |
+| `animations` | `bevy_spritesheet_animation` setup; attaches and switches player/tile sprite animations; lerps HP bar `scale.x` to match `Health.ratio()` |
 | `debug` | `bevy-inspector-egui` world inspector (always enabled) |
 
 ### Communication pattern

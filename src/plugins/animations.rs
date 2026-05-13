@@ -17,6 +17,7 @@ pub(crate) fn plugin(app: &mut App) {
             animate_player,
             animate_claimed_tile,
             animate_beam_charges,
+            animate_hp,
             initialize_player_animations,
             initialize_claimed_tile_animations,
             initialize_digit_animations,
@@ -88,6 +89,23 @@ fn animate_beam_charges(
                 };
                 animation.switch(handle);
                 break;
+            }
+        }
+    }
+}
+
+fn animate_hp(
+    players: Query<(&Health, &Player), With<DamageEffectTarget>>,
+    mut hp_bars: Query<(&Player, &mut Transform), With<HPBar>>,
+) {
+    for (health, player) in &players {
+        for (hp_bar_player, mut transform) in &mut hp_bars {
+            if hp_bar_player.player_id == player.player_id {
+                let ratio = health.ratio();
+                transform.scale.x = transform.scale.x.lerp(ratio, 0.05);
+                if transform.scale.x <= 0.001 {
+                    transform.scale.x = 0.0;
+                }
             }
         }
     }

@@ -7,7 +7,7 @@ updated_date: '2026-06-15 12:00'
 ---
 # Animations Plugin
 
-Contains systems responsible for attaching and updating spritesheet animations on player entities, claimed tile entities, and HUD digit entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player and per-digit animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, manages animations for claimed tiles in reaction to `BeamResolved` messages, and drives flip-counter animations on `Digit` entities via `Changed<BeamCharges>` detection.
+Contains systems responsible for attaching and updating spritesheet animations on player entities, claimed tile entities, and HUD digit entities, as well as lerping HP bar transforms. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player and per-digit animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, manages animations for claimed tiles in reaction to `BeamResolved` messages, drives flip-counter animations on `Digit` entities via `Changed<BeamCharges>` detection, and smoothly animates HP bars as player health changes.
 
 ## Plugin workflow
 
@@ -64,6 +64,13 @@ Contains systems responsible for attaching and updating spritesheet animations o
                 - Computes per-digit target value from `BeamCharges::current` by position (`(current / 10^position) % 10`)
                 - Switches `SpritesheetAnimation` on the child sprite entity to the matching from→to transition clip
                 - Updates `Digit::value` to the new digit
+    - Animate HP:
+        - Runs every frame
+            - Reads:
+                - All `Player`-marked `DamageEffectTarget` entities with their `Health` and `Player` components
+                - All `HPBar` entities with their `Player` and `Transform` components
+            - Writes:
+                - Lerps `Transform::scale.x` on each matching `HPBar` entity toward `Health::ratio()` for the corresponding player
 
 ## Plugin Systems
 
@@ -876,4 +883,76 @@ digit_child_entity@{ shape: st-rect, label: "Digit Child (Sprite)" }
 dc_anim>"`**SpritesheetAnimation**`"] --> |belongs to| digit_child_entity
 
 sprite_animations_query ---> |writes (switches clip)| dc_anim
+```
+
+### Animate HP
+
+Runs every frame. Queries all player entities that carry `DamageEffectTarget`, reading their `Health` and `Player` components. For each player, it finds the matching `HPBar` entity by `player_id` and lerps the bar's `Transform::scale.x` toward `Health::ratio()` (a value in `[0.0, 1.0]`), giving the bar a smooth animated transition rather than an instant snap.
+
+## Components, Resources and Messages CRUD (animate_hp)
+
+### Query Player entities (health)
+
+Used in the following systems:
+- **animate_hp**: reads `Health` and `Player` components on `DamageEffectTarget`-marked entities to determine the current health ratio for each player
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_hp["`**animate_hp**`"]
+
+update -.-> animate_hp
+
+players_query{{"`players_query`"}}:::query
+animate_hp ---> players_query
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+pe_health>"`**Health**`"] --> |belongs to| player_entity
+pe_player>"`**Player**`"] --> |belongs to| player_entity
+pe_marker>"`**DamageEffectTarget**`"] --> |belongs to| player_entity
+
+players_query ---> |reads| pe_health
+players_query ---> |reads| pe_player
+players_query -..-> |filter With| pe_marker
+```
+
+### Query HPBar entities
+
+Used in the following systems:
+- **animate_hp**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_hp["`**animate_hp**`"]
+
+update -.-> animate_hp
+
+hp_bars_query{{"`hp_bars_query`"}}:::query
+animate_hp ---> hp_bars_query
+
+hp_bar_entity@{ shape: st-rect, label: "HPBar Entity" }
+
+hb_hp_bar>"`**HPBar**`"] --> |belongs to| hp_bar_entity
+hb_transform>"`**Transform**`"] --> |belongs to| hp_bar_entity
+
+hp_bars_query ---> |reads| hb_hp_bar
+hp_bars_query ---> |writes| hb_transform
 ```

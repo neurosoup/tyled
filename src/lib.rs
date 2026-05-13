@@ -27,6 +27,5 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::beam::plugin);
         app.add_plugins(plugins::damage::plugin);
         app.add_plugins(plugins::debug::plugin);
-        app.add_plugins(plugins::hud::plugin);
     }
 }
