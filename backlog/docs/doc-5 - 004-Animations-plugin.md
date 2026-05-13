@@ -3,7 +3,7 @@ id: doc-5
 title: '[004] Animations plugin'
 type: other
 created_date: '2026-02-01 18:59'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-05-13 14:36'
 ---
 # Animations Plugin
 
@@ -609,7 +609,7 @@ initialize_claimed_tile_animations ---> |inserts component| ct_bounce
 
 Used in the following systems:
 - **animate_claimed_tile**: switches the `SpritesheetAnimation` clip and inserts `BounceEffectTarget` on the resolved claimed tile entity when a `BeamResolved` message is received
-
+gg
 ```mermaid
 ---
 config:
@@ -789,12 +789,12 @@ update -.-> animate_beam_charges
 world@{ shape: st-rect, label: "World" }
 digit_anims_res@{ shape: doc, label: "DigitAnimations" }
 
-da_handles>"`**handles #91;#91;Handle#60;Animation#62;; 10#93;; 10#93;**`"]
+da_handles>"`**handles**`"]
 
 digit_anims_res --> |belongs to| world
 da_handles --> |field of| digit_anims_res
 
-animate_beam_charges ---> |reads `get(from, to)`| digit_anims_res
+animate_beam_charges ---> |"reads get(from, to)"| digit_anims_res
 ```
 
 ### Write DigitAnimations resource
@@ -819,7 +819,7 @@ update -.-> initialize_digit_animations
 world@{ shape: st-rect, label: "World" }
 digit_anims_res@{ shape: doc, label: "DigitAnimations" }
 
-da_handles>"`**handles #91;#91;Handle#60;Animation#62;; 10#93;; 10#93;**`"]
+da_handles>"`**handles**`"]
 
 digit_anims_res --> |belongs to| world
 da_handles --> |field of| digit_anims_res
@@ -882,7 +882,7 @@ digit_child_entity@{ shape: st-rect, label: "Digit Child (Sprite)" }
 
 dc_anim>"`**SpritesheetAnimation**`"] --> |belongs to| digit_child_entity
 
-sprite_animations_query ---> |writes (switches clip)| dc_anim
+sprite_animations_query ---> |"writes (switches clip)"| dc_anim
 ```
 
 ### Animate HP
