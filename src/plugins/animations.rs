@@ -14,12 +14,12 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            update_players_animation,
-            update_claimed_tile_animation,
-            update_digit_animation,
-            attach_player_animations,
-            attach_claimed_tile_animations,
-            attach_digit_animations,
+            animate_player,
+            animate_claimed_tile,
+            animate_beam_charges,
+            initialize_player_animations,
+            initialize_claimed_tile_animations,
+            initialize_digit_animations,
         ),
     );
 }
@@ -60,7 +60,7 @@ impl DigitAnimations {
     }
 }
 
-fn update_digit_animation(
+fn animate_beam_charges(
     players: Query<(&Player, &BeamCharges), Changed<BeamCharges>>,
     mut digits_query: Query<(Entity, &Player, &mut Digit)>,
     children_query: Query<&Children>,
@@ -93,7 +93,7 @@ fn update_digit_animation(
     }
 }
 
-fn update_claimed_tile_animation(
+fn animate_claimed_tile(
     mut commands: Commands,
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     players_query: Query<&Player, With<Character>>,
@@ -129,7 +129,7 @@ fn update_claimed_tile_animation(
     }
 }
 
-fn update_players_animation(
+fn animate_player(
     // Parent entity: has Player, LookDirection
     players: Query<(Entity, &Player, &LookDirection)>,
     // Used to traverse the hierarchy with iter_descendants
@@ -189,7 +189,7 @@ fn update_players_animation(
     }
 }
 
-fn attach_claimed_tile_animations(
+fn initialize_claimed_tile_animations(
     mut commands: Commands,
     unclaimed_tiles: Query<(Entity, &ClaimedTile), Added<ClaimedTile>>,
     assets: Res<AssetServer>,
@@ -245,7 +245,7 @@ fn attach_claimed_tile_animations(
     }
 }
 
-fn attach_player_animations(
+fn initialize_player_animations(
     mut commands: Commands,
     mut messages: MessageReader<TiledEvent<ObjectCreated>>,
     mut animations: ResMut<Assets<Animation>>,
@@ -321,7 +321,7 @@ fn attach_player_animations(
     }
 }
 
-pub fn attach_digit_animations(
+pub fn initialize_digit_animations(
     mut commands: Commands,
     mut messages: MessageReader<TiledEvent<ObjectCreated>>,
     digits_query: Query<Entity, With<Digit>>,

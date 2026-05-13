@@ -7,7 +7,7 @@ updated_date: '2026-06-15 12:00'
 ---
 # Beam Plugin
 
-Contains systems responsible for spawning and stepping beam projectiles fired by players, and for claiming tiles when a beam stops. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction until it either leaves the map bounds or hits an already-claimed tile. At that point a `BeamResolved` message is emitted, the tile ownership is updated via `claim_tile`, and the beam entity is despawned.
+Contains systems responsible for spawning and stepping beam projectiles fired by players, for claiming tiles when a beam stops, and for decrementing the firing player's beam charges. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction until it either leaves the map bounds or hits an already-claimed tile. At that point a `BeamResolved` message is emitted, `claim_tile` updates tile ownership, `decrement_beam_charges` decrements the player's `BeamCharges::current`, and the beam entity is despawned.
 
 ## Plugin workflow
 
@@ -36,12 +36,15 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
             - Reads:
                 - `BeamResolved` message fields (`position`, `owner`)
                 - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
-                - `Player` component (with `Character` filter) on the firing player entity (to get `player_id`)
-                - `BeamCharges` component on the firing player entity
             - Writes:
                 - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
+    - Decrement Beam Charges:
+        - Reacts to `BeamResolved` message
+            - Reads:
+                - `BeamResolved` message fields (`owner`)
+                - `BeamCharges` component on the firing player entity
+            - Writes:
                 - Decrements `BeamCharges::current` on the firing player (saturating at zero)
-                - Emits a `BeamChargesChanged { player_id, current, max }` message
 
 ## Plugin Systems
 
@@ -64,7 +67,11 @@ If neither rule fires, the beam advances: `GridCoords` is overwritten with the n
 
 ### Claim Tile
 
-Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance. After claiming the tile, it also decrements the firing player's `BeamCharges::current` (saturating at zero) and emits a `BeamChargesChanged` message so that future display systems can react.
+Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance.
+
+### Decrement Beam Charges
+
+Reads `BeamResolved` messages. For each message, decrements `BeamCharges::current` (saturating at zero) on the firing player entity identified by `message.owner`. The resulting `Changed<BeamCharges>` detection drives the digit flip-counter animation in the Animations plugin.
 
 ## Components, Resources and Messages CRUD
 
@@ -100,6 +107,7 @@ message_reader ---> |reads| beam_fired_message
 
 Used in the following systems:
 - **claim_tile**: used to trigger tile ownership mutation when a beam stops
+- **decrement_beam_charges**: used to trigger beam charge decrement when a beam stops
 
 ```mermaid
 ---
@@ -113,47 +121,18 @@ classDef reader stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
 claim_tile["`**claim_tile**`"]
+decrement_beam_charges["`**decrement_beam_charges**`"]
 
 update -.-> claim_tile
+update -.-> decrement_beam_charges
 
 message_reader{{"MessageReader#60;BeamResolved#62;"}}:::reader
 claim_tile ---> message_reader
+decrement_beam_charges ---> message_reader
 
 beam_resolved_message(["`**BeamResolved**`"])
 
 message_reader ---> |reads| beam_resolved_message
-```
-
-### Query Player (claim tile)
-
-Used in the following systems:
-- **claim_tile**: reads `Player::player_id` from the firing player entity (filtered `With<Character>`) to populate `BeamChargesChanged.player_id`
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-claim_tile["`**claim_tile**`"]
-
-update -.-> claim_tile
-
-players_query{{"`players_query`"}}:::query
-claim_tile ---> players_query
-
-player_entity@{ shape: st-rect, label: "Player" }
-
-pe_player>"`**Player**`"] --> |belongs to| player_entity
-pe_character>"`**Character**`"] --> |belongs to| player_entity
-
-players_query ---> |reads| pe_player
-players_query -..-> |filter With| pe_character
 ```
 
 ### Query Beam entities (spawn)
@@ -421,10 +400,10 @@ beam_entity@{ shape: st-rect, label: "Beam" }
 beam_step ---> |despawns| beam_entity
 ```
 
-### Query BeamCharges (claim tile)
+### Query BeamCharges (decrement_beam_charges)
 
 Used in the following systems:
-- **claim_tile**: reads and mutably decrements the `BeamCharges` component on the firing player entity after a tile is claimed
+- **decrement_beam_charges**: reads and mutably decrements the `BeamCharges` component on the firing player entity after a beam resolves
 
 ```mermaid
 ---
@@ -437,12 +416,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-claim_tile["`**claim_tile**`"]
+decrement_beam_charges["`**decrement_beam_charges**`"]
 
-update -.-> claim_tile
+update -.-> decrement_beam_charges
 
 charges_query{{"`charges_query`"}}:::query
-claim_tile ---> charges_query
+decrement_beam_charges ---> charges_query
 
 player_entity@{ shape: st-rect, label: "Player" }
 
@@ -450,28 +429,4 @@ pe_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
 pe_current>"`**current**`"] --> |field of| pe_charges
 
 charges_query ---> |"writes (decrements)"| pe_current
-```
-
-### Write BeamChargesChanged messages
-
-Used in the following systems:
-- **claim_tile**: emits a `BeamChargesChanged` message after decrementing the firing player's charges so display systems can react
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-claim_tile["`**claim_tile**`"]
-
-update -.-> claim_tile
-
-beam_charges_changed_message(["`**BeamChargesChanged**`"])
-
-claim_tile ---> |writes| beam_charges_changed_message
 ```

@@ -48,7 +48,6 @@ Systems communicate via **messages** (from `bevy_ecs_tiled`), not direct queries
 - `EntityMoved { entity, position }` — player wants to move
 - `BeamFired { owner, origin, direction }` — player fired a beam
 - `BeamResolved { position, owner }` — beam landed on a tile
-- `BeamChargesChanged { player, current, max }` — a player's beam charge count changed
 - `DamageableDied { entity }` — an entity's HP hit zero
 
 ### Grid coordinate system
