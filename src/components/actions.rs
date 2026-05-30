@@ -50,7 +50,7 @@ impl Action {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Reflect, Default)]
+#[derive(Debug, PartialEq, Clone, Copy, Reflect, Default)]
 #[reflect(Default)]
 pub enum Direction {
     #[default]

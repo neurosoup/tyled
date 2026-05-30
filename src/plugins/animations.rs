@@ -158,48 +158,36 @@ fn animate_player(
     player_two_animations: If<Res<PlayerTwoAnimations>>,
 ) {
     for (entity, player, look_direction) in &players {
+        let Some(direction) = look_direction.direction else {
+            continue;
+        };
+
         for descendant in children_query.iter_descendants(entity) {
             let Ok((mut sprite, mut animation)) = sprites.get_mut(descendant) else {
                 continue;
             };
 
-            match player.player_id {
-                0 => match look_direction.direction {
-                    Some(Direction::Up) => {
-                        animation.switch(player_one_animations.idle_up.clone());
-                    }
-                    Some(Direction::Down) => {
-                        animation.switch(player_one_animations.idle_down.clone());
-                    }
-                    Some(Direction::Left) => {
-                        animation.switch(player_one_animations.idle_x.clone());
-                        sprite.flip_x = true;
-                    }
-                    Some(Direction::Right) => {
-                        animation.switch(player_one_animations.idle_x.clone());
-                        sprite.flip_x = false;
-                    }
-                    None => {}
+            let (target_handle, flip_x) = match player.player_id {
+                0 => match direction {
+                    Direction::Up => (player_one_animations.idle_up.clone(), sprite.flip_x),
+                    Direction::Down => (player_one_animations.idle_down.clone(), sprite.flip_x),
+                    Direction::Left => (player_one_animations.idle_x.clone(), false),
+                    Direction::Right => (player_one_animations.idle_x.clone(), true),
                 },
-                1 => match look_direction.direction {
-                    Some(Direction::Up) => {
-                        animation.switch(player_two_animations.idle_up.clone());
-                    }
-                    Some(Direction::Down) => {
-                        animation.switch(player_two_animations.idle_down.clone());
-                    }
-                    Some(Direction::Left) => {
-                        animation.switch(player_two_animations.idle_x.clone());
-                        sprite.flip_x = true;
-                    }
-                    Some(Direction::Right) => {
-                        animation.switch(player_two_animations.idle_x.clone());
-                        sprite.flip_x = false;
-                    }
-                    None => {}
+                1 => match direction {
+                    Direction::Up => (player_two_animations.idle_up.clone(), sprite.flip_x),
+                    Direction::Down => (player_two_animations.idle_down.clone(), sprite.flip_x),
+                    Direction::Left => (player_two_animations.idle_x.clone(), false),
+                    Direction::Right => (player_two_animations.idle_x.clone(), true),
                 },
                 _ => panic!("Invalid player ID"),
+            };
+
+            // switch() always resets to frame 0, so only call it when the animation changes
+            if animation.animation != target_handle {
+                animation.switch(target_handle);
             }
+            sprite.flip_x = flip_x;
 
             // Only one sprite child expected per player, stop after the first match
             break;
