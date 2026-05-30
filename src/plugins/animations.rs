@@ -296,23 +296,60 @@ fn initialize_player_animations(
             return;
         };
 
-        let spritesheet = Spritesheet::new(&image, 40, 32);
+        let spritesheet = Spritesheet::new(&image, 12, 12);
+        const FRAME_MS: u32 = 200;
 
         let idle_left_right_animation_handle = match player.player_id {
-            0 => animations.add(spritesheet.create_animation().add_cell(3, 0).build()),
-            1 => animations.add(spritesheet.create_animation().add_cell(3, 1).build()),
+            0 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(1, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
+            1 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(5, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
             _ => panic!("Invalid player ID"),
         };
 
         let idle_down_animation_handle = match player.player_id {
-            0 => animations.add(spritesheet.create_animation().add_cell(0, 0).build()),
-            1 => animations.add(spritesheet.create_animation().add_cell(0, 1).build()),
+            0 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(0, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
+            1 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(4, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
             _ => panic!("Invalid player ID"),
         };
 
         let idle_up_animation_handle = match player.player_id {
-            0 => animations.add(spritesheet.create_animation().add_cell(2, 0).build()),
-            1 => animations.add(spritesheet.create_animation().add_cell(2, 1).build()),
+            0 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(2, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
+            1 => animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(6, 0..=3)
+                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .build(),
+            ),
             _ => panic!("Invalid player ID"),
         };
 
@@ -365,9 +402,10 @@ pub fn initialize_digit_animations(
             continue;
         };
 
-        let spritesheet = Spritesheet::new(&image, 40, 32);
+        let spritesheet = Spritesheet::new(&image, 40, 3);
 
         const FRAME_MS: u32 = 100;
+        const DIGIT_ROW: usize = 2;
 
         let mut make_anim = |from: usize, to: usize| -> Handle<Animation> {
             let (builder, direction) = match (from, to) {
@@ -375,16 +413,16 @@ pub fn initialize_digit_animations(
                 (9, 0) => (
                     spritesheet
                         .create_animation()
-                        .add_cell(39, 8)
-                        .add_partial_row(8, 0..=3),
+                        .add_cell(39, DIGIT_ROW)
+                        .add_partial_row(DIGIT_ROW, 0..=3),
                     AnimationDirection::Forwards,
                 ),
                 // 0→9: same cells as 9→0 played backwards → 3, 2, 1, 0, 39
                 (0, 9) => (
                     spritesheet
                         .create_animation()
-                        .add_cell(39, 8)
-                        .add_partial_row(8, 0..=3),
+                        .add_cell(39, DIGIT_ROW)
+                        .add_partial_row(DIGIT_ROW, 0..=3),
                     AnimationDirection::Backwards,
                 ),
                 _ => {
@@ -397,7 +435,7 @@ pub fn initialize_digit_animations(
                     (
                         spritesheet
                             .create_animation()
-                            .add_partial_row(8, start..=end),
+                            .add_partial_row(DIGIT_ROW, start..=end),
                         direction,
                     )
                 }
