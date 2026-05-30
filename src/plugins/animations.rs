@@ -197,27 +197,33 @@ fn animate_player(
 
 fn initialize_claimed_tile_animations(
     mut commands: Commands,
-    unclaimed_tiles: Query<(Entity, &ClaimedTile), Added<ClaimedTile>>,
+    mut unclaimed_tiles: Query<(Entity, &ClaimedTile, &mut Transform), Added<ClaimedTile>>,
     assets: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<Animation>>,
 ) {
-    for (entity, _) in &unclaimed_tiles {
-        let image = assets.load("atlas1.png");
-        let spritesheet = Spritesheet::new(&image, 40, 32);
-        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 16), 40, 32, None, None);
+    for (entity, _, mut transform) in &mut unclaimed_tiles {
+        // Sprite is 16×32 over a 16×16 grid cell; shift up so the bottom aligns
+        // with the cell bottom and the top 16px overflow above.
+        transform.translation.y += 8.0;
+        commands
+            .entity(entity)
+            .insert(RestingTranslation(transform.translation));
+        let image = assets.load("tiles.png");
+        let spritesheet = Spritesheet::new(&image, 12, 12);
+        let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 12, 12, None, None);
         let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
         const FLIP_FRAME_MS: u32 = 20;
 
         let unclaimed_animation_handle =
-            animations.add(spritesheet.create_animation().add_cell(0, 3).build());
+            animations.add(spritesheet.create_animation().add_cell(0, 2).build());
         commands.insert_resource(ClaimedTileAnimations {
             unclaimed: unclaimed_animation_handle.clone(),
             to_player_one: animations.add(
                 spritesheet
                     .create_animation()
-                    .add_partial_row(4, 0..=11)
+                    .add_partial_row(0, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
                     .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
                     .build(),
@@ -225,7 +231,7 @@ fn initialize_claimed_tile_animations(
             to_player_two: animations.add(
                 spritesheet
                     .create_animation()
-                    .add_partial_row(5, 0..=11)
+                    .add_partial_row(1, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
                     .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
                     .build(),

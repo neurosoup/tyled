@@ -166,24 +166,28 @@ fn on_death_effect_completed(
 fn apply_wave_effect(
     mut commands: Commands,
     mut wave_source_query: Query<(&GridCoords, &BounceEffect), Changed<GridCoords>>,
-    mut effect_targets: Query<(Entity, &GridCoords), With<WaveEffectTarget>>,
+    mut effect_targets: Query<
+        (Entity, &Transform, Option<&RestingTranslation>),
+        With<WaveEffectTarget>,
+    >,
     map_info: Res<MapInfo>,
 ) {
     for (source_coords, bounce_effect) in &mut wave_source_query {
         let Some(claimed_entity) = map_info.claimed_entities.get(source_coords) else {
             continue;
         };
-        if let Ok((entity, target_coords)) = effect_targets.get_mut(*claimed_entity) {
+        if let Ok((entity, transform, resting)) = effect_targets.get_mut(*claimed_entity) {
             let BounceEffect {
                 intensity,
                 bounce_count,
                 decay,
-                z_index,
+                ..
             } = *bounce_effect;
+            let origin = resting.map(|r| r.0).unwrap_or(transform.translation);
             commands
                 .entity(entity)
                 .insert(TweenAnim::new(create_bounce_tween(
-                    target_coords.to_translation_with_z_index(&map_info, z_index),
+                    origin,
                     intensity,
                     bounce_count,
                     decay,
@@ -194,20 +198,23 @@ fn apply_wave_effect(
 
 fn apply_bounce_effect(
     mut commands: Commands,
-    mut bounce_query: Query<(Entity, &GridCoords, &BounceEffect), Added<BounceEffectTarget>>,
-    map_info: Res<MapInfo>,
+    mut bounce_query: Query<
+        (Entity, &Transform, &BounceEffect, Option<&RestingTranslation>),
+        Added<BounceEffectTarget>,
+    >,
 ) {
-    for (entity, grid_coords, bounce_effect) in &mut bounce_query {
+    for (entity, transform, bounce_effect, resting) in &mut bounce_query {
         let BounceEffect {
             intensity,
             bounce_count,
             decay,
-            z_index,
+            ..
         } = *bounce_effect;
+        let origin = resting.map(|r| r.0).unwrap_or(transform.translation);
         commands
             .entity(entity)
             .insert(TweenAnim::new(create_bounce_tween(
-                grid_coords.to_translation_with_z_index(&map_info, z_index),
+                origin,
                 intensity,
                 bounce_count,
                 decay,

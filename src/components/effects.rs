@@ -36,3 +36,8 @@ pub struct TranslateEffectTarget;
  */
 #[derive(Component)]
 pub struct DamageEffectTarget;
+
+/// Stores the resting world position for entities whose Transform may be mid-tween.
+/// Used by bounce/wave effects so they always return to the correct origin.
+#[derive(Component)]
+pub struct RestingTranslation(pub Vec3);
