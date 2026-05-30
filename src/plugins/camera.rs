@@ -4,12 +4,12 @@
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
-    camera::{ScalingMode, Viewport, visibility::RenderLayers},
-    post_process::dof::DepthOfField,
+    camera::{Viewport, visibility::RenderLayers},
     prelude::*,
     window::WindowResized,
 };
 use bevy_ecs_tiled::prelude::{MapCreated, TiledEvent, TiledImage, TiledObject};
+use bevy_smooth_pixel_camera::prelude::*;
 use rand::Rng;
 
 /// How quickly should the camera snap to the desired location.
@@ -45,7 +45,10 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (initialize_hud_rendering, update_camera, update_hud_viewport),
     );
-    app.add_plugins(HierarchyPropagatePlugin::<RenderLayers>::new(Update));
+    app.add_plugins((
+        HierarchyPropagatePlugin::<RenderLayers>::new(Update),
+        PixelCameraPlugin,
+    ));
 }
 
 fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
@@ -86,11 +89,20 @@ fn initialize_hud_rendering(
 fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
     commands.spawn((
         Camera2d,
-        DepthOfField::default(),
         Projection::Orthographic(OrthographicProjection {
             scale: MIN_ZOOM_SCALE,
             ..OrthographicProjection::default_2d()
         }),
+        PixelCamera {
+            // PixelSize(1.0) keeps the render texture at window resolution, so
+            // ScalingMode::WindowSize gives 1 world unit = 1 pixel and the original
+            // scale constants work without adjustment.
+            viewport_size: ViewportScalingMode::PixelSize(1.0),
+            smoothing: true,
+            // Use layer 2 for the pixel viewport to avoid colliding with HUD_RENDER_LAYER (1).
+            viewport_layers: RenderLayers::layer(2),
+            viewport_order: 2,
+        },
     ));
 
     commands.spawn((
@@ -102,7 +114,8 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
             ..OrthographicProjection::default_2d()
         }),
         Camera {
-            order: 1,
+            // Must be > viewport_order (2) so HUD composites on top of the game world.
+            order: 3,
             viewport: Some(hud_viewport(window.physical_width())),
             ..default()
         },
