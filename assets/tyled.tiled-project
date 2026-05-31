@@ -1,5 +1,5 @@
 {
-    "automappingRulesFile": "",
+    "automappingRulesFile": "rules.txt",
     "commands": [
     ],
     "compatibilityVersion": 1100,
@@ -10688,6 +10688,413 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 498,
+            "members": [
+                {
+                    "name": "matrix2",
+                    "propertyType": "glam::Mat2",
+                    "type": "class",
+                    "value": {
+                        "x_axis": {
+                            "x": 1,
+                            "y": 0
+                        },
+                        "y_axis": {
+                            "x": 0,
+                            "y": 1
+                        }
+                    }
+                },
+                {
+                    "name": "translation",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0
+                    }
+                }
+            ],
+            "name": "glam::Affine2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 499,
+            "members": [
+                {
+                    "name": "matrix3",
+                    "propertyType": "glam::Mat3A",
+                    "type": "class",
+                    "value": {
+                        "x_axis": {
+                            "x": null,
+                            "y": null,
+                            "z": null
+                        },
+                        "y_axis": {
+                            "x": null,
+                            "y": null,
+                            "z": null
+                        },
+                        "z_axis": {
+                            "x": null,
+                            "y": null,
+                            "z": null
+                        }
+                    }
+                },
+                {
+                    "name": "translation",
+                    "propertyType": "glam::Vec3A",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                }
+            ],
+            "name": "glam::Affine3A",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 500,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "y",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "glam::BVec2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 501,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::DVec2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 502,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "glam::IVec2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 503,
+            "members": [
+                {
+                    "name": "x_axis",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 1,
+                        "y": 0
+                    }
+                },
+                {
+                    "name": "y_axis",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 1
+                    }
+                }
+            ],
+            "name": "glam::Mat2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 504,
+            "members": [
+                {
+                    "name": "x_axis",
+                    "propertyType": "glam::Vec3A",
+                    "type": "class",
+                    "value": {
+                        "x": 1,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "y_axis",
+                    "propertyType": "glam::Vec3A",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 1,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "z_axis",
+                    "propertyType": "glam::Vec3A",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 1
+                    }
+                }
+            ],
+            "name": "glam::Mat3A",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 505,
+            "members": [
+                {
+                    "name": "w",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "z",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::Quat",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 506,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "glam::UVec2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 507,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "z",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "glam::UVec3",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 508,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::Vec2",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 509,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "z",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::Vec3",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 510,
+            "members": [
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "z",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::Vec3A",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 511,
+            "members": [
+                {
+                    "name": "w",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "x",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "y",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "z",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "glam::Vec4",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 536,
             "members": [
                 {
@@ -10743,10 +11150,15 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 553,
+            "id": 549,
             "members": [
                 {
-                    "name": "position",
+                    "name": "digit_position",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "player_id",
                     "type": "int",
                     "value": 0
                 },
@@ -10756,7 +11168,33 @@
                     "value": 0
                 }
             ],
-            "name": "tyled::components::digit::Digit",
+            "name": "tyled::components::beam::BeamChargesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 550,
+            "members": [
+                {
+                    "name": "digit",
+                    "propertyType": "tyled::components::digits::Digit",
+                    "type": "class",
+                    "value": {
+                        "position": 0,
+                        "value": 0
+                    }
+                },
+                {
+                    "name": "player_id",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::digits::BeamChargesDigit",
             "type": "class",
             "useAs": [
                 "property"
@@ -10801,18 +11239,6 @@
                 }
             ],
             "name": "tyled::components::grid_coords::GridCoords",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 554,
-            "members": [
-            ],
-            "name": "tyled::components::markers::Character",
             "type": "class",
             "useAs": [
                 "property"
@@ -10903,144 +11329,20 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 555,
+            "id": 553,
             "members": [
                 {
-                    "name": "matrix2",
-                    "propertyType": "glam::Mat2",
-                    "type": "class",
-                    "value": {
-                        "x_axis": {
-                            "x": 1,
-                            "y": 0
-                        },
-                        "y_axis": {
-                            "x": 0,
-                            "y": 1
-                        }
-                    }
-                },
-                {
-                    "name": "translation",
-                    "propertyType": "glam::Vec2",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 0
-                    }
-                }
-            ],
-            "name": "glam::Affine2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 556,
-            "members": [
-                {
-                    "name": "matrix3",
-                    "propertyType": "glam::Mat3A",
-                    "type": "class",
-                    "value": {
-                        "x_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
-                        },
-                        "y_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
-                        },
-                        "z_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
-                        }
-                    }
-                },
-                {
-                    "name": "translation",
-                    "propertyType": "glam::Vec3A",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 0,
-                        "z": 0
-                    }
-                }
-            ],
-            "name": "glam::Affine3A",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 557,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "bool",
-                    "value": false
-                },
-                {
-                    "name": "y",
-                    "type": "bool",
-                    "value": false
-                }
-            ],
-            "name": "glam::BVec2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 558,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::DVec2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 559,
-            "members": [
-                {
-                    "name": "x",
+                    "name": "position",
                     "type": "int",
                     "value": 0
                 },
                 {
-                    "name": "y",
+                    "name": "value",
                     "type": "int",
                     "value": 0
                 }
             ],
-            "name": "glam::IVec2",
+            "name": "tyled::components::digit::Digit",
             "type": "class",
             "useAs": [
                 "property"
@@ -11049,259 +11351,10 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 560,
+            "id": 554,
             "members": [
-                {
-                    "name": "x_axis",
-                    "propertyType": "glam::Vec2",
-                    "type": "class",
-                    "value": {
-                        "x": 1,
-                        "y": 0
-                    }
-                },
-                {
-                    "name": "y_axis",
-                    "propertyType": "glam::Vec2",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 1
-                    }
-                }
             ],
-            "name": "glam::Mat2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 561,
-            "members": [
-                {
-                    "name": "x_axis",
-                    "propertyType": "glam::Vec3A",
-                    "type": "class",
-                    "value": {
-                        "x": 1,
-                        "y": 0,
-                        "z": 0
-                    }
-                },
-                {
-                    "name": "y_axis",
-                    "propertyType": "glam::Vec3A",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 1,
-                        "z": 0
-                    }
-                },
-                {
-                    "name": "z_axis",
-                    "propertyType": "glam::Vec3A",
-                    "type": "class",
-                    "value": {
-                        "x": 0,
-                        "y": 0,
-                        "z": 1
-                    }
-                }
-            ],
-            "name": "glam::Mat3A",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 562,
-            "members": [
-                {
-                    "name": "w",
-                    "type": "float",
-                    "value": 1
-                },
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "z",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::Quat",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 563,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "int",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "glam::UVec2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 564,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "int",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "int",
-                    "value": 0
-                },
-                {
-                    "name": "z",
-                    "type": "int",
-                    "value": 0
-                }
-            ],
-            "name": "glam::UVec3",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 565,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::Vec2",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 566,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "z",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::Vec3",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 567,
-            "members": [
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "z",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::Vec3A",
-            "type": "class",
-            "useAs": [
-                "property"
-            ]
-        },
-        {
-            "color": "#ff000000",
-            "drawFill": true,
-            "id": 568,
-            "members": [
-                {
-                    "name": "w",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "x",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "y",
-                    "type": "float",
-                    "value": 0
-                },
-                {
-                    "name": "z",
-                    "type": "float",
-                    "value": 0
-                }
-            ],
-            "name": "glam::Vec4",
+            "name": "tyled::components::markers::Character",
             "type": "class",
             "useAs": [
                 "property"

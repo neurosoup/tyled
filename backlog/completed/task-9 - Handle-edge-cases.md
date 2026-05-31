@@ -1,7 +1,7 @@
 ---
 id: TASK-9
 title: Handle edge cases
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-01-25 17:46'
 updated_date: '2026-01-25 17:46'

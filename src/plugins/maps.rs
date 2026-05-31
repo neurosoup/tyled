@@ -70,13 +70,13 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Loading maps");
 
     commands.spawn((
-        TiledMap(asset_server.load("level1.tmx")),
+        TiledMap(asset_server.load("level2.tmx")),
         CurrentLevel,
         TilemapAnchor::Center,
     ));
 
     commands.spawn((
-        TiledMap(asset_server.load("hud.tmx")),
+        TiledMap(asset_server.load("hud2.tmx")),
         HudMap,
         TilemapAnchor::Center,
     ));
@@ -106,9 +106,9 @@ fn initialize_map_info(
             continue;
         };
         let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
-            tilemap_query.iter().find(|(name, ..)| name.0 == "Atlas1")
+            tilemap_query.iter().find(|(name, ..)| name.0 == "ground")
         else {
-            panic!("Atlas tilemap not found");
+            panic!("Ground tilemap not found");
         };
         let ground_entities = ground_tiles_query
             .iter()
@@ -221,10 +221,10 @@ fn initialize_players(
                         current: 20.0,
                         max: 100.0,
                     },
-                    BeamCharges::new(999),
+                    BeamCharges::new(666),
                 ));
 
-                transform.scale = Vec3::new(1.1, 1.1, 1.0);
+                transform.scale = Vec3::new(1.25, 1.25, 1.0);
 
                 if let Ok(children) = children_query.get(entity) {
                     if let Some(&first_child) = children.first() {

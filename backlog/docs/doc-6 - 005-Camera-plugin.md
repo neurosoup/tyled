@@ -3,18 +3,26 @@ id: doc-6
 title: '[005] Camera plugin'
 type: other
 created_date: '2026-02-01 19:27'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-05-31 00:00'
 ---
 # Camera Plugin
 
-Contains systems related to camera initialization and runtime updates. The plugin spawns two cameras: a main gameplay camera that smoothly follows the barycenter of all player positions and dynamically adjusts its orthographic zoom, and a HUD camera that renders the HUD map in a fixed viewport strip at the top of the window.
+Contains systems related to camera initialization and runtime updates. The plugin uses `bevy_smooth_pixel_camera` for pixel-perfect sub-pixel smoothing on the main camera. Three cameras are active at runtime:
+
+| Camera | Render layer | Order | Purpose |
+|--------|-------------|-------|---------|
+| Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders the game world to an off-screen texture |
+| ViewportCamera | layer 2 | 2 | Spawned automatically by `PixelCamera`; composites the off-screen texture onto the window |
+| HUD camera | layer 1 | 3 | Renders the HUD map in a fixed viewport strip at the top of the window |
+
+The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `ViewportImage` sprite child. Its `snap_camera_position` system (PostUpdate) snaps the main camera's `GlobalTransform` to the nearest integer world unit and offsets the `ViewportImage` by the subpixel remainder to produce smooth motion without pixel crawl.
 
 ## Plugin workflow
 
 - Startup phase
     - `initialize_cameras` spawns two camera entities:
-        - A main `Camera2d` with `DepthOfField` and an `OrthographicProjection` set to `MIN_ZOOM_SCALE`.
-        - A HUD `Camera2d` assigned to `RenderLayers` layer 1, with a fixed viewport occupying the top strip of the window.
+        - A main `Camera2d` with `PixelCamera` (`ViewportScalingMode::PixelSize(1.0)`) and an `OrthographicProjection` starting at `ZOOM_LEVELS[0]` (1/4). `PixelCamera` automatically spawns a `ViewportCamera` child on layer 2 with render order 2.
+        - A HUD `Camera2d` assigned to `RenderLayers` layer 1, render order 3, with a fixed viewport occupying the top strip of the window.
     - `randomize_clear_color` randomizes the background hue each run (fixed saturation and lightness).
 - Update phase
     - `initialize_hud_rendering`:
@@ -22,7 +30,8 @@ Contains systems related to camera initialization and runtime updates. The plugi
         - Inserts `Propagate(RenderLayers)` on the HUD map root entity so all its children are rendered exclusively in the HUD camera layer
     - `update_camera`:
         - Reads all `Character` transforms, computes the barycenter and max inter-player distance
-        - Smoothly nudges the main camera `Transform` toward the barycenter and lerps the orthographic zoom scale
+        - Smoothly nudges the main camera `Transform` toward the barycenter (`CAMERA_DECAY_RATE`)
+        - Lerps the orthographic scale toward the nearest pixel-perfect zoom level (`ZOOM_DECAY_RATE`), then snaps exactly once within 0.001 to guarantee a clean 1/n value
     - `update_hud_viewport`:
         - Reacts to `WindowResized` events
         - Recalculates the HUD camera viewport rect and orthographic scale to keep the HUD correctly sized regardless of window dimensions
@@ -31,10 +40,10 @@ Contains systems related to camera initialization and runtime updates. The plugi
 
 ### Initialize Cameras
 
-Spawns two camera entities at startup:
+Spawns two camera entities at startup, resulting in three active cameras at runtime:
 
-1. **Main camera** — carries `Camera2d`, `DepthOfField` post-process effect, and an `OrthographicProjection` starting at `MIN_ZOOM_SCALE` (0.33 — zoomed out). This camera renders the game world on the default render layer.
-2. **HUD camera** — carries `Camera2d` and is assigned to `RenderLayers` layer 1. Its viewport is set to a fixed top strip of the window. `order` is set higher than the main camera so it composites on top.
+1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `ZOOM_LEVELS[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera and HUD camera.
+2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
 
 ### Randomize Clear Color
 
@@ -50,7 +59,9 @@ Runs every frame. Reads the `Transform` of every `Character` entity to compute:
 - The **barycenter** (average position) — the camera target.
 - The **max inter-player distance** — used to derive the desired zoom scale.
 
-The camera `Transform` is smoothly nudged toward the barycenter using `smooth_nudge` (decay rate `0.5`), and the `OrthographicProjection` scale is lerped toward the target zoom, clamped between `MIN_ZOOM_SCALE` (0.33) and `MAX_ZOOM_SCALE` (2.0).
+The camera `Transform` is smoothly nudged toward the barycenter using `smooth_nudge` (decay rate `CAMERA_DECAY_RATE`).
+
+Zoom is pixel-perfect: only the four levels in `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) are valid target values, since with `PixelSize(1.0)` these are the only scales where 1 world unit = an integer number of screen pixels. The nearest level is selected by mapping `max_distance` through `BASE_ZOOM_DISTANCE` to a continuous scale, then picking the closest entry in `ZOOM_LEVELS`. The `OrthographicProjection` scale lerps toward the target at `ZOOM_DECAY_RATE` and snaps exactly once within 0.001 to guarantee the final value is a clean 1/n fraction.
 
 ### Update HUD Viewport
 
@@ -205,6 +216,7 @@ ce_camera2d>"`**Camera2d**`"] --> |belongs to| camera_entity
 camera_query ---> |writes| ce_transform
 camera_query ---> |writes| ce_projection
 camera_query -..-> |filter With| ce_camera2d
+camera_query -..-> |filter Without RenderLayers - excludes ViewportCamera and HUD camera| ce_camera2d
 ```
 
 ### Write HUD Camera components (viewport)
@@ -272,7 +284,7 @@ initialize_hud_rendering ---> |inserts component| hm_propagate
 ### Write commands — initialize_cameras (Startup)
 
 Used in the following systems:
-- **initialize_cameras**: spawns the main camera and the HUD camera entities with their initial components
+- **initialize_cameras**: spawns the main camera and the HUD camera entities with their initial components. `PixelCamera::on_add` automatically spawns additional child entities (`ViewportCamera` on layer 2 / order 2, and `ViewportImage`).
 
 ```mermaid
 ---
@@ -289,28 +301,30 @@ initialize_cameras["`**initialize_cameras**`"]
 startup -.-> initialize_cameras
 
 main_camera_entity@{ shape: st-rect, label: "Main Camera (spawned)" }
+viewport_camera_entity@{ shape: st-rect, label: "ViewportCamera + ViewportImage (auto-spawned by PixelCamera)" }
 hud_camera_entity@{ shape: st-rect, label: "HUD Camera (spawned)" }
 
 mc_camera2d>"`**Camera2d**`"]
-mc_depth_of_field>"`**DepthOfField**`"]
-mc_projection>"`**Projection (Orthographic)**`"]
+mc_pixel_camera>"`**PixelCamera (PixelSize 1.0, layer 2, order 2)**`"]
+mc_projection>"`**Projection (Orthographic, scale ZOOM_LEVELS[0])**`"]
 
 hc_camera2d>"`**Camera2d**`"]
 hc_render_layers>"`**RenderLayers (layer 1)**`"]
-hc_viewport>"`**Camera::viewport**`"]
+hc_camera>"`**Camera (order 3, viewport top strip)**`"]
 
 mc_camera2d --> |spawned on| main_camera_entity
-mc_depth_of_field --> |spawned on| main_camera_entity
+mc_pixel_camera --> |spawned on| main_camera_entity
 mc_projection --> |spawned on| main_camera_entity
+mc_pixel_camera -.-> |triggers on_add → spawns| viewport_camera_entity
 
 hc_camera2d --> |spawned on| hud_camera_entity
 hc_render_layers --> |spawned on| hud_camera_entity
-hc_viewport --> |spawned on| hud_camera_entity
+hc_camera --> |spawned on| hud_camera_entity
 
 initialize_cameras ---> |spawns entity with| mc_camera2d
-initialize_cameras ---> |spawns entity with| mc_depth_of_field
+initialize_cameras ---> |spawns entity with| mc_pixel_camera
 initialize_cameras ---> |spawns entity with| mc_projection
 initialize_cameras ---> |spawns entity with| hc_camera2d
 initialize_cameras ---> |spawns entity with| hc_render_layers
-initialize_cameras ---> |spawns entity with| hc_viewport
+initialize_cameras ---> |spawns entity with| hc_camera
 ```

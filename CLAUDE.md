@@ -31,7 +31,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `defaults` | Bevy `DefaultPlugins` with nearest-neighbor filtering |
 | `messages` | Registers all game-wide `Message` types |
 | `maps` | Loads Tiled maps, populates `MapInfo` resource, initializes players/tiles/HP bars |
-| `camera` | Main camera (dynamic zoom tracking player barycenter) + HUD camera on `RenderLayers(1)` |
+| `camera` | Pixel-perfect main camera via `bevy_smooth_pixel_camera` (`PixelCamera`, layer 2 viewport, order 2) with dynamic zoom snapping to `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) + HUD camera on `RenderLayers(1)`, order 3 |
 | `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages; gates `BeamFired` when player's `BeamCharges` is exhausted |
 | `controller` | Reads `EntityMoved` messages, validates against `MapInfo`, updates player `GridCoords` |
 | `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, claims tiles, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
@@ -60,11 +60,19 @@ Systems communicate via **messages** (from `bevy_ecs_tiled`), not direct queries
 - `claimed_entities`: one `ClaimedTile` entity per ground tile (always present, owner is `None` until claimed)
 - `forbidden_areas`: impassable tiles (beam passes through but cannot resolve there)
 
-### Two maps, two cameras
+### Two maps, three cameras
 
 The game renders two Tiled maps simultaneously:
-- `level1.tmx` — the game board (default render layer, main camera)
+- `level1.tmx` — the game board (default render layer, main camera → off-screen texture → ViewportCamera)
 - `hud.tmx` — HP bar containers (render layer 1, HUD camera with a fixed top viewport)
+
+Three cameras are active at runtime:
+
+| Camera | Layer | Order | Role |
+|--------|-------|-------|------|
+| Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders game world to off-screen texture |
+| ViewportCamera (auto-spawned) | 2 | 2 | Composites off-screen texture onto window with subpixel smoothing |
+| HUD camera | 1 | 3 | Renders HUD strip at top of window |
 
 HUD entities carry `Propagate(RenderLayers::from_layers(&[1]))` so all their children are also on layer 1.
 
@@ -88,7 +96,7 @@ Input ticks at 75ms intervals; beam step ticks at 62.5ms (0.0625s).
 
 ### Documentation
 
-Each plugin and component has a corresponding doc in `backlog/docs/`. When modifying a plugin or component — adding/removing systems, changing queries, altering message fields, renaming things — update the matching doc to keep the workflow descriptions, system descriptions, and CRUD/mermaid diagrams in sync.
+Each plugin and component has a corresponding doc in `backlog/docs/`. These docs are kept in sync with the code and are authoritative: use them as the primary source for understanding a plugin's systems, queries, message flows, and component lifecycle before reading the source. When modifying a plugin or component — adding/removing systems, changing queries, altering message fields, renaming things — update the matching doc to keep the workflow descriptions, system descriptions, and CRUD/mermaid diagrams in sync.
 
 ### Asset pipeline
 

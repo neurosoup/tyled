@@ -13,13 +13,15 @@ use bevy_smooth_pixel_camera::prelude::*;
 use rand::Rng;
 
 /// How quickly should the camera snap to the desired location.
-const CAMERA_DECAY_RATE: f32 = 0.80;
-/// Minimum zoom scale (zoomed out)
-const MIN_ZOOM_SCALE: f32 = 0.33;
-/// Maximum zoom scale (zoomed in)
-const MAX_ZOOM_SCALE: f32 = 2.0;
+const CAMERA_DECAY_RATE: f32 = 3.0;
+/// How quickly the zoom lerps between pixel-perfect levels.
+const ZOOM_DECAY_RATE: f32 = 6.0;
 /// Base distance for zoom calculations
-const BASE_ZOOM_DISTANCE: f32 = 200.0;
+const BASE_ZOOM_DISTANCE: f32 = 150.0;
+
+/// Pixel-perfect zoom levels (1/n scales). With PixelSize(1.0), integer world positions
+/// map to integer screen pixels at any 1/n scale, so these are the only valid choices.
+const ZOOM_LEVELS: [f32; 4] = [1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0, 1.0];
 
 // HSL equivalent of srgb_u8(100, 122, 64): saturation and lightness are fixed,
 // only the hue is randomized each run.
@@ -90,15 +92,12 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
-            scale: MIN_ZOOM_SCALE,
+            scale: ZOOM_LEVELS[0],
             ..OrthographicProjection::default_2d()
         }),
         PixelCamera {
-            // PixelSize(1.0) keeps the render texture at window resolution, so
-            // ScalingMode::WindowSize gives 1 world unit = 1 pixel and the original
-            // scale constants work without adjustment.
             viewport_size: ViewportScalingMode::PixelSize(1.0),
-            smoothing: true,
+            smoothing: false,
             // Use layer 2 for the pixel viewport to avoid colliding with HUD_RENDER_LAYER (1).
             viewport_layers: RenderLayers::layer(2),
             viewport_order: 2,
@@ -190,9 +189,18 @@ fn update_camera(
         BASE_ZOOM_DISTANCE // Default distance for single player
     };
 
-    // Calculate desired zoom scale based on characters spread
+    // Snap to the nearest pixel-perfect zoom level.
     let zoom_factor = (max_distance / BASE_ZOOM_DISTANCE).clamp(0.5, 3.0);
-    let target_scale = (MIN_ZOOM_SCALE * zoom_factor).clamp(MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
+    let continuous_scale = ZOOM_LEVELS[0] * zoom_factor;
+    let target_scale = ZOOM_LEVELS
+        .iter()
+        .copied()
+        .min_by(|&a, &b| {
+            (a - continuous_scale)
+                .abs()
+                .total_cmp(&(b - continuous_scale).abs())
+        })
+        .unwrap();
 
     // Update camera position to barycenter
     let (mut camera_transform, mut projection) = set.p0().into_inner();
@@ -202,10 +210,13 @@ fn update_camera(
         .translation
         .smooth_nudge(&direction, CAMERA_DECAY_RATE, time.delta_secs());
 
-    // Update zoom scale smoothly
     if let Projection::Orthographic(ortho) = projection.as_mut() {
-        ortho.scale = ortho
-            .scale
-            .lerp(target_scale, CAMERA_DECAY_RATE * time.delta_secs());
+        if (ortho.scale - target_scale).abs() < 0.001 {
+            ortho.scale = target_scale;
+        } else {
+            ortho
+                .scale
+                .smooth_nudge(&target_scale, ZOOM_DECAY_RATE, time.delta_secs());
+        }
     }
 }
