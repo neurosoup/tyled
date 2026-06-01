@@ -13,9 +13,9 @@ use bevy_smooth_pixel_camera::prelude::*;
 use rand::Rng;
 
 /// How quickly should the camera snap to the desired location.
-const CAMERA_DECAY_RATE: f32 = 3.0;
+const CAMERA_DECAY_RATE: f32 = 4.0;
 /// How quickly the zoom lerps between pixel-perfect levels.
-const ZOOM_DECAY_RATE: f32 = 6.0;
+const ZOOM_DECAY_RATE: f32 = 8.0;
 /// Base distance for zoom calculations
 const BASE_ZOOM_DISTANCE: f32 = 150.0;
 
