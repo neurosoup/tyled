@@ -6,9 +6,11 @@ use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
     camera::{Viewport, visibility::RenderLayers},
     prelude::*,
+    render::view::Msaa,
     window::WindowResized,
 };
 use bevy_ecs_tiled::prelude::{MapCreated, TiledEvent, TiledImage, TiledObject};
+use bevy_smooth_pixel_camera::components::ViewportCamera;
 use bevy_smooth_pixel_camera::prelude::*;
 use rand::Rng;
 
@@ -45,7 +47,12 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, (initialize_cameras, randomize_clear_color));
     app.add_systems(
         Update,
-        (initialize_hud_rendering, update_camera, update_hud_viewport),
+        (
+            initialize_hud_rendering,
+            update_camera,
+            update_hud_viewport,
+            disable_viewport_camera_msaa,
+        ),
     );
     app.add_plugins((
         HierarchyPropagatePlugin::<RenderLayers>::new(Update),
@@ -91,6 +98,7 @@ fn initialize_hud_rendering(
 fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
     commands.spawn((
         Camera2d,
+        Msaa::Off,
         Projection::Orthographic(OrthographicProjection {
             scale: ZOOM_LEVELS[0],
             ..OrthographicProjection::default_2d()
@@ -108,6 +116,7 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         Name::new("Hud Camera"),
         HudMap,
         Camera2d,
+        Msaa::Off,
         IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
             ..OrthographicProjection::default_2d()
@@ -139,6 +148,18 @@ fn update_hud_viewport(
         let hud_physical_w = window.physical_width() as f32;
         let hud_content_w = (HUD_MAP_WIDTH * HUD_TILE_SIZE) as f32;
         ortho.scale = hud_content_w / hud_physical_w;
+    }
+}
+
+/// The ViewportCamera child spawned by PixelCamera's on_add hook has no Msaa::Off requirement,
+/// so it defaults to Sample4. This conflicts with the offscreen texture (Msaa::Off) and causes
+/// a wgpu validation error. Patch it as soon as the entity appears.
+fn disable_viewport_camera_msaa(
+    mut commands: Commands,
+    viewport_cameras: Query<Entity, Added<ViewportCamera>>,
+) {
+    for entity in &viewport_cameras {
+        commands.entity(entity).insert(Msaa::Off);
     }
 }
 
