@@ -24,11 +24,33 @@ fn setup_timer(mut commands: Commands) {
     )));
 }
 
+fn deal_damage(
+    entity: Entity,
+    health: &mut Health,
+    amount: f32,
+    writer: &mut MessageWriter<DamageableDied>,
+) {
+    health.current -= amount;
+    if health.current <= 0.0 {
+        writer.write(DamageableDied { entity });
+    }
+}
+
 fn apply_beam_damage(
     mut damageable_died_writer: MessageWriter<DamageableDied>,
-    damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
-    mut beams_query: Query<&Beam, Changed<GridCoords>>,
+    mut damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
+    beams_query: Query<(&Beam, &GridCoords), Changed<GridCoords>>,
 ) {
+    for (beam, beam_position) in &beams_query {
+        for (entity, position, mut health) in &mut damageables_query {
+            if health.current <= 0.0 {
+                continue;
+            }
+            if position == beam_position && beam.owner != entity {
+                deal_damage(entity, &mut health, 1.0, &mut damageable_died_writer);
+            }
+        }
+    }
 }
 
 fn apply_owned_tile_damage(
@@ -51,10 +73,7 @@ fn apply_owned_tile_damage(
         if let Some(claimed_entity) = map_info.get_claimed_entity_by_position(*position) {
             if let Ok(claimed_tile) = claimed_tiles_query.get(claimed_entity) {
                 if claimed_tile.owner.is_some_and(|owner| owner != entity) {
-                    health.current -= 1.0;
-                    if health.current <= 0.0 {
-                        damageable_died_writer.write(DamageableDied { entity });
-                    }
+                    deal_damage(entity, &mut health, 1.0, &mut damageable_died_writer);
                 }
             }
         }
