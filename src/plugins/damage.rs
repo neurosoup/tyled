@@ -35,8 +35,8 @@ fn apply_owned_tile_damage(
     time: Res<Time>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
-    mut characters: Query<(Entity, &GridCoords, &mut Health), With<Character>>,
-    claimed_tiles: Query<&ClaimedTile>,
+    mut characters_query: Query<(Entity, &GridCoords, &mut Health), With<Character>>,
+    claimed_tiles_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
 ) {
     timer.0.tick(time.delta());
@@ -44,12 +44,12 @@ fn apply_owned_tile_damage(
         return;
     }
 
-    for (entity, position, mut health) in &mut characters {
+    for (entity, position, mut health) in &mut characters_query {
         if health.current <= 0.0 {
             continue;
         }
         if let Some(claimed_entity) = map_info.get_claimed_entity_by_position(*position) {
-            if let Ok(claimed_tile) = claimed_tiles.get(claimed_entity) {
+            if let Ok(claimed_tile) = claimed_tiles_query.get(claimed_entity) {
                 if claimed_tile.owner.is_some_and(|owner| owner != entity) {
                     health.current -= 1.0;
                     if health.current <= 0.0 {
