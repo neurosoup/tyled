@@ -11,7 +11,7 @@ use crate::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_timer);
-    app.add_systems(Update, apply_damage);
+    app.add_systems(Update, (apply_owned_tile_damage, apply_beam_damage));
 }
 
 #[derive(Resource)]
@@ -24,12 +24,18 @@ fn setup_timer(mut commands: Commands) {
     )));
 }
 
-fn apply_damage(
+fn apply_beam_damage(
+    mut damageable_died_writer: MessageWriter<DamageableDied>,
+    damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
+    mut beams_query: Query<&Beam, Changed<GridCoords>>,
+) {
+}
+
+fn apply_owned_tile_damage(
     time: Res<Time>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
-    characters: Query<(Entity, &GridCoords), With<Character>>,
-    mut damageables: Query<&mut Health>,
+    mut characters: Query<(Entity, &GridCoords, &mut Health), With<Character>>,
     claimed_tiles: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
 ) {
@@ -38,19 +44,16 @@ fn apply_damage(
         return;
     }
 
-    // Apply damage to damageable entities that are in claimed areas but not owned by the character
-    for (entity, position) in &characters {
+    for (entity, position, mut health) in &mut characters {
+        if health.current <= 0.0 {
+            continue;
+        }
         if let Some(claimed_entity) = map_info.get_claimed_entity_by_position(*position) {
             if let Ok(claimed_tile) = claimed_tiles.get(claimed_entity) {
                 if claimed_tile.owner.is_some_and(|owner| owner != entity) {
-                    if let Ok(mut health) = damageables.get_mut(entity) {
-                        if health.current <= 0.0 {
-                            return;
-                        }
-                        health.current -= 1.0;
-                        if health.current <= 0.0 {
-                            damageable_died_writer.write(DamageableDied { entity });
-                        }
+                    health.current -= 1.0;
+                    if health.current <= 0.0 {
+                        damageable_died_writer.write(DamageableDied { entity });
                     }
                 }
             }
