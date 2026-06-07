@@ -11,9 +11,15 @@ Contains systems responsible for all visual effects applied to game entities. Th
 
 ## Plugin workflow
 
-- Update phase
+- Update phase (ordered: `apply_knockback` runs before `apply_translate_effect`)
+    - `apply_knockback`:
+        - Reacts to `Added<KnockbackEffect>` on non-dead entities
+            - Reads current `Transform` (start position) and `GridCoords`
+            - Reads `MapInfo` resource to validate target tile and compute destination
+            - If target is on ground: mutates `GridCoords` to target and inserts a slide `TweenAnim` (position A → B)
+            - Always removes `KnockbackEffect` from the entity
     - `apply_translate_effect`:
-        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities
+        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities **without** `KnockbackEffect` (knockback entities handle their own tween)
             - Reads current `Transform` and new `GridCoords`
             - Reads `MapInfo` resource (for world-space coordinate conversion)
             - Writes a `TweenAnim` with a `TransformPositionLens` tween toward the destination
@@ -38,9 +44,13 @@ Contains systems responsible for all visual effects applied to game entities. Th
 
 ## Plugin Systems
 
+### Apply Knockback
+
+Reacts to `Added<KnockbackEffect>` on entities that are not yet dead (`Without<IsDead>`). Computes the knockback target tile (`GridCoords + direction`), validates it with `MapInfo::on_ground`. If valid, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`) to move the entity from its current world position to the destination. Running before `apply_translate_effect` and excluding the entity from that system (via `Without<KnockbackEffect>`) prevents a plain slide tween from overriding the knockback one. The `KnockbackEffect` component is removed unconditionally.
+
 ### Apply Translate Effect
 
-Reacts to `Changed<GridCoords>` on entities that also carry a `TranslateEffectTarget` marker. Computes the world-space destination using the `MapInfo` resource and sets a new `TransformPositionLens` tween on the entity's `TweenAnim` component to smoothly interpolate the `Transform` from its current position to the destination. This provides smooth movement interpolation for players and beams without any coupling to the input or controller plugins.
+Reacts to `Changed<GridCoords>` on entities that also carry a `TranslateEffectTarget` marker and do **not** carry `KnockbackEffect` (which handles its own tween). Computes the world-space destination using the `MapInfo` resource and sets a new `TransformPositionLens` tween on the entity's `TweenAnim` component to smoothly interpolate the `Transform` from its current position to the destination. This provides smooth movement interpolation for players and beams without any coupling to the input or controller plugins.
 
 ### Apply Wave Effect
 
@@ -63,6 +73,101 @@ Reads `DamageableDied` messages. For each message, inserts three components on t
 Reads `AnimCompletedEvent` events emitted by the tweening system. For each event, checks whether the completed animation's target entity carries both `IsDead` and `BounceEffect`. If so, despawns the entity, ending its lifecycle cleanly after the death bounce has played out.
 
 ## Components, Resources and Messages CRUD
+
+### Query KnockbackEffect entities (knockback)
+
+Used in the following systems:
+- **apply_knockback**: reads `Transform`, `GridCoords`, and `KnockbackEffect` on newly knocked-back entities; mutates `GridCoords` and writes `TweenAnim`; removes `KnockbackEffect`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_knockback["`**apply_knockback**`"]
+
+update -.-> apply_knockback
+
+knockback_query{{"`knockback_query`"}}:::query
+apply_knockback ---> knockback_query
+
+player_entity@{ shape: st-rect, label: "Player Entity" }
+
+pe_transform>"`**Transform**`"] --> |belongs to| player_entity
+pe_coords>"`**GridCoords**`"] --> |belongs to| player_entity
+pe_knockback>"`**KnockbackEffect**`"] --> |belongs to| player_entity
+pe_tween>"`**TweenAnim**`"] --> |belongs to| player_entity
+
+knockback_query ---> |reads| pe_transform
+knockback_query -..-> |filter Added| pe_knockback
+knockback_query ---> |reads| pe_knockback
+knockback_query ---> |writes| pe_coords
+knockback_query ---> |writes| pe_tween
+```
+
+### Read MapInfo resource (knockback)
+
+Used in the following systems:
+- **apply_knockback**: validates the target tile with `on_ground` and converts `GridCoords` to world-space via `to_translation`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+apply_knockback["`**apply_knockback**`"]
+
+update -.-> apply_knockback
+
+world@{ shape: st-rect, label: "World" }
+map_info_res@{ shape: doc, label: "MapInfo" }
+
+map_info_res --> |belongs to| world
+
+apply_knockback ---> |reads `on_ground` + `to_translation`| map_info_res
+```
+
+### Write commands (apply_knockback)
+
+Used in the following systems:
+- **apply_knockback**: inserts a chained translate+bounce `TweenAnim` on the entity and removes `KnockbackEffect`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+apply_knockback["`**apply_knockback**`"]
+
+update -.-> apply_knockback
+
+player_entity@{ shape: st-rect, label: "Player Entity" }
+
+pe_tween_anim>"`**TweenAnim**`"]
+pe_knockback>"`**KnockbackEffect**`"]
+
+pe_tween_anim --> |written on| player_entity
+pe_knockback --> |removed from| player_entity
+
+apply_knockback ---> |writes slide tween on| pe_tween_anim
+apply_knockback ---> |removes component| pe_knockback
+```
 
 ### Read DamageableDied messages
 

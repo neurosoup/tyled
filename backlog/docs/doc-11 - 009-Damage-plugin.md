@@ -27,11 +27,12 @@ Contains systems responsible for dealing damage to entities and emitting `Damage
     - Apply Beam Damage:
         - Triggers when any `Beam` entity's `GridCoords` changes (i.e. each beam step)
             - Reads:
-                - `Beam.owner` and `GridCoords` on beam entities (filtered by `Changed<GridCoords>`)
+                - `Beam.owner`, `Beam.direction`, and `GridCoords` on beam entities (filtered by `Changed<GridCoords>`)
                 - `Entity`, `GridCoords`, and `Health` on all damageable entities
             - Writes:
                 - Decrements `Health::current` on any entity whose `GridCoords` matches the beam head, excluding the beam's owner
                 - Writes a `DamageableDied` message if `Health::current` drops to zero
+                - Inserts a `KnockbackEffect` (direction = opposite of beam direction) on the hit entity
 
 ## Plugin Systems
 
@@ -45,7 +46,7 @@ Runs every `DamageTimer` tick. Iterates over all `Character` entities with `Heal
 
 ### Apply Beam Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities whose position changed this frame (i.e. each beam step). For every such beam, iterates all entities with `Health`, skipping dead entities and the beam's own owner, and calls `deal_damage` for any whose `GridCoords` matches the beam head position.
+Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities whose position changed this frame (i.e. each beam step). For every such beam, iterates all entities with `Health`, skipping dead entities and the beam's own owner, and calls `deal_damage` for any whose `GridCoords` matches the beam head position. On a hit, also inserts a `KnockbackEffect` component on the damaged entity (direction = `-beam.direction`) so the effects plugin can push the entity one tile back and play the slide+bounce animation.
 
 ### deal_damage (helper)
 
@@ -264,6 +265,34 @@ de_health>"`**Health**`"] --> |belongs to| damageable_entity
 damageables_query ---> |reads| de_entity
 damageables_query ---> |reads| de_coords
 damageables_query ---> |writes| de_health
+```
+
+### Write KnockbackEffect (beam damage)
+
+Used in the following systems:
+- **apply_beam_damage**: inserts `KnockbackEffect` on the hit entity so the effects plugin slides and bounces it one tile opposite to the beam direction
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+apply_beam_damage["`**apply_beam_damage**`"]
+
+update -.-> apply_beam_damage
+
+damageable_entity@{ shape: st-rect, label: "Damageable Entity" }
+
+de_knockback>"`**KnockbackEffect**`"]
+
+de_knockback --> |inserted on| damageable_entity
+
+apply_beam_damage ---> |inserts component| de_knockback
 ```
 
 ### Write DamageableDied messages

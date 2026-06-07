@@ -37,6 +37,7 @@ fn deal_damage(
 }
 
 fn apply_beam_damage(
+    mut commands: Commands,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
     beams_query: Query<(&Beam, &GridCoords), Changed<GridCoords>>,
@@ -48,6 +49,9 @@ fn apply_beam_damage(
             }
             if position == beam_position && beam.owner != entity {
                 deal_damage(entity, &mut health, 1.0, &mut damageable_died_writer);
+                commands.entity(entity).insert(KnockbackEffect {
+                    direction: beam.direction,
+                });
             }
         }
     }

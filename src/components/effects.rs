@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 
+use super::grid_coords::GridCoords;
+
 #[derive(Component)]
 pub struct BounceEffect {
     pub intensity: f32,
@@ -41,3 +43,8 @@ pub struct DamageEffectTarget;
 /// Used by bounce/wave effects so they always return to the correct origin.
 #[derive(Component)]
 pub struct RestingTranslation(pub Vec3);
+
+#[derive(Component)]
+pub struct KnockbackEffect {
+    pub direction: GridCoords,
+}

@@ -15,6 +15,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
+            apply_knockback.before(apply_translate_effect),
             apply_translate_effect,
             apply_wave_effect,
             apply_bounce_effect,
@@ -87,11 +88,33 @@ pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
     ))
 }
 
+fn apply_knockback(
+    mut commands: Commands,
+    mut query: Query<
+        (Entity, &Transform, &mut GridCoords, &KnockbackEffect),
+        (Added<KnockbackEffect>, Without<IsDead>),
+    >,
+    map_info: Res<MapInfo>,
+) {
+    for (entity, transform, mut coords, knockback) in &mut query {
+        let target = *coords + knockback.direction;
+        if map_info.on_ground(target) {
+            let start = transform.translation;
+            let destination = target.to_translation(&map_info);
+            *coords = target;
+            commands.entity(entity).insert(
+                TweenAnim::new(create_movement_tween(start, destination)),
+            );
+        }
+        commands.entity(entity).remove::<KnockbackEffect>();
+    }
+}
+
 fn apply_translate_effect(
     mut commands: Commands,
     mut moving_objects: Query<
         (Entity, &Transform, &GridCoords),
-        (Changed<GridCoords>, With<TranslateEffectTarget>),
+        (Changed<GridCoords>, With<TranslateEffectTarget>, Without<KnockbackEffect>),
     >,
     map_info: Res<MapInfo>,
 ) {
