@@ -48,3 +48,6 @@ pub struct RestingTranslation(pub Vec3);
 pub struct KnockbackEffect {
     pub direction: GridCoords,
 }
+
+#[derive(Component)]
+pub struct IsKnockedBack;

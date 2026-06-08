@@ -51,7 +51,7 @@ fn handle_characters_input(
             &mut LookDirection,
             Option<&BeamCharges>,
         ),
-        With<Character>,
+        (With<Character>, Without<IsKnockedBack>),
     >,
     mut entity_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,

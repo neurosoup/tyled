@@ -103,6 +103,7 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
             scale: ZOOM_LEVELS[0],
             ..OrthographicProjection::default_2d()
         }),
+        IsDefaultUiCamera,
         PixelCamera {
             viewport_size: ViewportScalingMode::PixelSize(1.0),
             smoothing: false,
@@ -117,7 +118,6 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         HudMap,
         Camera2d,
         Msaa::Off,
-        IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
             ..OrthographicProjection::default_2d()
         }),
@@ -125,6 +125,7 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
             // Must be > viewport_order (2) so HUD composites on top of the game world.
             order: 3,
             viewport: Some(hud_viewport(window.physical_width())),
+            clear_color: ClearColorConfig::None,
             ..default()
         },
         RenderLayers::layer(HUD_RENDER_LAYER),

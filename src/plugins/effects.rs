@@ -22,6 +22,7 @@ pub(crate) fn plugin(app: &mut App) {
             apply_death_effect,
             apply_damage_effect,
             on_death_effect_completed,
+            on_knockback_tween_completed,
         ),
     );
 }
@@ -102,9 +103,10 @@ fn apply_knockback(
             let start = transform.translation;
             let destination = target.to_translation(&map_info);
             *coords = target;
-            commands.entity(entity).insert(
+            commands.entity(entity).insert((
                 TweenAnim::new(create_movement_tween(start, destination)),
-            );
+                IsKnockedBack,
+            ));
         }
         commands.entity(entity).remove::<KnockbackEffect>();
     }
@@ -182,6 +184,18 @@ fn on_death_effect_completed(
     for anim_completed_message in anim_completed_reader.read() {
         if let Ok(entity) = dead_entities.get(anim_completed_message.anim_entity) {
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn on_knockback_tween_completed(
+    mut commands: Commands,
+    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
+    knocked_back: Query<Entity, With<IsKnockedBack>>,
+) {
+    for ev in anim_completed_reader.read() {
+        if let Ok(entity) = knocked_back.get(ev.anim_entity) {
+            commands.entity(entity).remove::<IsKnockedBack>();
         }
     }
 }

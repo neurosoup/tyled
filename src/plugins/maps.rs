@@ -218,10 +218,10 @@ fn initialize_players(
                     TranslateEffectTarget,
                     DamageEffectTarget,
                     Health {
-                        current: 20.0,
+                        current: 100.0,
                         max: 100.0,
                     },
-                    BeamCharges::new(666),
+                    BeamCharges::new(map_info.ground_entities.len() as u32),
                 ));
 
                 transform.scale = Vec3::new(1.25, 1.25, 1.0);
