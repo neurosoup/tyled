@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           # clang + lld required by .cargo/config.toml linker config
-          sudo apt-get install -y clang lld libudev-dev libxkbcommon-dev
+          sudo apt-get install -y clang lld libudev-dev libxkbcommon-dev libwayland-dev
 
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
