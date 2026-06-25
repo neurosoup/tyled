@@ -3,6 +3,7 @@ pub(super) mod beam;
 pub(super) mod camera;
 pub(super) mod controller;
 pub(super) mod damage;
+#[cfg(feature = "dev")]
 pub(super) mod debug;
 pub(super) mod defaults;
 pub(super) mod effects;
@@ -15,6 +16,7 @@ pub use beam::*;
 pub use camera::*;
 pub use controller::*;
 pub use damage::*;
+#[cfg(feature = "dev")]
 pub use debug::*;
 pub use defaults::*;
 pub use effects::*;
