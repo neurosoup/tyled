@@ -3,7 +3,7 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-06-15 12:00'
+updated_date: '2026-06-14 16:30'
 ---
 # Effects Plugin
 
@@ -189,7 +189,7 @@ apply_death_effect["`**apply_death_effect**`"]
 
 update -.-> apply_death_effect
 
-message_reader{{"MessageReader#60;DamageableDied#62;"}}:::reader
+message_reader{{"MessageReaderDamageableDied#62;"}}:::reader
 apply_death_effect ---> message_reader
 
 damageable_died_message(["`**DamageableDied**`"])

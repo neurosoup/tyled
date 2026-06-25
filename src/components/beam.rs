@@ -6,4 +6,5 @@ pub struct Beam {
     pub owner: Entity,
     pub direction: GridCoords,
     pub speed: f32,
+    pub inverted: bool,
 }

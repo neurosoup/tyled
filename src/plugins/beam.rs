@@ -26,6 +26,8 @@ fn spawn_beam(
     mut commands: Commands,
     mut beam_fired_reader: MessageReader<BeamFired>,
     beams_query: Query<(&Beam, &GridCoords)>,
+    map_info: Res<MapInfo>,
+    claimed_query: Query<&ClaimedTile>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
@@ -40,12 +42,18 @@ fn spawn_beam(
             coords.x == beam_fired_message.origin.x && beam.direction.y != 0
         });
 
+        let inverted = map_info
+            .claimed_entities
+            .get(&beam_fired_message.origin)
+            .is_some_and(|e| claimed_query.get(*e).is_ok_and(|ct| ct.owner.is_some()));
+
         let mut entity_commands = commands.spawn((
             beam_fired_message.origin,
             Beam {
                 owner: beam_fired_message.owner,
                 direction: beam_fired_message.direction,
                 speed: 1.0,
+                inverted,
             },
         ));
         if !owner_has_active_beam {
@@ -74,6 +82,33 @@ pub(crate) fn beam_step(
     }
     for (beam_entity, beam, mut position) in &mut beams_query {
         let next_position = *position + beam.direction;
+
+        // +----------------------------+
+        // | Inverted mode (origin was  |
+        // | claimed): resolve on the   |
+        // | first unclaimed tile       |
+        // +----------------------------+
+        if beam.inverted {
+            if !(map_info.on_ground(next_position) || map_info.on_forbidden_areas(next_position)) {
+                commands.entity(beam_entity).despawn();
+                continue;
+            }
+            let is_next_unclaimed = map_info.on_ground(next_position)
+                && !map_info
+                    .claimed_entities
+                    .get(&next_position)
+                    .is_some_and(|e| claimed_query.get(*e).is_ok_and(|ct| ct.owner.is_some()));
+            if is_next_unclaimed {
+                beam_resolved_writer.write(BeamResolved {
+                    position: next_position,
+                    owner: beam.owner,
+                });
+                commands.entity(beam_entity).despawn();
+                continue;
+            }
+            *position = next_position;
+            continue;
+        }
 
         // +--------------------------+
         // | Out of map bounds rule   |

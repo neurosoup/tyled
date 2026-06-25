@@ -7,7 +7,12 @@ updated_date: '2026-06-15 12:00'
 ---
 # Beam Plugin
 
-Contains systems responsible for spawning and stepping beam projectiles fired by players, for claiming tiles when a beam stops, and for decrementing the firing player's beam charges. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction until it either leaves the map bounds or hits an already-claimed tile. At that point a `BeamResolved` message is emitted, `claim_tile` updates tile ownership, `decrement_beam_charges` decrements the player's `BeamCharges::current`, and the beam entity is despawned.
+Contains systems responsible for spawning and stepping beam projectiles fired by players, for claiming tiles when a beam stops, and for decrementing the firing player's beam charges. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction. The beam's behaviour depends on whether its origin tile was claimed at fire time:
+
+- **Normal mode** (origin unclaimed): advances until it leaves the map bounds or the next tile is already claimed. Resolves at the last unclaimed position.
+- **Inverted mode** (origin claimed): advances through claimed and forbidden tiles until the next tile would be unclaimed. Resolves at the current position (just before the first unclaimed tile). If no unclaimed tile is encountered before the edge, the beam despawns silently without claiming anything.
+
+When the beam resolves, `BeamResolved` is emitted, `claim_tile` updates tile ownership, `decrement_beam_charges` decrements the player's `BeamCharges::current`, and the beam entity is despawned.
 
 ## Plugin workflow
 
@@ -19,8 +24,10 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
             - Reads:
                 - `BeamFired` message fields (`owner`, `origin`, `direction`)
                 - `Beam` and `GridCoords` components on active beams (to detect lane overlap)
+                - `MapInfo` resource and `ClaimedTile` components (to determine if origin tile is claimed)
             - Writes:
-                - Always spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed}`
+                - Always spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,inverted}`
+                - `inverted` is `true` when the origin tile's `ClaimedTile::owner` is `Some` at fire time
                 - Also inserts `BounceEffect` unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire)
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
@@ -54,16 +61,21 @@ Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Time
 
 ### Spawn Beam
 
-Reacts to `BeamFired` messages emitted by the input system. For each message, always spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner has no existing beam traveling on the same lane — a horizontal beam suppresses `BounceEffect` if another of the owner's beams shares the same row (Y coordinate) and is also horizontal; a vertical beam suppresses it if another shares the same column (X coordinate) and is also vertical. This prevents overlapping visual effects when beams travel the same path. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
+Reacts to `BeamFired` messages emitted by the input system. For each message, checks whether the origin tile's `ClaimedTile::owner` is `Some` (using `MapInfo::claimed_entities` and a `ClaimedTile` query) to determine if the beam should be inverted. Always spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, inverted}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner has no existing beam traveling on the same lane — a horizontal beam suppresses `BounceEffect` if another of the owner's beams shares the same row (Y coordinate) and is also horizontal; a vertical beam suppresses it if another shares the same column (X coordinate) and is also vertical. This prevents overlapping visual effects when beams travel the same path. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
 
 ### Beam Step
 
-Runs every `BeamStepTimer` tick. For each `Beam` entity it computes the next grid position (`current + direction`) and applies two stopping rules in order:
+Runs every `BeamStepTimer` tick. For each `Beam` entity it computes the next grid position (`current + direction`) and applies mode-dependent stopping rules:
 
-1. **Out of bounds** — if the next position is not on ground (`MapInfo::on_ground()`), emit `BeamResolved` for the *current* position and despawn.
-2. **Already claimed** — if the `ClaimedTile` entity at the next position already has an owner, emit `BeamResolved` for the *current* position and despawn.
+**Inverted mode** (`Beam::inverted == true`, fired from a claimed tile):
+1. **Out of bounds** — if the next position is neither on ground nor in forbidden areas, despawn silently (no `BeamResolved` emitted, no tile claimed).
+2. **Next tile is unclaimed ground** — emit `BeamResolved` for `next_position` (the unclaimed tile itself), and despawn.
+3. Otherwise (claimed or forbidden tile ahead) — advance.
 
-If neither rule fires, the beam advances: `GridCoords` is overwritten with the next position (which triggers `apply_translate_effect` in the Effects plugin to tween the sprite).
+**Normal mode** (`Beam::inverted == false`, fired from an unclaimed tile):
+1. **Out of bounds** — if the next position is not on ground, back up through any forbidden areas; if the current position is unclaimed emit `BeamResolved` for it, then despawn.
+2. **Already claimed** — if the `ClaimedTile` entity at the next position already has an owner, back up through forbidden areas; if the current position is unclaimed emit `BeamResolved` for it, then despawn.
+3. Otherwise — advance: `GridCoords` is overwritten with the next position (which triggers `apply_translate_effect` in the Effects plugin to tween the sprite).
 
 ### Claim Tile
 
@@ -167,10 +179,11 @@ beams_query ---> |reads| be_beam
 beams_query ---> |reads| be_grid_coords
 ```
 
-### Read MapInfo resource (beam step)
+### Read MapInfo resource (spawn beam / beam step)
 
 Used in the following systems:
-- **beam_step**: used to check `on_ground()` for the next position and to resolve the ground tile entity via `claimed_entities` HashMap
+- **spawn_beam**: reads `claimed_entities` to check if the origin tile is claimed (sets `Beam::inverted`)
+- **beam_step**: checks `on_ground()` and `on_forbidden_areas()` for the next position and resolves tile entities via `claimed_entities`
 
 ```mermaid
 ---
@@ -182,8 +195,10 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+spawn_beam["`**spawn_beam**`"]
 beam_step["`**beam_step**`"]
 
+update -.-> spawn_beam
 update -.-> beam_step
 
 world@{ shape: st-rect, label: "World" }
@@ -191,6 +206,7 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 
 map_info_res --> |belongs to| world
 
+spawn_beam ---> |reads `claimed_entities`| map_info_res
 beam_step ---> |reads `on_ground`| map_info_res
 beam_step ---> |reads `claimed_entities`| map_info_res
 ```
@@ -290,10 +306,11 @@ beams_query ---> |reads| be_beam
 beams_query ---> |writes| be_grid_coords
 ```
 
-### Query ClaimedTile (beam step)
+### Query ClaimedTile (spawn beam / beam step)
 
 Used in the following systems:
-- **beam_step**: checks whether the next ground tile's `ClaimedTile` already has an owner to decide if the beam must stop
+- **spawn_beam**: reads `ClaimedTile::owner` on the origin tile entity to determine if the beam should be inverted
+- **beam_step**: checks whether the next ground tile's `ClaimedTile` already has an owner to decide if the beam must stop (normal mode) or is unclaimed and should trigger resolution (inverted mode)
 
 ```mermaid
 ---
@@ -306,11 +323,14 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
+spawn_beam["`**spawn_beam**`"]
 beam_step["`**beam_step**`"]
 
+update -.-> spawn_beam
 update -.-> beam_step
 
 claimed_query{{"`claimed_query`"}}:::query
+spawn_beam ---> claimed_query
 beam_step ---> claimed_query
 
 claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
