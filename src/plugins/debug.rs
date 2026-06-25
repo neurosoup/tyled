@@ -17,7 +17,7 @@ pub(crate) fn plugin(app: &mut App) {
         auto_create_primary_context: false,
         ..default()
     });
-    app.add_systems(Update, attach_egui_to_viewport_camera);
+    // app.add_systems(Update, attach_egui_to_viewport_camera);
 
     // Tiled debug
     // app.add_plugins(TiledDebugPluginGroup);
