@@ -37,6 +37,7 @@ const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
 const HUD_SCALE: f32 = 2.0;
 
 pub const HUD_RENDER_LAYER: usize = 1;
+pub const LEVEL_RENDER_LAYER: usize = 2;
 
 pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::hsl(
@@ -107,8 +108,8 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         PixelCamera {
             viewport_size: ViewportScalingMode::PixelSize(1.0),
             smoothing: false,
-            // Use layer 2 for the pixel viewport to avoid colliding with HUD_RENDER_LAYER (1).
-            viewport_layers: RenderLayers::layer(2),
+            // Use LEVEL_RENDER_LAYER (2) for the pixel viewport to avoid colliding with HUD_RENDER_LAYER (1).
+            viewport_layers: RenderLayers::layer(LEVEL_RENDER_LAYER),
             viewport_order: 2,
         },
     ));
