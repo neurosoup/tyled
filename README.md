@@ -18,7 +18,7 @@ The board evolves dynamically as players race to claim territory, control key la
 
 ## Play
 
-**In the browser** — no install needed: [law.github.io/tyled](https://law.github.io/tyled)
+**In the browser** — no install needed: [neurosoup.github.io/tyled](https://neurosoup.github.io/tyled)
 
 ## Installation
 
