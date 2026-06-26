@@ -16,6 +16,10 @@ If a beam reaches an opponent, it deals much more damage than simply stepping on
 
 The board evolves dynamically as players race to claim territory, control key lanes, and outmaneuver their opponent. Victory comes from dominating the board, forcing the enemy into dangerous tiles or lethal beams, and skillfully balancing aggression, defense, and resource management.
 
+## Play
+
+**In the browser** — no install needed: [law.github.io/tyled](https://law.github.io/tyled)
+
 ## Installation
 
 Download the latest release from the [releases page](../../releases/latest).
