@@ -17,6 +17,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: tyled.exe
             archive: tyled-windows-x86_64.zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: tyled
+            archive: tyled-macos-aarch64.tar.gz
 
     runs-on: ${{ matrix.os }}
 
@@ -53,6 +57,14 @@ jobs:
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/
           cp -r assets dist/
           Compress-Archive -Path dist/* -DestinationPath ${{ matrix.archive }}
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/
+          cp -r assets dist/
+          tar -czf ${{ matrix.archive }} -C dist .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
