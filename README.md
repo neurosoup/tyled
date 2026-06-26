@@ -13,3 +13,39 @@ Players can parry enemy beams. When a beam reaches a player, they can intercept 
 If a beam reaches an opponent, it deals much more damage than simply stepping on an opponent-colored tile. The struck player is “carried along” the beam’s path until the beam stops according to the beam rules, creating high-risk moments and sudden swings in board control.
 
 The board evolves dynamically as players race to claim territory, control key lanes, and outmaneuver their opponent. Victory comes from dominating the board, forcing the enemy into dangerous tiles or lethal beams, and skillfully balancing aggression, defense, and resource management.
+
+## Installation
+
+Download the latest release from the [releases page](../../releases/latest).
+
+**Linux**
+```
+tar -xzf tyled-linux-x86_64.tar.gz
+cd tyled-linux-x86_64
+./tyled
+```
+
+**Windows**
+
+Extract `tyled-windows-x86_64.zip` and run `tyled.exe` from inside the extracted folder.
+
+> The `assets/` folder must remain next to the binary.
+
+**Build from source**
+
+Requires Rust nightly.
+```
+cargo run --features dev
+```
+
+## Controls
+
+Tyled is a 2-player local game. Both players share the same keyboard.
+
+| Action | Player 1 | Player 2 |
+|---|---|---|
+| Move | WASD | Arrow keys |
+| Lock direction | Q | Right Shift |
+| Shoot beam | Tab | / |
+
+Holding **Lock direction** freezes your aim while letting you move freely — useful for strafing or repositioning without changing where your next beam will go.
