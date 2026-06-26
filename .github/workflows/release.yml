@@ -82,11 +82,14 @@ jobs:
           toolchain: nightly
           targets: wasm32-unknown-unknown
 
-      - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --version 0.2.118 --locked
-
       - name: Build WASM
         run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          WBG_VERSION=$(cargo metadata --format-version 1 --filter-platform wasm32-unknown-unknown \
+            | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | max')
+          cargo install wasm-bindgen-cli --version "$WBG_VERSION" --locked
 
       - name: Post-process with wasm-bindgen
         run: |
