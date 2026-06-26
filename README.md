@@ -1,5 +1,7 @@
 # Tyled
 
+> Tyled is in early development — game design is built day after day. Follow the journey through devlog videos on the [DEVLOGS YouTube playlist](https://www.youtube.com/@TeamChipsStudio/playlists).
+
 Fast-paced real-time strategy game played on a top-down, tile-based board. Each player controls a character and spreads their color by shooting a beam in a straight line. The beam does not paint every tile it passes through; instead, it targets a single tile per shot:
 - If the beam does not encounter any colored tile, it paints the tile at the edge of the board.
 - If the beam encounters a colored tile, it paints the tile immediately before the first colored tile in its path.
