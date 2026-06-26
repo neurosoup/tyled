@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tyled</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #000; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      canvas { display: block; image-rendering: pixelated; }
+      #loading { color: #fff; font-family: monospace; font-size: 14px; position: absolute; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">Loading…</div>
+    <script type="module">
+      import init from './tyled.js';
+      await init();
+      document.getElementById('loading').remove();
+    </script>
+  </body>
+</html>
