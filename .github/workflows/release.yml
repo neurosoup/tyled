@@ -72,14 +72,55 @@ jobs:
           name: ${{ matrix.archive }}
           path: ${{ matrix.archive }}
 
+  build-wasm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.118 --locked
+
+      - name: Build WASM
+        env:
+          RUSTFLAGS: --cfg getrandom_backend="wasm_js"
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Post-process with wasm-bindgen
+        run: |
+          wasm-bindgen --no-typescript --out-dir wasm-out --target web \
+            target/wasm32-unknown-unknown/release/tyled.wasm
+
+      - name: Bundle web release
+        run: |
+          cp -r assets wasm-out/
+          cp web/index.html wasm-out/
+          cd wasm-out && zip -r ../tyled-web.zip .
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tyled-web.zip
+          path: tyled-web.zip
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: wasm-out/
+
   release:
-    needs: build
+    needs: [build, build-wasm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: "tyled-*"
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
@@ -87,3 +128,17 @@ jobs:
           files: |
             *.tar.gz
             *.zip
+
+  deploy-pages:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
