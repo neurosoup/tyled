@@ -27,6 +27,13 @@ cd tyled-linux-x86_64
 ./tyled
 ```
 
+**macOS**
+```
+tar -xzf tyled-macos-aarch64.tar.gz
+cd tyled-macos-aarch64
+./tyled
+```
+
 **Windows**
 
 Extract `tyled-windows-x86_64.zip` and run `tyled.exe` from inside the extracted folder.
