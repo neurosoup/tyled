@@ -72,44 +72,8 @@ jobs:
           name: ${{ matrix.archive }}
           path: ${{ matrix.archive }}
 
-  build-wasm:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          targets: wasm32-unknown-unknown
-
-      - name: Build WASM
-        run: cargo build --target wasm32-unknown-unknown --release
-
-      - name: Install wasm-bindgen-cli
-        run: |
-          WBG_VERSION=$(cargo metadata --format-version 1 --filter-platform wasm32-unknown-unknown \
-            | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | max')
-          cargo install wasm-bindgen-cli --version "$WBG_VERSION" --locked
-
-      - name: Post-process with wasm-bindgen
-        run: |
-          wasm-bindgen --no-typescript --out-dir wasm-out --target web \
-            target/wasm32-unknown-unknown/release/tyled.wasm
-
-      - name: Bundle web release
-        run: |
-          cp -r assets wasm-out/
-          cp web/index.html wasm-out/
-          cd wasm-out && zip -r ../tyled-web.zip .
-
-      - name: Upload web artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tyled-web.zip
-          path: tyled-web.zip
-
   release:
-    needs: [build, build-wasm]
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -124,22 +88,3 @@ jobs:
           files: |
             *.tar.gz
             *.zip
-
-  deploy-pages:
-    needs: build-wasm
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: tyled-web.zip
-
-      - name: Unzip web build
-        run: unzip tyled-web.zip -d wasm-out
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: wasm-out
