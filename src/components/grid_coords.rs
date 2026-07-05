@@ -1,7 +1,6 @@
 use bevy::{
     ecs::prelude::*, log::info, math::*, reflect::Reflect, transform::components::Transform,
 };
-use bevy_ecs_ldtk::EntityInstance;
 use bevy_ecs_tiled::prelude::{tiled::*, *};
 
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
