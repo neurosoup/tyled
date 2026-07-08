@@ -399,3 +399,15 @@ today.
   the ability substrate (sessions 1-3) is playable, so there's a feel for
   whether the ability layer alone provides enough moment-to-moment texture or
   whether a consumable layer is needed on top.
+
+- **Direct-HP payoffs are almost entirely unexplored.** Riposte (#27) is
+  currently the *only* ability in the roster whose payoff touches HP
+  directly (+1 HP on a landed parry) — everything else pays off into tile
+  claims, charges, or board state, with HP damage otherwise only occurring
+  through base mechanics (`on_body_hit` knockback, standing on an
+  enemy-owned tile). Worth a dedicated brainstorm later: a whole design
+  space of direct-damage enablers/payoffs (e.g. abilities that build toward
+  a burst of HP damage, HP-cost resources, execute-style payoffs at low
+  enemy HP) hasn't been touched at all. Revisit once the roster's
+  tile/charge economy is playtested, so any HP-focused additions are
+  weighed against a working baseline instead of guessed at cold.
