@@ -101,3 +101,7 @@ Each plugin and component has a corresponding doc in `backlog/docs/`. These docs
 ### Asset pipeline
 
 Sprites are Aseprite/Pixelorama files exported to PNG. Tiled maps (`.tmx`) and tilesets (`.tsx`) reference these PNGs. `bevy_ecs_tiled` loads them via `asset_server`; custom Tiled object properties map to Bevy components via `#[derive(Reflect)]` with `#[reflect(Component)]`.
+
+## Planned: Beam Ability Deckbuilding System
+
+`BEAM_ABILITY_DECKBUILDING.md` (repo root) is an actively-developed design plan to rework beam behaviors and the beam-charges economy into a Balatro-style deckbuilding system — draftable abilities built on triggers/enablers/payoffs/stacks vocabulary, with a growing roster, four archetypes, an upcoming parry mechanic, and a staged multi-session rollout. Not yet implemented. Load that file before starting any session that touches beam behavior, beam charges, tile claiming/contesting, or ability/draft systems, and keep it updated as design decisions are made or sessions land — it is the authoritative source for this effort, not this file.
