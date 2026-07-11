@@ -411,3 +411,24 @@ today.
   enemy HP) hasn't been touched at all. Revisit once the roster's
   tile/charge economy is playtested, so any HP-focused additions are
   weighed against a working baseline instead of guessed at cold.
+
+- **§4's archetype balance is implicitly tuned for one unstated board
+  size.** The rock-paper-scissors triangle (B beats A, C beats B, A beats C)
+  and Chain Cannon's (D) "explosive when cluttered, brick-y when sparse"
+  variance are both board-density arguments, and density is a function of
+  board size, which the doc never pins down — the live map
+  (`assets/level2.tmx`) is 30×30 (900 tiles), but nothing here was reasoned
+  against that number specifically. Concretely: Chain Cannon's cold-start
+  "brick" window (time for territory to build up enough density to
+  bounce/cascade through) scales with board size directly. Iron Wall (C) is
+  a single body defending one lane — its coverage is a much smaller fraction
+  of a large board's perimeter than a small one's, which also reweights the
+  A-beats-C leg (Solar Economy's flood matters more, relatively, the bigger
+  the board). Reckoning's ~95% saturation threshold is a fraction, so a
+  bigger board means more absolute tiles to claim — more time for both A's
+  economy and D's density to develop, pulling in opposite directions on
+  whether that helps or hurts either. Breach's push-depth cost also scales
+  with distance to the target lane. None of this is testable in the abstract
+  — revisit once sessions 1-5 are playable on the actual 30×30 map, and
+  treat any of §4's stated matchups/variance claims as unverified until then
+  rather than settled.
