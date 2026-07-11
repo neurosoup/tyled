@@ -20,6 +20,10 @@ cargo check        # Type-check without building
 
 The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured to link with `clang`/`lld` for faster compile times (`.cargo/config.toml`).
 
+## Model selection
+
+Commit and push operations should be run with **Haiku** (Claude's fast model) to save tokens on mechanical git operations. Use `/fast` to switch to Haiku before running commits or pushes.
+
 ## Architecture
 
 ### Plugin structure
