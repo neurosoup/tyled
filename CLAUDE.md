@@ -2,7 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## About
+## Model Assignment Rules
+
+- Architecture decisions and reviews: Use Opus
+- Implementation tasks (new features, refactors): Use Sonnet  
+- Simple edits, formatting, renaming, commits and push: Use Haiku
+
+# About this project
 
 Tyled is a 2-player local real-time strategy game built with Bevy 0.18. Players shoot beams to claim tiles; claimed tiles damage opponents who walk on them. See README.md for full gameplay rules.
 
@@ -19,10 +25,6 @@ cargo check        # Type-check without building
 ```
 
 The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured to link with `clang`/`lld` for faster compile times (`.cargo/config.toml`).
-
-## Model selection
-
-Commit and push operations should be run with **Haiku** (Claude's fast model) to save tokens on mechanical git operations. Use `/fast` to switch to Haiku before running commits or pushes.
 
 ## Architecture
 
