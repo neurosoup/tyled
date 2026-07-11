@@ -412,57 +412,163 @@ logic via messages, so new behaviors mostly reuse it. New ability feedback
 (regen pulse, contest countdown) follows the same `*EffectTarget` pattern used
 today.
 
-## 7. Staged rollout (session by session, smallest viable slice first)
+## 7. Staged rollout (archetype-first)
 
-1. **Behavior-list refactor (no new content).** Replace `Beam.inverted: bool`
-   with an ordered behavior list. Straight Shot is entry 0, always present,
-   for every player — no pre-match pick. Emit `TileClaimed`, `ChargeSpent`,
-   `ChargeRegen`. Outcome: identical gameplay to today, ability-ready
-   substrate. Update `backlog/docs/doc-7 - 006-Beam-plugin.md`.
+Organized to get playable archetype matchups as early as possible so balancing
+starts from the first slice, implementing the four archetypes (§4) incrementally
+with only 1–2 abilities each. Each stage names the **architecture** it builds
+(cross-referencing §6, which remains the standalone architecture reference), the
+**abilities** it adds, and the **balancing** layer it unlocks. This replaces the
+older machinery-first session list without losing content — the machinery is now
+attached to the stage that needs it, and each stage carries its old `(= session
+N)` tag so the "session N" references scattered through §2–§6 still resolve.
 
-2. **Minimal ability container + Backfill as the first real ability.** Add the
-   player-side ability descriptor list and the `on_resolve`/`on_claim`
-   resolver. Ship Backfill Shot as a data descriptor (today's "inverted"
-   behavior, reframed as an appended fallback entry) — hardcoded onto players
-   for now, no draft yet, to prove the descriptor/resolver plumbing end to
-   end.
+Two decisions shape the ordering:
+- **Decouple hardcoded loadouts from the draft UI.** You don't need pick-1-of-3
+  to balance a matchup — only a way to assign P1/P2 fixed kits plus a win/loss
+  signal. So the draft UI is deferred; slices 1–3 balance via hardcoded loadouts.
+- **Overpenetration is B's early scaffold** (see the caveats at the end) — it
+  defers the heaviest data-model change (contested tiles) out of the path to the
+  first playable matchup.
 
-3. **Draft loop.** Round segmentation (first-to-N-tiles, timer, or a kill) +
-   symmetric between-round pick-1-of-3 UI reading the ability list as data.
-   Round boundary does a full reset of board + charges (§1/§5); include the
-   Beachhead exception hook in the reset system now (§6) even though the
-   ability itself lands in session 6. Backfill Shot becomes acquired, not
-   hardcoded. Add Solar Panels + Full Draw to prove the enabler→payoff loop
-   is draftable too.
+### Testing protocol (four layers)
 
-4. **Economy cluster.** Add Tithe, Salvage, Frugal Frontier, Battery Cap —
-   Solar Economy becomes a real, playtestable archetype.
+The one immutable control is **both players on Straight Shot only.** Never move
+the baseline off that by handing a drafted ability to both sides "as a floor" —
+that hides the ability's contribution *and* misplaces it. Stage F1 makes this
+control free: Straight is always entry 0 and drafted abilities are the descriptor
+list on top, so **"Straight-only" = empty descriptor list.** Every stage's
+*balancing* line below refers to these layers:
 
-5. **Contested tiles + Breach cluster.** The heavy data-model change: third
-   tile state in `MapInfo`, contest timer, Breach/Contested Ground. Isolated
-   to its own session because it touches beam travel + damage queries.
-   Delivers the Breach Aggression archetype. The Overpenetration/Contested
-   Ground conflict resolver (§2/§6) ships here, since this is where both
-   abilities first coexist.
+1. **Straight mirror (both empty) → seat calibration.** Tyled has P1/P2 spawn +
+   input asymmetry; the pure-baseline game's length and seat advantage are the
+   *delta reference* for everything downstream.
+2. **Kit vs. Straight-only → absolute power** ("does this kit earn its slots?").
+   Each archetype kit vs. the empty baseline — e.g. a B ability like Backfill is
+   exercised here as part of B: `{Overpen, Backfill}` vs. `{}`.
+3. **Kit vs. kit → the RPS matchup legs.** Full kits both sides; the *relative*
+   matchup, not absolute power.
+4. **Ablation → attribute power within a kit.** Kit with one ability removed vs.
+   the same opponent, diffed — isolates Backfill in B, Solar Panels vs. Tithe in
+   A, Splitter vs. Ricochet in D.
 
-6. **Combat/area clusters + capstones.** Body Blocker (needs the
-   cross-entity `BodyHit` resolver, §6 — checks the *target's* abilities, not
-   the shooter's) + Impaler (guaranteed-Rare-offer reward, persistent-layer
-   only), Splitter/Ricochet/Chain Reaction, Landmine, Beachhead (uses
-   the reset-exception hook built in session 3), and **Reckoning** (needs the
-   new `on_board_saturated` trigger — a cheap tick comparing claimed vs.
-   total ground tiles). Mostly additive resolver effects or small
-   component-bundle abilities. Balance pass across all four archetypes, with
-   particular attention to Reckoning vs. direct-damage aggression parity
-   (the original design worry the ability came from), and to Body
-   Blocker/Impaler as a cross-role counter-pick rather than a same-owner
-   combo.
+**Seat-swap every configuration** (run both P1↔P2), differenced against the
+layer-1 calibration. **Backfill is a B ability, never neutral scenery** — for
+balancing it rides on B's kit alone (in the scaffold, optionally `{Overpen}` or
+`{Overpen, Backfill}`), measured via layers 2 and 4, never smuggled onto the A
+side (which would hide its contribution and contaminate the A-vs-B differential).
 
-7. **Ongoing.** After session 6 the machinery is done; new abilities become
-   descriptor data + occasional resolver arms. Keep `backlog/docs/` in sync
-   per plugin as each session lands. Asymmetric personal-shop game mode
-   (§5 Phase 2) can be picked up independently once the descriptor model is
-   proven.
+### Foundation
+
+**Stage F1 — behavior-list substrate** *(= session 1; no new content)*.
+- *architecture (§6):* replace `Beam.inverted: bool` with the ordered
+  behavior-descriptor list (the pinch point); Straight is entry 0, always
+  present, every player, no pre-match pick. Emit `TileClaimed`, `ChargeSpent`,
+  `ChargeRegen`.
+- *abilities:* none (Straight-only baseline = empty list).
+- *balancing:* layer-1 mirror runnable. Outcome: gameplay identical to today on
+  an ability-ready substrate. Update `backlog/docs/doc-7 - 006-Beam-plugin.md`.
+
+**Stage F2 — descriptor container + Backfill (plumbing proof)** *(= session 2)*.
+- *architecture (§6):* per-player ability-descriptor list + the `on_resolve`/
+  `on_claim` resolver. The loadout hookup must accept an arbitrary per-player
+  list **including the empty (Straight-only) one** and hot-swap it between runs —
+  "no abilities" is a first-class, tested option (the layer-1 control), not an
+  edge case.
+- *abilities:* Backfill (#2) as the first descriptor — today's "inverted"
+  behavior reframed as an appended fallback entry — hardcoded on **both** players
+  (plumbing proof; reproduces today's contextual inverted mode; *not* an
+  archetype assignment).
+- *balancing:* none yet (no win signal); proves the descriptor/resolver plumbing
+  end to end.
+
+**Stage F3a — round loop + reset + win condition** *(= the round/win half of
+session 3)*.
+- *architecture (§6):* round segmentation (first-to-N-tiles / timer / kill);
+  round boundary is a full reset of board + charges (§1/§5); include the
+  Beachhead reset-exception hook now, even though Beachhead itself lands in Heavy
+  content below.
+- *abilities:* none.
+- *balancing:* provides the win/loss signal — **without it you cannot measure
+  balance.** The layer-1 mirror now yields a scorable result. (The draft UI —
+  Stage F3b — is deferred to Heavy content; loadouts stay hardcoded until
+  matchups feel right.)
+
+### Archetype slices (hardcoded loadouts)
+
+Each slice avoids the long-press input rework (A and D both), so they stay cheap.
+
+**Slice 1 — A vs B** (first playable matchup).
+- *architecture (§6):* `on_charge_regen` tick (Solar Panels); `on_resolve`
+  enemy-owned-tile flip resolver (Overpenetration).
+- *abilities:* A = Solar Panels (#9) + Tithe (#11); B = Overpenetration (#3)
+  scaffold (± Backfill). A's "payoff" is baseline Straight-expansion flooding —
+  no capstone yet, and it dodges the Full Draw long-press rework.
+- *balancing:* layers 2–4. Flood-rate vs. flip-rate — the B-beats-A leg *in
+  spirit*.
+
+**Slice 2 — +C.**
+- *architecture (§6):* the cross-entity `BodyHit` resolver — consults the
+  *target's* abilities, not the shooter's; a new resolver shape.
+- *abilities:* C = Body Blocker (#7).
+- *balancing:* full A/B/C triangle now hardcodable/testable.
+
+**Slice 3 — +D.**
+- *architecture (§6):* `on_resolve` neighbor-claim (Splitter); throttled
+  `on_step` message + turn logic (Ricochet — the priciest minimal pick).
+- *abilities:* D = Splitter (#4) + Ricochet (#5); Splitter-only is a thinner
+  fallback for a faster-but-shallower D.
+- *balancing:* wildcard vs. the field.
+
+### Heavy content (the rest of the roster + the draft UI)
+
+With a balancing baseline established, land the expensive pieces — mostly
+additive resolver effects or small component-bundle abilities.
+
+- **Draft UI (Stage F3b)** *(= the draft-UI half of session 3)*: symmetric
+  between-round pick-1-of-3 reading the ability list as data; the slice-1–3
+  abilities become *acquired*, not hardcoded.
+- **Contested tiles + Breach** *(= session 5)*: the heavy data-model change —
+  third `ClaimedTile` state in `MapInfo`, contest timer, Breach/Contested Ground
+  — isolated because it touches beam travel + damage queries. **B graduates from
+  the Overpen scaffold to its canonical deep-strike kit.** The
+  Overpenetration/Contested Ground conflict resolver (§2/§6) ships here, since
+  this is where both abilities first coexist.
+- **Economy depth** *(= session 4, plus Full Draw carried from session 3)*:
+  Salvage (#10), Frugal Frontier (#13), Battery Cap (#14); Full Draw (#12) +
+  Capacitor (#24) — the latter needs the long-press input rework (`BeamFired` on
+  release + hold-duration).
+- **Capstones + area** *(= session 6)*: Impaler (#8, guaranteed-Rare offer,
+  persistent-layer only), Landmine (#17), Beachhead (#19, uses the F3a
+  reset-exception hook), Chain Reaction (#18), Bank Shot (#23), Wide Shot (#6),
+  and **Reckoning** (#22, needs the new `on_board_saturated` trigger — a cheap
+  tick comparing claimed vs. total ground tiles).
+- **Balance pass across all four archetypes** *(the "session 6 balance pass"
+  referenced throughout §3)* — particular attention to Reckoning vs.
+  direct-damage aggression parity (the original design worry the ability came
+  from) and to Body Blocker/Impaler as a cross-role counter-pick rather than a
+  same-owner combo.
+
+### Ongoing *(= session 7)*
+
+After Heavy content the machinery is done; new abilities become descriptor data +
+occasional resolver arms. Keep `backlog/docs/` in sync per plugin as each stage
+lands. The asymmetric personal-shop game mode (§5 Phase 2) can be picked up
+independently once the descriptor model is proven.
+
+### Two honest caveats on "balance from the beginning"
+
+- **Matchup balance necessarily lags each real kit.** Overpen-as-B lets you
+  balance the substrate, the round/win/board knobs, and the *general*
+  economy-vs-aggression tension from day one — but it does **not** validate the
+  canonical B matchup or the RPS triangle. Overpen is incremental border-grind;
+  B's real identity is deep-strike chaining (Breach), which plays completely
+  differently. Economy/board tuning starts immediately; true B-vs-A waits for
+  Contested Ground + Breach.
+- **Overpen fills a genuine gap, doesn't override the plan.** Overpenetration had
+  no assigned session in the old machinery-first list (only its conflict resolver
+  was scheduled, at session 5, where it first meets CG). Pulling it forward as B's
+  early representative *resolves* that gap rather than contradicting the plan.
 
 ## Open threads for later
 
