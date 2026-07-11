@@ -510,20 +510,18 @@ today.
   treat any of §4's stated matchups/variance claims as unverified until then
   rather than settled.
 
-- **Wide Shot and Full Draw already bind to the same long-press input with
-  no stated resolution if both are drafted.** Wide Shot (#6) reads a
-  hold-past-threshold as binary (release after the threshold fires the full
-  drafted width at flat cost); Full Draw (#12) reads the same hold as
-  graduated (charge accrues every tick held, released budget extends the
-  claim). Both are on the shoot button (§2, Long-press activation) and
-  nothing in either entry says what a single hold means once a player has
-  both — does it do one, the other, both at once, or does drafting the
-  second ability change what holding means for the first? This surfaced
-  while auditing Full Draw's overlap with other reach-extending abilities
-  (see Juggernaut, #27, and its note on why Contested Ground's chaining was
-  folded into Full Draw+Breach instead of staying a separate stack
-  modifier) — that audit is exactly the kind of check this conflict needs
-  too, and it's a higher-priority gap than any further stack-modifier
-  consolidation since it's a live ambiguity in an already-committed input
-  scheme, not a hypothetical future one. Resolve before session 3
-  (Full Draw/Wide Shot's landing session, §7).
+- **Wide Shot + Full Draw on the same long-press input — resolved in §2.**
+  Both bind to a hold on the shoot button, but they read the hold along
+  orthogonal axes: Wide Shot (#6) reads it as binary (crossing the threshold
+  fires the full drafted width at flat cost), while Full Draw (#12) reads it
+  as graduated (charge accrues every tick held; released budget extends the
+  claim). Because one consumes a boolean and the other a magnitude, a single
+  hold feeds both independently — releasing fires a wide volley where each
+  beam carries the accrued Full Draw budget, an emergent composition needing
+  no dedicated logic (§2, Long-press activation, lines 108–111). Note this
+  makes the pair the strongest hold-coupling in the roster and the most
+  punishing to lose: a mid-hold body hit forfeits both budgets at once under
+  the standard total-loss cancel (§2, lines 129–133) — worth watching in the
+  session-3 balance pass, but the input ambiguity itself is closed. (Surfaced
+  during the same reach-extension audit that folded Contested Ground's
+  chaining into Full Draw+Breach; see Juggernaut, #27.)
