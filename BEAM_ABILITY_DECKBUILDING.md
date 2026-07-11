@@ -242,7 +242,7 @@ Format: **Name** — effect · trigger · [enabler/payoff/hybrid] · stacks with
 11. **Tithe** — each real claim (enemy/neutral flip) refunds 0.5 charge (rounds/accumulates). · on_claim · enabler · Straight expansion, Splitter.
 12. **Full Draw** — activated via long-press (§2). While held, the beam is "charging": each beam-step tick (62.5ms) held costs 1 charge by default (reducible — see Capacitor, #24) and adds 1 tile to a claim budget. Release to fire: the beam first resolves at its **normal** Straight/Backfill point — the same tile a plain 1-charge shot would claim — guaranteeing Full Draw is never worse than not charging at all, then spends the remaining budget extending the claim in whichever direction is actually useful for that mode: **backward toward the origin for Straight** (claiming the N tiles leading up to the resolve point — pushing your frontier out toward the obstruction, the contested/valuable ground, rather than padding tiles near where you're already standing), or **forward past the resolve point for Backfill** (claiming N tiles deeper into the freshly-opened territory it just found, rather than backward into the claimed/forbidden ground it pierced through, which it can't claim anyway). Value scales monotonically with hold duration — every extra tick is strictly more claimed ground, never less. Stops early if it runs out of room in that direction (open ground ends) before exhausting the budget — remaining budget is simply unused, same as any over-commitment risk. Charges deduct in real time as you hold, so you can't accrue more budget than you can afford, and you can watch the lane ahead and release accordingly. Soft cap recommended on max hold duration/budget regardless of banked charges (TBD, session 6 balance pass) — same category of risk as the combo below. **Splitter/Chain Reaction combo**: each tile Full Draw claims is a real `on_claim`/`on_resolve` event, same as Ricochet's bounces — Splitter triggers on every one of them. A well-charged shot down a long open lane claiming 6 tiles directly, with Splitter claiming 2 neighbors per landing, is 18 tiles from one shot; Chain Reaction compounds further. Bigger and less bounded than the Ricochet+Splitter+Bank Shot combo (#5) — no bounce cap, ceiling is just lane length and charges spent — flag hard for the session 6 balance pass. **Contested Ground interaction** (#15/#16): on Straight, works cleanly — the enemy tile still becomes a pending contest exactly as a plain Contested Ground shot would, and the extra budget extends backward into ordinary unclaimed ground, claimed instantly. On Backfill, the beam stops/contests at the first enemy tile per Contested Ground's rule, and the forward budget would need to pass through that same pending tile — **this requires Breach also being drafted**: without Breach, the same beam can't exploit its own fresh contest (forward budget wasted, same as any over-commitment); with Breach, the pending-tile-is-passable permission extends to this beam too, so releasing chains through *every* enemy tile within budget, contesting each one simultaneously in one action instead of needing separate manual shots per hop — Full Draw becomes the one-button execution of a Breach chain, not a shortcut around drafting it. Each contested tile deeper in that chain checks its own adjacency independently at its own 2s mark, and a still-pending neighbor doesn't count as owned — so the deeper links are naturally riskier with no extra rule needed for that. · on_fire (long-press, graduated) · payoff, scales with hold duration/lane length · Solar Panels, Tithe (fund the pool this spends), Capacitor (#24, reduces per-tile cost), Splitter, Chain Reaction (major combo, flag for balance), Contested Ground + Breach (chain-execution capstone, requires both).
 13. **Frugal Frontier** — first shot each 5s costs 0 charges. · on_fire (cooldown) · enabler · low-charge/control builds.
-14. **Battery Cap** — +50% max charges, regen sources -25%. · passive · hybrid · burst/Full Draw builds; anti-synergy with Solar Panels.
+14. **Battery Cap** — +50% max charges, regen sources -25%. **Anti-synergy with Solar Panels (#9) is intentional *dilution*, not a brick** — Solar Panels still works fully, just 25% weaker, so this needs no Overpen/CG-style slot-exclusion resolution (see the anti-synergy philosophy note, §4). It's the healthy Balatro-style soft tax: the two pull opposite ways (Solar Panels wants steady *flow*, Battery Cap wants a big *reservoir* to dump in a burst), so drafting both is sub-optimal but never dead — the tax is exactly what forces a flow-vs-reservoir lane choice rather than greedily taking both. Deliberately left as a numeric tradeoff. · passive · hybrid · burst/Full Draw builds; anti-synergy with Solar Panels.
 
 ### Tile-state/contest modifiers
 15. **Contested Ground** — by default, flipping an enemy-claimed tile is impossible in any form (§1); this ability introduces that capability, but conditionally. Trigger is the *first enemy-owned tile* a beam's path would otherwise stop at (Straight) or skip past (Backfill) — mandatory when it fires, decided entirely by where you aim, no separate input. Instead of blocking/skipping, the beam resolves there and starts a 2s countdown; if you still **own** a tile adjacent to it when the countdown ends, it flips to you, otherwise nothing happens and the charge is spent for no gain. **Ownership check, not player position**: this is a `ClaimedTile` lookup at the 2s mark, not a requirement to stand nearby — the attacker can walk away and fire other Straight/Backfill shots freely the moment the contest starts, and it resolves independently in the background based on board state. No interference with normal shot behavior. While pending, the tile is neutral for *other* beams' travel. **Intentionally weak/risky as a standalone pick** — Overpenetration (#3) does the same flip instantly and unconditionally, so nobody should draft this for the flip itself. Its real job is the pending-neutral travel window, which is the only thing Breach can hook into (Overpenetration's flip is instant and solid, creating no window) — this is a pure enabler that's a trap pick without Breach, by design. **Interactions**: Splitter triggers on the contest's start (claims its 2 orthogonal neighbors if unclaimed, giving a small guaranteed floor even if the contest later fails); Chain Reaction triggers on the eventual flip like any other claim; Ricochet just passes through a pending tile rather than turning at it; Full Draw chains through multiple enemy tiles at once if Breach is also drafted (see #12). **Anti-synergy with Overpenetration (#3)**: alternative answers to the same problem for different playstyles, not a stacking combo — only one is the active enemy-tile answer at a time. Resolution (stated identically in #3): **if Breach (#16) is also drafted, this ability wins and Overpenetration lies dormant**; **otherwise whichever of the two was drafted *second* wins**. This reinforces the "trap pick without Breach, solid with it" framing above — Contested Ground is the *guaranteed* winner over Overpenetration precisely when Breach is present to make it worth having, and equal-value alternative otherwise. · on_resolve (first enemy-owned tile encountered) · enabler (Breach only; weak alone) · Breach.
@@ -276,6 +276,49 @@ Format: **Name** — effect · trigger · [enabler/payoff/hybrid] · stacks with
 - **B — Breach Aggression** (Backfill + Contested Ground + Breach): don't grind the border one tile at a time — commit several charges in one push to chain contests deep into enemy territory, reshaping their whole flank at once. High commitment, high risk (each chained contest can whiff independently if adjacency slips); denies opponent's economy outright when it lands. Loses if ignored while the opponent races board control elsewhere — the payoff is concentrated, not attritional. Once parry ships (§2), this archetype is the one most exposed to having its own kit turned against it — Unparryable (§3) is close to a required tech slot here, not optional.
 - **C — Iron Wall** (Body Blocker + Landmine + Straight Shot, with Impaler as the counter-punish an *attacker* takes against it): contiguous frontier, plant your feet to deny beams reaching past you, zone damage. Beats Breach (bodies wall the lanes); loses to Solar Economy's flood. Body Blocker/Impaler is a cross-role interaction, not a same-owner combo (see §3) — Iron Wall is defined by the defender's Body Blocker, and Impaler belongs to whoever's attacking an Iron Wall player, not to Iron Wall itself. Once parry ships (§2), this is also the archetype's natural home for Riposte/Extended Window/Perfect Parry — Body Blocker is the fallback for a missed parry, so a build leaning into reliable defense wants both the fallback and better odds of not needing it.
 - **D — Chain Cannon** (Splitter + Ricochet + Bank Shot + Chain Reaction + Wide Shot, funded by Solar Economy pieces): Ricochet+Splitter is a hard combo (§3) — every bounce claims and triggers Splitter, and Bank Shot stacks more bounces onto the same beam, so a single well-aimed shot can cascade across a whole dense cluster. Wide Shot adds a second axis of scale, and the two compose cleanly rather than fighting each other: outer beams always turn away from center (§3), so a widened, bouncing spread guaranteedly diverges instead of risking beams converging back into each other's claimed territory — full Ricochet value on all 3+ beams at once. Explosive when the board is cluttered enough to bounce/spread through, brick-y when sparse. Beachhead (§3) fits loosely here too — Chain Cannon's cascading claims are exactly the kind of build that can convert a kill into a big burst-claim radius — but it's a universal kill-reward capstone, not exclusive to this archetype. Also exposed once parry ships, same reasoning as Breach Aggression — a heavily-loaded beam (Ricochet+Bank Shot+Splitter) is exactly what you don't want reflected back at you.
+
+### Anti-synergy philosophy (design note)
+
+Anti-synergy is deliberate, not a flaw to engineer away — without it, drafting
+collapses into "take the biggest number" and the archetypes above stop having
+identity. Solar Economy and Iron Wall *should* pull apart; that tension is the
+game. The goal is the *right kind* and the *right amount*, informed by how the
+genre's reference points (Balatro, Hades 2, Expedition 33) handle it.
+
+**Two kinds, treated differently.** *Dilution* anti-synergy — drafting both is
+sub-optimal but each still does something (a numeric tax or opportunity cost,
+e.g. Battery Cap vs. Solar Panels, #14/#9) — is the healthy default and needs no
+special resolution. It's the Balatro model, where greed costs value, not the
+run. *Bricking* anti-synergy — one owned ability is made to do *literally
+nothing* (Overpenetration vs. Contested Ground before its resolution rule,
+#3/#15) — is the only harmful kind, and only when hidden. The fix for a brick is
+**not** to delete the anti-synergy but to convert it into a legible
+slot-exclusion ("only one is active at a time," settled by a stated rule) — the
+model Hades 2 uses for its mutually-exclusive boon slots, the most proven pattern
+in the genre.
+
+**Tyled-specific constraint: low draft agency.** Balatro tolerates soft traps
+because it hands the player reroll/sell/skip/foresight to dodge them. Tyled's
+Phase-1 draft (§5) is shared, symmetric, and forced pick-1-of-3 with none of
+those tools — a player can be *forced* into a redundant pick with no better
+option in the offer. So Tyled's anti-synergies must stay gentler than Balatro's
+(soft/non-bricking, and never a *strict downgrade* to something already owned)
+until it has more agency to give back. Phase-2 asymmetric personal shops (§5),
+or adding reroll/skip, would restore enough agency to tolerate spicier
+anti-synergy later.
+
+**Keep the count light.** Anti-synergy is seasoning, not the main dish — a draft
+that's mostly a minefield of traps reads as punishing rather than rewarding. The
+roster is deliberately light here: essentially Overpen/CG and Battery
+Cap/Solar Panels.
+
+**Legibility is mandatory (see §6).** Every reference game makes anti-synergy
+understandable *at the decision point*; a hidden one is the only truly bad kind.
+Tyled's draft/HUD must surface the resolver's active/dormant decision (§6) — when
+both Overpenetration and Contested Ground are in play, show *"Overpenetration
+dormant — Contested Ground active"* rather than leaving the player to wonder why
+their flips went conditional. This is the Hades 2 lesson and the single most
+important thing to get right when session 5 ships the resolver.
 
 ## 5. Acquisition
 
@@ -341,6 +384,14 @@ enemy tile, consulting (a) whether Breach is in the player's descriptor set and
 already records append/draft order, so no new state is needed beyond a
 Breach-presence check — a set membership test plus an index comparison, not a
 new subsystem.
+
+**Surfacing dormant/active state to the UI**: the resolver's active/dormant
+decision (above) must be readable by the draft/HUD layer, not buried in the
+per-tick beam logic — when a conflict makes an owned ability dormant, the UI has
+to show it (greyed, with *"dormant — <winner> active"*), per the legibility
+requirement in §4. Cheap to expose, since the resolver already computes the
+winner per player from the descriptor set + order; it just needs to be queryable
+outside the beam step (a small resource/component the draft UI can read).
 
 **Heaviest single item**: Contested tiles need a third `ClaimedTile.owner`
 state (contested + timer + pending owner) — touches `MapInfo`, the beam
