@@ -222,6 +222,7 @@ fn initialize_players(
                         max: 100.0,
                     },
                     BeamCharges::new((map_info.ground_entities.len() as u32) / 2),
+                    AbilityList::default(),
                 ));
 
                 transform.scale = Vec3::new(1.25, 1.25, 1.0);

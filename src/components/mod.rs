@@ -1,3 +1,4 @@
+mod abilities;
 mod actions;
 mod beam;
 mod beam_charges;
@@ -9,6 +10,7 @@ mod health;
 mod markers;
 mod player;
 
+pub use abilities::*;
 pub use actions::*;
 pub use beam::*;
 pub use beam_charges::*;

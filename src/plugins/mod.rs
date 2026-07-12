@@ -1,3 +1,4 @@
+pub(super) mod abilities;
 pub(super) mod animations;
 pub(super) mod beam;
 pub(super) mod camera;
@@ -11,6 +12,7 @@ pub(super) mod inputs;
 pub(super) mod maps;
 pub(super) mod messages;
 
+pub use abilities::*;
 pub use animations::*;
 pub use beam::*;
 pub use camera::*;
