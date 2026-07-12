@@ -350,8 +350,8 @@ Shipping only #1 + #3 (kill + most-tiles-at-timeout) already covers both vectors
 #2 is a satisfying explicit finish line layered on later. **Balance crux**: the
 two vectors must be roughly *comparably fast*, or whichever resolves quicker
 dominates and the other archetype (§4) is dead on arrival — tuned via N, timer
-length, damage rates, and board size (see the board-size thread in "Open
-threads"). This is *why* the archetypes need both vectors live: Breach Aggression
+length, damage rates, and board size (see the board-size thread in §8). This
+is *why* the archetypes need both vectors live: Breach Aggression
 / Iron Wall race the kill; Solar Economy / Chain Cannon race the tiles;
 **Reckoning** (#22) is the bridge that converts hoarded tiles into HP damage,
 which only makes sense when both vectors exist.
@@ -609,7 +609,7 @@ independently once the descriptor model is proven.
   was scheduled, at session 5, where it first meets CG). Pulling it forward as B's
   early representative *resolves* that gap rather than contradicting the plan.
 
-## Open threads for later
+## 8. Open threads for later
 
 - **Consumables/enhancers layer.** Balatro separates permanent build pieces
   (Jokers) from one-time-use resources (Tarot/Planet/Spectral cards,
@@ -643,6 +643,67 @@ independently once the descriptor model is proven.
   kill-vs-tiles game) instead of guessed at cold. Required for vector parity, but
   not before then.
 
+  **Which archetype each HP ability serves (design settled now, implementation
+  still deferred).** §5 already assigns the kill vector to B and C ("Breach
+  Aggression / Iron Wall race the kill"), so HP abilities belong there by
+  construction — putting them on A or D fights those archetypes' tile identity.
+  - **B — Breach Aggression → offensive burst / execute payoffs.** B's *win
+    vector* is the kill (§5) but its *mechanics* are all tile-flipping
+    (deep-strike chaining); it's told to race the kill with **no draftable tool
+    that deals HP**. "Build toward a burst" and "execute at low enemy HP" fill
+    exactly that gap and pair thematically with deep-strike pressure — the
+    highest-value slot.
+  - **C — Iron Wall → attrition / chip / reactive HP.** Already the most
+    HP-literate archetype: Landmine (#17) is zone damage, Body Blocker's (#7)
+    trade is a 1 HP tax, Impaler (#8) punishes turtling, and §4 names C as the
+    home for the parry cluster — which holds Riposte (#28), the roster's *only*
+    existing direct-HP ability. Chip-over-time and punish-standing abilities
+    extend this DNA rather than inventing a new one.
+  - **A — Solar Economy → HP only via tile-conversion.** No direct-damage
+    abilities; A already reaches HP through Reckoning (#22, tiles → damage). Any
+    A-side HP depth should be more Reckoning-shaped bridges, never standalone
+    damage.
+  - **D — Chain Cannon → HP-*cost* gambles only.** As the high-variance
+    wildcard, D is the one natural home for an HP-as-resource ability (pay HP for
+    a bigger cascade). Secondary, not required.
+
+  **Existence vs. depth — the baseline kill vector is not empty.** Deferring HP
+  abilities does *not* leave the kill vector absent early. Base mechanics already
+  produce HP damage with zero abilities — `on_body_hit` (1 HP + the inescapable
+  drag re-hitting every 62.5ms, §1) and the 500ms damage-tick on enemy tiles — so
+  the **layer-1 Straight mirror already exercises a live kill vector** (§7). The
+  real asymmetry is narrower: the kill vector has no draftable *acceleration*
+  while the tile vector grows a whole economy family. Existence vs. depth.
+  Consequence: **round-knob calibration against the empty baseline
+  (timer/N/damage-rates) needs no HP abilities** and can proceed at F3a as
+  planned — the "balance from the beginning" fear does not bite here.
+
+  **The real deferral risk — over-fitting the round knobs during the archetype
+  slices.** Where the concern *does* bite is layer-3 kit-vs-kit tuning (Slices
+  1–3): A has draftable tile acceleration, B/C have almost none on the HP side
+  (Slice 1 is itself conceded as "flood-rate vs. flip-rate… B-beats-A *in
+  spirit*", and Overpen-as-B "does not validate the canonical B matchup", §7).
+  The danger is measuring "tiles resolve faster" and cranking the round knobs to
+  compensate for a *roster* asymmetry that HP abilities are meant to fix — then
+  HP abilities land, double-correct, and the distortion is baked into the
+  timer/N/damage numbers. Mitigations, none of which is "build the HP family cold
+  now":
+  1. **Design now, implement later** (this thread) — knowing *where* HP abilities
+     land lets you tune the slice knobs *as if* the kill vector will get depth,
+     not as if it stays thin. Costs no code; an extension of the §7 caveat that
+     "matchup balance necessarily lags each real kit."
+  2. **Hold the round knobs provisional** until the kill vector has draftable
+     depth — timer/N/damage-rate numbers stay loose through the archetype slices;
+     don't lock them against a roster where only the tile vector has enablers.
+  3. **Optional surgical hedge — one offensive HP ability at Slice 2.** Slice 2
+     already builds the cross-entity `BodyHit` resolver for Body Blocker (§7); an
+     *attacker-side* HP ability keyed on the same `on_body_hit` (execute-below-N,
+     or +1 HP on a body-hit) reuses that exact resolver shape, needs no long-press
+     rework, and puts a real offensive kill-vector ability on the board during the
+     first triangle tuning instead of leaving the kill vector as pure
+     base-mechanic scenery. If the vector still lags, tune base-mechanic damage
+     (drag length, 500ms cadence) before inventing more abilities.
+
 - **§4's archetype balance is implicitly tuned for one unstated board
   size.** The rock-paper-scissors triangle (B beats A, C beats B, A beats C)
   and Chain Cannon's (D) "explosive when cluttered, brick-y when sparse"
@@ -672,10 +733,10 @@ independently once the descriptor model is proven.
   claim). Because one consumes a boolean and the other a magnitude, a single
   hold feeds both independently — releasing fires a wide volley where each
   beam carries the accrued Full Draw budget, an emergent composition needing
-  no dedicated logic (§2, Long-press activation, lines 108–111). Note this
+  no dedicated logic (§2, Long-press activation). Note this
   makes the pair the strongest hold-coupling in the roster and the most
   punishing to lose: a mid-hold body hit forfeits both budgets at once under
-  the standard total-loss cancel (§2, lines 129–133) — worth watching in the
+  the standard total-loss cancel (§2, Long-press activation) — worth watching in the
   session-3 balance pass, but the input ambiguity itself is closed. (Surfaced
   during the same reach-extension audit that folded Contested Ground's
   chaining into Full Draw+Breach; see Juggernaut, #27.)
