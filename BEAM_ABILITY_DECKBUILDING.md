@@ -43,7 +43,8 @@ not replace them — beams at 62.5ms/step are the analog of "playing a hand."
   **Reckoning**, §3, which turns any tile-claiming payoff into a de facto
   enabler for itself). Don't try to hand-assign a single fixed role per
   ability — classify per combo.
-- **A kill ends the round, and a round boundary is a full reset**: both the
+- **A round ends on any of several conditions (kill, tile-race, or timeout — see
+  §5's two-vector model), and any round boundary is a full reset**: both the
   board (tile ownership) and charges wipe completely; only round wins/kills
   accumulate toward match score, and only drafted abilities persist.
   Consequence: **`on_death` can only ever pay off into the persistent layer**
@@ -323,12 +324,37 @@ important thing to get right when session 5 ships the resolver.
 ## 5. Acquisition
 
 **Phase 1 (build now): symmetric round-draft.** No pre-match ability choice
-(Straight is baseline for everyone, see §2). Segment a match into rounds,
-ending on first-to-N-tiles, a timer, or a kill — a kill ends the round
-outright. A round boundary is a **full reset**: board and charges both wipe;
-only round wins/kills accumulate toward match score and drafted abilities
-persist. Between rounds, both players draft from the **same** pick-1-of-3
-offer — fair for versus play, doesn't interrupt real-time pace mid-round.
+(Straight is baseline for everyone, see §2). Segment a match into rounds. A
+round boundary is a **full reset**: board and charges both wipe; only round
+wins/kills accumulate toward match score and drafted abilities persist. Between
+rounds, both players draft from the **same** pick-1-of-3 offer — fair for versus
+play, doesn't interrupt real-time pace mid-round.
+
+**Round-ending model — two first-class win vectors: HP and tiles.** Every ending
+condition is a function of one of these two vectors, and *which vectors you make
+win-worthy is what defines whether the baseline game has strategy at all*: a
+kill-only round rewards beam-spam and plays flat, because territory never accrues
+intrinsic value — making tiles a win vector is what makes claiming worth doing.
+Three conditions, resolved by priority:
+
+1. **Kill (HP → 0)** — fires instantly, preempts everything. The aggression
+   vector's finish; the original HP-bar intent.
+2. **First-to-N-tiles** — an explicit territory finish line; ends the round the
+   moment a player's claimed-tile count crosses N. The economy vector's finish.
+   *Optional in the first build* — it's the same vector as timeout-by-tiles, just
+   reached faster; add it once the race feels good.
+3. **Timeout** — a mandatory backstop so no round can stall forever; on expiry
+   resolve by **tile count, then HP** (then seat/coin-flip if still tied).
+
+Shipping only #1 + #3 (kill + most-tiles-at-timeout) already covers both vectors;
+#2 is a satisfying explicit finish line layered on later. **Balance crux**: the
+two vectors must be roughly *comparably fast*, or whichever resolves quicker
+dominates and the other archetype (§4) is dead on arrival — tuned via N, timer
+length, damage rates, and board size (see the board-size thread in "Open
+threads"). This is *why* the archetypes need both vectors live: Breach Aggression
+/ Iron Wall race the kill; Solar Economy / Chain Cannon race the tiles;
+**Reckoning** (#22) is the bridge that converts hoarded tiles into HP damage,
+which only makes sense when both vectors exist.
 
 **Phase 2 (future game mode, not in the initial build): asymmetric personal
 shops.** Each player sees their own distinct offer between rounds — more
@@ -442,7 +468,11 @@ list on top, so **"Straight-only" = empty descriptor list.** Every stage's
 
 1. **Straight mirror (both empty) → seat calibration.** Tyled has P1/P2 spawn +
    input asymmetry; the pure-baseline game's length and seat advantage are the
-   *delta reference* for everything downstream.
+   *delta reference* for everything downstream. **Run it with both win vectors
+   live (kill + most-tiles-at-timeout, §5), not kill-only** — a kill-only
+   baseline rewards beam-spam and plays flat, hiding the territory vector the
+   downstream archetypes are built on, so calibrating against it would
+   misattribute the tile vector's contribution to the abilities layered on top.
 2. **Kit vs. Straight-only → absolute power** ("does this kit earn its slots?").
    Each archetype kit vs. the empty baseline — e.g. a B ability like Backfill is
    exercised here as part of B: `{Overpen, Backfill}` vs. `{}`.
@@ -484,15 +514,24 @@ side (which would hide its contribution and contaminate the A-vs-B differential)
 
 **Stage F3a — round loop + reset + win condition** *(= the round/win half of
 session 3)*.
-- *architecture (§6):* round segmentation (first-to-N-tiles / timer / kill);
-  round boundary is a full reset of board + charges (§1/§5); include the
-  Beachhead reset-exception hook now, even though Beachhead itself lands in Heavy
-  content below.
+- *architecture (§6):* round segmentation implementing the two-vector
+  round-ending model (§5): **kill (HP→0, instant/highest priority)** +
+  **timeout resolving by tile-count-then-HP**, *both live from this stage — not
+  kill-only.* First-to-N-tiles is optional here (same vector as
+  timeout-by-tiles); add it when the tile race wants an explicit finish line.
+  Round boundary is a full reset of board + charges (§1/§5); include the Beachhead
+  reset-exception hook now, even though Beachhead itself lands in Heavy content
+  below.
 - *abilities:* none.
 - *balancing:* provides the win/loss signal — **without it you cannot measure
-  balance.** The layer-1 mirror now yields a scorable result. (The draft UI —
-  Stage F3b — is deferred to Heavy content; loadouts stay hardcoded until
-  matchups feel right.)
+  balance.** The layer-1 mirror now yields a scorable result. **First
+  discriminating read**: with both vectors live, re-run the Straight mirror — a
+  most-tiles/first-to-N race is itself a territory contest and may inject strategy
+  with zero abilities present; if it does, the flat feel observed on the
+  pre-F3a mirror was the missing *goal*, not the missing abilities, and that
+  reshapes how much the ability layer is expected to carry. (The draft UI — Stage
+  F3b — is deferred to Heavy content; loadouts stay hardcoded until matchups feel
+  right.)
 
 ### Archetype slices (hardcoded loadouts)
 
@@ -591,9 +630,18 @@ independently once the descriptor model is proven.
   enemy-owned tile). Worth a dedicated brainstorm later: a whole design
   space of direct-damage enablers/payoffs (e.g. abilities that build toward
   a burst of HP damage, HP-cost resources, execute-style payoffs at low
-  enemy HP) hasn't been touched at all. Revisit once the roster's
-  tile/charge economy is playtested, so any HP-focused additions are
-  weighed against a working baseline instead of guessed at cold.
+  enemy HP) hasn't been touched at all. **Elevated by the two-vector
+  round-ending decision (§5)**: making HP a first-class *win* vector exposes
+  the roster as lopsided — the tile vector has a whole economy family feeding
+  it, while the HP/kill vector has essentially no draftable enablers or
+  payoffs (only Riposte, and only via parry). For the kill vector to have
+  draftable depth *comparable to* the tile vector — the precondition for the
+  two vectors being "comparably fast" and the RPS holding — filling this is no
+  longer an optional later brainstorm but a genuine gap. **Gated on Stage F3a
+  (§7) being playable** — deferred until the two-vector round loop actually runs,
+  so any HP-focused additions are weighed against a working baseline (a scorable
+  kill-vs-tiles game) instead of guessed at cold. Required for vector parity, but
+  not before then.
 
 - **§4's archetype balance is implicitly tuned for one unstated board
   size.** The rock-paper-scissors triangle (B beats A, C beats B, A beats C)
