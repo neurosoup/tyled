@@ -30,7 +30,7 @@ The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `Vie
         - Inserts `Propagate(RenderLayers)` on the HUD map root entity so all its children are rendered exclusively in the HUD camera layer
     - `update_camera`:
         - Reads all `Character` transforms, computes the barycenter and max inter-player distance
-        - Smoothly nudges the main camera `Transform` toward the barycenter (`CAMERA_DECAY_RATE`)
+        - Smoothly nudges the main camera `Transform` toward the barycenter (`CAMERA_DECAY_RATE`), shifted up in world space by `(HUD_VIEWPORT_H / 2) * scale` so the framing is centred in the region below the HUD strip and top-of-arena players aren't occluded by the HUD overlay
         - Lerps the orthographic scale toward the nearest pixel-perfect zoom level (`ZOOM_DECAY_RATE`), then snaps exactly once within 0.001 to guarantee a clean 1/n value
     - `update_hud_viewport`:
         - Reacts to `WindowResized` events
@@ -59,7 +59,7 @@ Runs every frame. Reads the `Transform` of every `Character` entity to compute:
 - The **barycenter** (average position) — the camera target.
 - The **max inter-player distance** — used to derive the desired zoom scale.
 
-The camera `Transform` is smoothly nudged toward the barycenter using `smooth_nudge` (decay rate `CAMERA_DECAY_RATE`).
+The camera `Transform` is smoothly nudged toward the barycenter using `smooth_nudge` (decay rate `CAMERA_DECAY_RATE`). The target is offset upward in world space by `(HUD_VIEWPORT_H / 2) * scale` (world-per-physical-pixel equals the orthographic scale, so the offset tracks the current zoom). This re-centres the framing in the visible region *below* the HUD strip instead of the whole window, so players near the top of the arena stay clear of the HUD overlay. Only `scale` affects pixel-perfection — translation is snapped/subpixel-blitted by the pixel camera — so the offset is safe at any zoom.
 
 Zoom is pixel-perfect: only the four levels in `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) are valid target values, since with `PixelSize(1.0)` these are the only scales where 1 world unit = an integer number of screen pixels. The nearest level is selected by mapping `max_distance` through `BASE_ZOOM_DISTANCE` to a continuous scale, then picking the closest entry in `ZOOM_LEVELS`. The `OrthographicProjection` scale lerps toward the target at `ZOOM_DECAY_RATE` and snaps exactly once within 0.001 to guarantee the final value is a clean 1/n fraction.
 

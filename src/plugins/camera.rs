@@ -35,6 +35,10 @@ const HUD_TILES_H: u32 = 4;
 const HUD_TILE_SIZE: u32 = 16;
 const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
 const HUD_SCALE: f32 = 2.0;
+/// Physical-pixel height of the HUD strip at the top of the window
+/// (`hud_viewport`'s `vp_h`). The game world is shifted down by half this
+/// so barycentre-centred players near the top of the arena aren't occluded.
+const HUD_VIEWPORT_H: f32 = HUD_LOGICAL_H as f32 * HUD_SCALE; // 128
 
 pub const HUD_RENDER_LAYER: usize = 1;
 pub const LEVEL_RENDER_LAYER: usize = 2;
@@ -228,7 +232,24 @@ fn update_camera(
     // Update camera position to barycenter
     let (mut camera_transform, mut projection) = set.p0().into_inner();
 
-    let direction = Vec3::new(barycenter.x, barycenter.y, camera_transform.translation.z);
+    // Shift the framing down so the barycentre sits in the centre of the region
+    // *below* the HUD strip rather than the centre of the whole window, keeping
+    // top-of-arena players clear of the HUD overlay. The HUD covers a fixed
+    // HUD_VIEWPORT_H physical pixels at the top; world-per-physical-pixel equals
+    // the orthographic scale, so this offset tracks the current zoom level.
+    // Only `scale` affects pixel-perfection — translation is snapped/subpixel-
+    // blitted by the pixel camera — so this shift is safe at any zoom.
+    let current_scale = match projection.as_ref() {
+        Projection::Orthographic(ortho) => ortho.scale,
+        _ => ZOOM_LEVELS[0],
+    };
+    let hud_offset_y = (HUD_VIEWPORT_H / 2.0) * current_scale;
+
+    let direction = Vec3::new(
+        barycenter.x,
+        barycenter.y + hud_offset_y,
+        camera_transform.translation.z,
+    );
     camera_transform
         .translation
         .smooth_nudge(&direction, CAMERA_DECAY_RATE, time.delta_secs());
