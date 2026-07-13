@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = []
-dev = ["bevy/dynamic_linking", "bevy/file_watcher", "dep:bevy-inspector-egui"]
+dev = ["bevy/dynamic_linking", "bevy/file_watcher", "dep:bevy-inspector-egui", "bevy_ecs_tiled/debug"]
 
 [dependencies]
 bevy = { version = "0.18.0", default-features = false, features = ["2d"] }
