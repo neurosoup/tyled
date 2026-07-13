@@ -381,16 +381,24 @@ in the roster.
   order; risk of the effect enum becoming an unreadable god-match).
 
 **Recommendation: hybrid, biased to the data-descriptor approach.** Beam
-behaviors and economy modifiers are data descriptors read by resolver systems
-in the beam/damage plugins. Reserve component-bundles for abilities needing
-bespoke query shapes (Landmine's per-tile timers, Beachhead's radius
-burst).
+behaviors and economy modifiers are data descriptors read by resolver systems.
+The systems are split by responsibility: spawn-time beam-behavior selection
+(e.g. picking Backfill) lives in the **beam** plugin; the `on_resolve`/`on_claim`
+claim-side resolvers live in the **claim** plugin — the home of the authoritative
+`ClaimedTile::owner` write, extracted out of the beam plugin so `BeamResolved`
+became a genuine inter-plugin message (beam writes it, claim reads it) and the
+tile-ownership write is a single chokepoint every claim-producing ability feeds;
+economy modifiers read by resolvers in the **damage** plugin (and a future
+charge/economy plugin). Reserve component-bundles for abilities needing bespoke
+query shapes (Landmine's per-tile timers, Beachhead's radius burst).
 
 **New messages needed** (additive, fit the existing message-driven pattern):
 - `ChargeSpent{owner, amount}` / `ChargeRegen{owner, amount}` — currently a
   silent decrement inside the beam plugin.
 - `TileClaimed{position, old_owner, new_owner}` — distinguishes a real flip
-  from a no-op resolve; `BeamResolved` alone can't tell them apart.
+  from a no-op resolve; `BeamResolved` alone can't tell them apart. Emitted by
+  the claim plugin (the authoritative-write chokepoint) since the F1 beam/claim
+  split.
 - `on_body_hit`-adjacent: today `apply_beam_damage` (damage plugin) already
   owns this collision check and unconditionally applies knockback. Body
   Blocker requires that system to consult the *target's* ability descriptors

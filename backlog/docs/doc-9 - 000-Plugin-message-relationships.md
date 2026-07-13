@@ -12,7 +12,7 @@ This document summarises how the game's plugins are connected to each other thro
 There are two categories of messages in this codebase:
 
 - **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Maps, Camera, and Animations plugins respectively to react to map and object loading completion.
-- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `TileClaimed` and `ChargeSpent` are beam-ability substrate hooks introduced in Stage F1: they are emitted by the Beam plugin but have no consumers yet — ability resolvers read them starting Stage F2. `ChargeRegen` is declared for the same substrate but is not yet emitted (its first source is Solar Panels, Slice 1), so it does not appear in the diagram below.
+- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `TileClaimed` and `ChargeSpent` are beam-ability substrate hooks introduced in Stage F1: `TileClaimed` is emitted by the Claim plugin and `ChargeSpent` by the Beam plugin, but neither has consumers yet — ability resolvers read them starting Stage F2. `ChargeRegen` is declared for the same substrate but is not yet emitted (its first source is Solar Panels, Slice 1), so it does not appear in the diagram below.
 
 The diagram below shows every plugin as a node, every message type as a distinct node, and the write/read relationships as directed edges. The flow generally moves from left to right: external events bootstrap the world, player input drives movement and combat, beam collisions trigger tile ownership changes, damage accumulates on claimed tiles, and visual effects react to the resulting state changes.
 
@@ -34,6 +34,7 @@ input_plugin["`**Input Plugin**`"]:::system-group
 controller_plugin["`**Controller Plugin**`"]:::system-group
 animations_plugin["`**Animations Plugin**`"]:::system-group
 beam_plugin["`**Beam Plugin**`"]:::system-group
+claim_plugin["`**Claim Plugin**`"]:::system-group
 damage_plugin["`**Damage Plugin**`"]:::system-group
 effects_plugin["`**Effects Plugin**`"]:::system-group
 hud_plugin["`**HUD Plugin**`"]:::system-group
@@ -64,11 +65,12 @@ beam_fired_message ---> |reads spawn_beam| beam_plugin
 beam_fired_message ---> |reads spend_charge_on_fire| beam_plugin
 
 beam_plugin ---> |writes| beam_resolved_message
-beam_plugin ---> |writes claim_tile| tile_claimed_message
 beam_plugin ---> |writes spend_charge_on_fire| charge_spent_message
 
-beam_resolved_message ---> |reads claim_tile| beam_plugin
+beam_resolved_message ---> |reads claim_tile| claim_plugin
 beam_resolved_message ---> |reads| animations_plugin
+
+claim_plugin ---> |writes claim_tile| tile_claimed_message
 
 damage_plugin ---> |writes| damageable_died_message
 

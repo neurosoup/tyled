@@ -9,7 +9,7 @@ updated_date: '2026-07-12 12:00'
 
 The home of the beam-ability deckbuilding substrate. Its job is to let each player carry an ordered list of draftable abilities that later modify beam behaviour, the charge economy, and tile contests through resolver systems.
 
-This is **Stage F1** of a staged rollout, and F1 is *substrate only — no new content*. In this stage the plugin merely registers the ability component types so the `bevy-inspector-egui` world inspector can display each player's (empty) loadout. The `on_resolve` / `on_claim` descriptor resolvers — the systems that read the drafted abilities and change beam outcomes — land in **Stage F2** and will be added here.
+This is **Stage F1** of a staged rollout, and F1 is *substrate only — no new content*. In this stage the plugin merely registers the ability component types so the `bevy-inspector-egui` world inspector can display each player's (empty) loadout. The `on_resolve` / `on_claim` descriptor resolvers — the systems that read the drafted abilities and change how a resolve/claim plays out — land in **Stage F2** and live in the Claim plugin (`doc-13`), the home of the authoritative tile-ownership write. Beam-behavior selection (e.g. picking `BeamBehavior::Backfill` from a player's `AbilityList` at spawn time) remains a Beam plugin concern.
 
 ## Concepts
 
@@ -31,7 +31,7 @@ Related but owned by the Beam plugin: `BeamBehavior { Straight, Backfill }` (`sr
 
 ## Plugin Systems
 
-None in Stage F1. The plugin only registers reflected component types. The `on_resolve` / `on_claim` resolvers, and the messages they consume (`TileClaimed`, `ChargeSpent`, and later `ChargeRegen`, all declared in the Messages plugin), are added in Stage F2.
+None in Stage F1. The plugin only registers reflected component types. The `on_resolve` / `on_claim` resolvers, and the messages they consume (`TileClaimed`, `ChargeSpent`, and later `ChargeRegen`, all declared in the Messages plugin), are added in Stage F2 in the Claim plugin (`doc-13`), not here.
 
 ## Components, Resources and Messages CRUD
 

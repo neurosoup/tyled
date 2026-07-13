@@ -1,5 +1,7 @@
 /*
- * Plugin for beam behavior and claim tile when beam is resolved.
+ * Plugin for beam behavior: spawning and stepping beams, and spending charges.
+ * Emits `BeamResolved` when a beam stops; the claim plugin turns that into a
+ * tile-ownership change.
  */
 use crate::prelude::*;
 use bevy::prelude::*;
@@ -8,10 +10,7 @@ use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
-    app.add_systems(
-        Update,
-        (spawn_beam, beam_step, claim_tile, spend_charge_on_fire),
-    );
+    app.add_systems(Update, (spawn_beam, beam_step, spend_charge_on_fire));
 }
 
 #[derive(Resource)]
@@ -184,30 +183,6 @@ pub(crate) fn beam_step(
 
                 // Advance
                 *position = next_position;
-            }
-        }
-    }
-}
-
-fn claim_tile(
-    mut beam_resolved_reader: MessageReader<BeamResolved>,
-    mut claimed_tiles: Query<&mut ClaimedTile>,
-    map_info: Res<MapInfo>,
-    mut tile_claimed_writer: MessageWriter<TileClaimed>,
-) {
-    for tile_claimed_message in beam_resolved_reader.read() {
-        if let Some(claimed_entity) = map_info
-            .claimed_entities
-            .get(&tile_claimed_message.position)
-        {
-            if let Ok(mut claimed_tile) = claimed_tiles.get_mut(*claimed_entity) {
-                let old_owner = claimed_tile.owner;
-                claimed_tile.owner = Some(tile_claimed_message.owner);
-                tile_claimed_writer.write(TileClaimed {
-                    position: tile_claimed_message.position,
-                    old_owner,
-                    new_owner: tile_claimed_message.owner,
-                });
             }
         }
     }

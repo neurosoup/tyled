@@ -40,7 +40,8 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `camera` | Pixel-perfect main camera via `bevy_smooth_pixel_camera` (`PixelCamera`, layer 2 viewport, order 2) with dynamic zoom snapping to `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) + HUD camera on `RenderLayers(1)`, order 3 |
 | `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages; gates `BeamFired` when player's `BeamCharges` is exhausted |
 | `controller` | Reads `EntityMoved` messages, validates against `MapInfo`, updates player `GridCoords` |
-| `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, claims tiles, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
+| `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
+| `claim` | Reads `BeamResolved`, mutates the authoritative `ClaimedTile::owner`, emits `TileClaimed`; the single home for tile-ownership changes (and future `on_resolve`/`on_claim` ability resolvers) |
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied` |
 | `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
 | `animations` | `bevy_spritesheet_animation` setup; attaches and switches player/tile sprite animations; lerps HP bar `scale.x` to match `Health.ratio()` |
