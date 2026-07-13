@@ -144,8 +144,9 @@ fn initialize_hp_bars(
     hp_bars_query: Query<(Entity, &Player, &Transform, Option<&Children>), With<HPBar>>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
-    // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall
-    let hp_container_width = 20.0 * 16.0 - 4.0;
+    // Refers to the hud map where HP containers are located: 20 tiles wide by 16x32 tiles tall.
+    // The full bar spans the 18 fill tiles (288px) plus a 7px inset into each end cap = 302px.
+    let hp_container_width = 18.0 * 16.0 + 2.0 * 7.0;
     let hp_container_height = 16.0;
 
     for map_created_message in map_created_reader.read() {
