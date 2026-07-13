@@ -3,22 +3,23 @@ id: doc-12
 title: '[010] Abilities plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-07-12 12:00'
+updated_date: '2026-07-13 12:00'
 ---
 # Abilities Plugin
 
-The home of the beam-ability deckbuilding substrate. Its job is to let each player carry an ordered list of draftable abilities that later modify beam behaviour, the charge economy, and tile contests through resolver systems.
+The home of the beam-ability substrate. Its job is to let each player carry an ordered list of draftable abilities that modify beam behaviour, the charge economy, and tile contests through resolver systems.
 
-This is **Stage F1** of a staged rollout, and F1 is *substrate only — no new content*. In this stage the plugin merely registers the ability component types so the `bevy-inspector-egui` world inspector can display each player's (empty) loadout. The `on_resolve` / `on_claim` descriptor resolvers — the systems that read the drafted abilities and change how a resolve/claim plays out — land in **Stage F2** and live in the Claim plugin (`doc-13`), the home of the authoritative tile-ownership write. Beam-behavior selection (e.g. picking `BeamBehavior::Backfill` from a player's `AbilityList` at spawn time) remains a Beam plugin concern.
+The plugin registers the ability component types (so the `bevy-inspector-egui` world inspector can display each player's loadout) *and* owns `PlayerLoadouts`, the hardcoded per-player starting kits read by the Maps plugin's `initialize_players`. There is no draft UI, so loadouts are assigned in code and swapped between runs by editing `PlayerLoadouts`. The `Backfill` ability is handed to players via `PlayerLoadouts` and drives `BeamBehavior::Backfill` selection in the Beam plugin (`doc-7`). Beam-behavior selection (picking `BeamBehavior::Backfill` from a player's `AbilityList` at spawn time) is a Beam plugin concern; this plugin holds no resolver systems.
 
 ## Concepts
 
-Two distinct types make up the substrate (the split is intentional):
+Three types make up the substrate (the split is intentional):
 
-- `AbilityList(Vec<AbilityDescriptor>)` (`src/components/abilities.rs`) — the **per-player, persistent, draftable** list. It is attached (empty) to every player in the Maps plugin's `initialize_players`. Straight Shot is the *implicit baseline* applied first and is **not** stored here, so an empty list means "Straight-only" — the layer-1 balancing control. Later stages append drafted descriptors.
-- `AbilityDescriptor` (`src/components/abilities.rs`) — a single draftable ability, kept as pure, `Reflect`-serialisable data (no `Entity` or runtime handles) so a future loadout can be authored in RON, hot-reloaded via `file_watcher`, and persisted across sessions. Stage F1 declares one variant, `Backfill`, which is not yet attached to any player (it is wired in Stage F2).
+- `AbilityList(Vec<AbilityDescriptor>)` (`src/components/abilities.rs`) — the **per-player, persistent, draftable** list. It is attached to every player in the Maps plugin's `initialize_players` from `PlayerLoadouts`. Straight Shot is the *implicit baseline* applied first and is **not** stored here, so an empty list means "Straight-only" — the layer-1 balancing control. Later stages append drafted descriptors.
+- `AbilityDescriptor` (`src/components/abilities.rs`) — a single draftable ability, kept as pure, `Reflect`-serialisable data (no `Entity` or runtime handles) so a future loadout can be authored in RON, hot-reloaded via `file_watcher`, and persisted across sessions. Declares one variant, `Backfill`.
+- `PlayerLoadouts` (`src/components/abilities.rs`) — a **resource** holding the hardcoded P1/P2 starting descriptor lists (there is no draft UI). Inserted by this plugin's build with the default of `Backfill` on **both** players, and read by `initialize_players` via `for_player(player_id)`. It is the single place to assign or swap kits between runs; setting a player's list to empty gives the Straight-only control.
 
-Related but owned by the Beam plugin: `BeamBehavior { Straight, Backfill }` (`src/components/beam.rs`) is the **per-beam, transient** resolved execution mode carried on each `Beam` (it replaced the former `Beam::inverted` bool). In Stage F2 a player's `AbilityList` containing `AbilityDescriptor::Backfill` will drive selection of `BeamBehavior::Backfill` at spawn time; in Stage F1 every beam is `Straight`.
+Related but owned by the Beam plugin: `BeamBehavior { Straight, Backfill }` (`src/components/beam.rs`) is the **per-beam, transient** resolved execution mode carried on each `Beam`. `spawn_beam` selects `BeamBehavior::Backfill` when a beam is fired from already-claimed ground **and** the firing player's `AbilityList` contains `AbilityDescriptor::Backfill` (a contextual fallback, not a wholesale mode — see `doc-7`); otherwise it stays `Straight`.
 
 ## Plugin workflow
 
@@ -26,18 +27,18 @@ Related but owned by the Beam plugin: `BeamBehavior { Straight, Backfill }` (`sr
     - (none)
 - Registration (at plugin build)
     - `register_type::<AbilityList>()` and `register_type::<AbilityDescriptor>()` — makes the loadout visible in the world inspector.
+    - `insert_resource(PlayerLoadouts { .. })` — the hardcoded default kits (`Backfill` on both players).
 - Update phase
-    - (none yet — ability resolver systems arrive in Stage F2.)
+    - (none — this plugin has no Update systems.)
 
 ## Plugin Systems
 
-None in Stage F1. The plugin only registers reflected component types. The `on_resolve` / `on_claim` resolvers, and the messages they consume (`TileClaimed`, `ChargeSpent`, and later `ChargeRegen`, all declared in the Messages plugin), are added in Stage F2 in the Claim plugin (`doc-13`), not here.
+None. The plugin only registers reflected component types and inserts the `PlayerLoadouts` resource. Backfill needs no claim-side resolver — only spawn-side behavior selection in the Beam plugin (`doc-7`).
 
 ## Components, Resources and Messages CRUD
 
-Stage F1 introduces no systems, so there are no read/write flows to diagram yet. The component definitions:
+The plugin has no systems, so there are no per-frame read/write flows to diagram. Definitions and where they are used:
 
-- `AbilityList` — `#[derive(Component, Reflect, Default, Clone)]`, attached to each player by `initialize_players` (Maps plugin) with an empty `Vec`.
-- `AbilityDescriptor` — `#[derive(Reflect, Clone, Debug)]`, one variant `Backfill` (unattached in F1).
-
-CRUD/mermaid diagrams will be added alongside the resolver systems in Stage F2.
+- `AbilityList` — `#[derive(Component, Reflect, Default, Clone)]`, attached to each player by `initialize_players` (Maps plugin) from `PlayerLoadouts::for_player`. Read by `spawn_beam` (Beam plugin) to select `BeamBehavior`.
+- `AbilityDescriptor` — `#[derive(Reflect, Clone, Debug, PartialEq, Eq)]`, one variant `Backfill`.
+- `PlayerLoadouts` — `#[derive(Resource, Clone)]`, inserted here, read by `initialize_players` (Maps plugin).

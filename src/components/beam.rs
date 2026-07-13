@@ -14,6 +14,5 @@ pub struct Beam {
 pub enum BeamBehavior {
     #[default]
     Straight,
-    #[allow(dead_code)] // selected in Stage F2 (Backfill ability)
     Backfill,
 }

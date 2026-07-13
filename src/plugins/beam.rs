@@ -28,6 +28,9 @@ fn spawn_beam(
     mut commands: Commands,
     mut beam_fired_reader: MessageReader<BeamFired>,
     beams_query: Query<(&Beam, &GridCoords)>,
+    ability_query: Query<&AbilityList>,
+    claimed_query: Query<&ClaimedTile>,
+    map_info: Res<MapInfo>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
@@ -42,15 +45,30 @@ fn spawn_beam(
             coords.x == beam_fired_message.origin.x && beam.direction.y != 0
         });
 
-        // Stage F1: always Straight. Descriptor-gated selection of
-        // BeamBehavior::Backfill arrives in Stage F2.
+        // Backfill is a contextual fallback, not a wholesale mode: it replaces
+        // Straight only when the beam is fired from already-claimed ground (where
+        // Straight would fizzle), and only if the firing player has drafted it.
+        // Fired from unclaimed ground it stays Straight regardless of loadout.
+        let origin_claimed = map_info
+            .claimed_entities
+            .get(&beam_fired_message.origin)
+            .is_some_and(|e| claimed_query.get(*e).is_ok_and(|ct| ct.owner.is_some()));
+        let has_backfill = ability_query
+            .get(beam_fired_message.owner)
+            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Backfill));
+        let behavior = if origin_claimed && has_backfill {
+            BeamBehavior::Backfill
+        } else {
+            BeamBehavior::Straight
+        };
+
         let mut entity_commands = commands.spawn((
             beam_fired_message.origin,
             Beam {
                 owner: beam_fired_message.owner,
                 direction: beam_fired_message.direction,
                 speed: 1.0,
-                behavior: BeamBehavior::Straight,
+                behavior,
             },
         ));
         if !owner_has_active_beam {

@@ -196,6 +196,7 @@ fn initialize_players(
     current_level_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     mut players_query: Query<(Entity, &Player, &mut Transform), With<Character>>,
     children_query: Query<&Children>,
+    loadouts: Res<PlayerLoadouts>,
 ) {
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the current level
@@ -223,7 +224,7 @@ fn initialize_players(
                         max: 100.0,
                     },
                     BeamCharges::new((map_info.ground_entities.len() as u32) / 2),
-                    AbilityList::default(),
+                    AbilityList(loadouts.for_player(player.player_id)),
                 ));
 
                 transform.scale = Vec3::new(1.25, 1.25, 1.0);

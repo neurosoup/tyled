@@ -522,18 +522,35 @@ side (which would hide its contribution and contaminate the A-vs-B differential)
 - *balancing:* layer-1 mirror runnable. Updated `backlog/docs/doc-7 -
   006-Beam-plugin.md` and added `backlog/docs/doc-12 - 010-Abilities-plugin.md`.
 
-**Stage F2 — descriptor container + Backfill (plumbing proof)**.
-- *architecture (§6):* per-player ability-descriptor list + the `on_resolve`/
-  `on_claim` resolver. The loadout hookup must accept an arbitrary per-player
-  list **including the empty (Straight-only) one** and hot-swap it between runs —
-  "no abilities" is a first-class, tested option (the layer-1 control), not an
-  edge case.
+**Stage F2 — descriptor container + Backfill (plumbing proof)** — **IMPLEMENTED**.
+- *architecture (§6):* per-player ability-descriptor list + the loadout hookup.
+  The hookup is a `PlayerLoadouts` resource (`src/components/abilities.rs`,
+  inserted by the `abilities` plugin) holding P1/P2 descriptor lists, read by
+  `initialize_players` via `for_player(player_id)`. It accepts an arbitrary
+  per-player list **including the empty (Straight-only) one** and swaps between
+  runs by editing the resource default — "no abilities" is a first-class option
+  (the layer-1 control), not an edge case.
+- *decisions taken during implementation:*
+  1. **Contextual selection, not wholesale mapping** — Backfill is a *fallback*
+     (§2): `spawn_beam` selects `BeamBehavior::Backfill` only when the beam is
+     fired from already-claimed ground (where Straight would fizzle) **and** the
+     owner has drafted `Backfill`. This reproduces the exact pre-F1 auto-selected
+     inverted check, now gated on the descriptor. With Backfill hardcoded on both
+     players the game is observationally identical to pre-F1; empty list =
+     Straight-only.
+  2. **`on_resolve`/`on_claim` resolver deferred to Slice 1** — Backfill is
+     spawn-side behavior selection with no claim-side hook, so a resolver built
+     now would dispatch to nothing (§6's god-match warning). The first real
+     consumers are Slice 1's Overpenetration (`on_resolve`) + Tithe (`on_claim`);
+     the resolver ships there, in the claim plugin, per §7's "machinery attached
+     to the stage that needs it."
 - *abilities:* Backfill (#2) as the first descriptor — today's "inverted"
   behavior reframed as an appended fallback entry — hardcoded on **both** players
   (plumbing proof; reproduces today's contextual inverted mode; *not* an
   archetype assignment).
-- *balancing:* none yet (no win signal); proves the descriptor/resolver plumbing
-  end to end.
+- *balancing:* none yet (no win signal); proves the descriptor→behavior plumbing
+  end to end. Updated `backlog/docs/doc-7` (beam), `doc-12` (abilities), and
+  `doc-3` (maps).
 
 **Stage F3a — round loop + reset + win condition** *(the round/win half; the
 draft-UI half is Stage F3b)*.

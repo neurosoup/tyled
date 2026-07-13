@@ -289,7 +289,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}` on each `Player` entity, and inserts `Anchor` on the first child sprite entity
+- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, and `AbilityList` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin, `doc-12`) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control.
 
 ```mermaid
 ---
@@ -314,7 +314,12 @@ pe_translate_effect>"`**TranslateEffectTarget**`"]
 pe_damage_effect>"`**DamageEffectTarget**`"]
 pe_health>"`**Health**`"]
 pe_beam_charges>"`**BeamCharges**`"]
+pe_ability_list>"`**AbilityList**`"]
 ce_anchor>"`**Anchor**`"]
+
+world@{ shape: st-rect, label: "World" }
+player_loadouts_res@{ shape: doc, label: "PlayerLoadouts" }
+player_loadouts_res --> |belongs to| world
 
 pe_grid_coords --> |inserted on| player_entity
 pe_look_direction --> |inserted on| player_entity
@@ -322,14 +327,17 @@ pe_translate_effect --> |inserted on| player_entity
 pe_damage_effect --> |inserted on| player_entity
 pe_health --> |inserted on| player_entity
 pe_beam_charges --> |inserted on| player_entity
+pe_ability_list --> |inserted on| player_entity
 ce_anchor --> |inserted on| child_entity
 
+initialize_players ---> |reads| player_loadouts_res
 initialize_players ---> |inserts component| pe_grid_coords
 initialize_players ---> |inserts component| pe_look_direction
 initialize_players ---> |inserts component| pe_translate_effect
 initialize_players ---> |inserts component| pe_damage_effect
 initialize_players ---> |inserts component| pe_health
 initialize_players ---> |inserts component| pe_beam_charges
+initialize_players ---> |inserts component| pe_ability_list
 initialize_players ---> |inserts component| ce_anchor
 ```
 
