@@ -57,42 +57,63 @@ impl DigitAnimations {
     }
 }
 
+/// Drives every digit sprite marked `M` for the given player to display `value`
+/// (one decimal digit per `Digit::position`), switching each digit's child
+/// `SpritesheetAnimation` to the from→to rolling-odometer animation.
+fn drive_digit_counter<M: Component>(
+    player_id: u8,
+    value: u32,
+    digits: &mut Query<(Entity, &Player, &mut Digit), With<M>>,
+    children_query: &Query<&Children>,
+    sprite_animations: &mut Query<&mut SpritesheetAnimation>,
+    digit_animations: &DigitAnimations,
+) {
+    for (entity, digit_player, mut digit) in digits.iter_mut() {
+        if digit_player.player_id != player_id {
+            continue;
+        }
+
+        let divisor = 10u32.pow(digit.position as u32);
+        let to = ((value / divisor) % 10) as u8;
+
+        let from = digit.value;
+        let Some(handle) = digit_animations.get(from, to) else {
+            continue;
+        };
+        digit.value = to;
+
+        for descendant in children_query.iter_descendants(entity) {
+            let Ok(mut animation) = sprite_animations.get_mut(descendant) else {
+                continue;
+            };
+            animation.switch(handle);
+            break;
+        }
+    }
+}
+
 fn animate_beam_charges(
     players: Query<(&Player, &BeamCharges), Changed<BeamCharges>>,
-    mut digits_query: Query<(Entity, &Player, &mut Digit), With<BeamChargesDigit>>,
+    mut digits: Query<(Entity, &Player, &mut Digit), With<BeamChargesDigit>>,
     children_query: Query<&Children>,
     mut sprite_animations: Query<&mut SpritesheetAnimation>,
     digit_animations: If<Res<DigitAnimations>>,
 ) {
     for (player, beam_charges) in &players {
-        for (entity, digit_player, mut digit) in &mut digits_query {
-            if digit_player.player_id != player.player_id {
-                continue;
-            }
-
-            let divisor = 10u32.pow(digit.position as u32);
-            let to = ((beam_charges.current / divisor) % 10) as u8;
-
-            let from = digit.value;
-            let Some(handle) = digit_animations.get(from, to) else {
-                continue;
-            };
-            digit.value = to;
-
-            for descendant in children_query.iter_descendants(entity) {
-                let Ok(mut animation) = sprite_animations.get_mut(descendant) else {
-                    continue;
-                };
-                animation.switch(handle);
-                break;
-            }
-        }
+        drive_digit_counter(
+            player.player_id,
+            beam_charges.current,
+            &mut digits,
+            &children_query,
+            &mut sprite_animations,
+            &digit_animations,
+        );
     }
 }
 
 fn animate_claimed_tiles(
     players: Query<(&Player, &ClaimedTileCount), Changed<ClaimedTileCount>>,
-    mut digits_query: Query<(Entity, &Player, &mut Digit), With<ClaimedTilesDigit>>,
+    mut digits: Query<(Entity, &Player, &mut Digit), With<ClaimedTilesDigit>>,
     children_query: Query<&Children>,
     mut sprite_animations: Query<&mut SpritesheetAnimation>,
     digit_animations: If<Res<DigitAnimations>>,
@@ -106,29 +127,14 @@ fn animate_claimed_tiles(
     for (player, count) in &players {
         // Owned-tile count as a rounded percentage of the whole board (0..=100).
         let percent = (count.current * 100 + total / 2) / total;
-
-        for (entity, digit_player, mut digit) in &mut digits_query {
-            if digit_player.player_id != player.player_id {
-                continue;
-            }
-
-            let divisor = 10u32.pow(digit.position as u32);
-            let to = ((percent / divisor) % 10) as u8;
-
-            let from = digit.value;
-            let Some(handle) = digit_animations.get(from, to) else {
-                continue;
-            };
-            digit.value = to;
-
-            for descendant in children_query.iter_descendants(entity) {
-                let Ok(mut animation) = sprite_animations.get_mut(descendant) else {
-                    continue;
-                };
-                animation.switch(handle);
-                break;
-            }
-        }
+        drive_digit_counter(
+            player.player_id,
+            percent,
+            &mut digits,
+            &children_query,
+            &mut sprite_animations,
+            &digit_animations,
+        );
     }
 }
 

@@ -63,13 +63,17 @@ Runs every frame. Queries all player entities that carry `DamageEffectTarget`, r
 
 Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 2)` + `add_partial_row(2, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
 
+### Drive Digit Counter (shared helper)
+
+`drive_digit_counter<M: Component>` is a private helper (not a system) that holds the shared per-digit driving loop used by both counter systems. Given a `player_id`, a target `value`, and the digit query filtered by marker `M`, it iterates all `M`-marked entities whose `Player::player_id` matches, computes each digit's target as `(value / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. The two `animate_*` systems below own only their domain-specific value derivation and delegate the rest to this helper.
+
 ### Animate Beam Charges
 
-Runs every frame, filtered by `Changed<BeamCharges>`. For each player entity whose `BeamCharges` component changed, iterates all `BeamChargesDigit`-marked entities whose `Player::player_id` matches. For each digit, computes the target value as `(BeamCharges::current / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, then walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip. Updates `Digit::value` to the new digit value.
+Runs every frame, filtered by `Changed<BeamCharges>`. For each player entity whose `BeamCharges` component changed, calls `drive_digit_counter::<BeamChargesDigit>` with the target value `BeamCharges::current` to drive that player's digit sprites.
 
 ### Animate Claimed Tiles
 
-Runs every frame, filtered by `Changed<ClaimedTileCount>`. Reads `MapInfo::ground_entities` to obtain the total number of ground tiles (returning early if that total is zero). For each player entity whose `ClaimedTileCount` changed, computes the owned-tile count as a rounded percentage of the whole board (`(count.current * 100 + total / 2) / total`, giving a value in `0..=100`). It then iterates all `ClaimedTilesDigit`-marked entities whose `Player::player_id` matches, computes each digit's target value as `(percent / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. It is the digit-display counterpart of `animate_beam_charges`, but renders each player's owned-tile count as a rounded percentage rather than a raw charge count.
+Runs every frame, filtered by `Changed<ClaimedTileCount>`. Reads `MapInfo::ground_entities` to obtain the total number of ground tiles (returning early if that total is zero). For each player entity whose `ClaimedTileCount` changed, computes the owned-tile count as a rounded percentage of the whole board (`(count.current * 100 + total / 2) / total`, giving a value in `0..=100`), then calls `drive_digit_counter::<ClaimedTilesDigit>` with that percentage. It is the digit-display counterpart of `animate_beam_charges`, but renders each player's owned-tile count as a rounded percentage rather than a raw charge count.
 
 ## Components, Resources and Messages CRUD
 
