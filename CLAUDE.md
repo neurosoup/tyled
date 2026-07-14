@@ -44,7 +44,8 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `claim` | Reads `BeamResolved`, mutates the authoritative `ClaimedTile::owner`, emits `TileClaimed`; the single home for tile-ownership changes (and future `on_resolve`/`on_claim` ability resolvers) |
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied` |
 | `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
-| `animations` | `bevy_spritesheet_animation` setup; attaches and switches player/tile sprite animations; lerps HP bar `scale.x` to match `Health.ratio()` |
+| `animations` | `bevy_spritesheet_animation` setup; attaches and switches world-space player/tile sprite animations |
+| `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile percentage) |
 | `debug` | `bevy-inspector-egui` world inspector (always enabled) |
 
 ### Communication pattern

@@ -18,6 +18,7 @@ pub(crate) fn plugin(app: &mut App) {
 fn claim_tile(
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     mut claimed_tiles: Query<&mut ClaimedTile>,
+    mut counts: Query<&mut ClaimedTileCount>,
     map_info: Res<MapInfo>,
     mut tile_claimed_writer: MessageWriter<TileClaimed>,
 ) {
@@ -28,11 +29,26 @@ fn claim_tile(
         {
             if let Ok(mut claimed_tile) = claimed_tiles.get_mut(*claimed_entity) {
                 let old_owner = claimed_tile.owner;
-                claimed_tile.owner = Some(tile_claimed_message.owner);
+                let new_owner = tile_claimed_message.owner;
+                claimed_tile.owner = Some(new_owner);
+
+                // Keep the per-player owned-tile count in sync on a real flip.
+                // A no-op reclaim of an already-owned tile is skipped.
+                if old_owner != Some(new_owner) {
+                    if let Ok(mut c) = counts.get_mut(new_owner) {
+                        c.current += 1;
+                    }
+                    if let Some(old) = old_owner
+                        && let Ok(mut c) = counts.get_mut(old)
+                    {
+                        c.current = c.current.saturating_sub(1);
+                    }
+                }
+
                 tile_claimed_writer.write(TileClaimed {
                     position: tile_claimed_message.position,
                     old_owner,
-                    new_owner: tile_claimed_message.owner,
+                    new_owner,
                 });
             }
         }

@@ -25,6 +25,7 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::effects::plugin);
         app.add_plugins(plugins::controller::plugin);
         app.add_plugins(plugins::animations::plugin);
+        app.add_plugins(plugins::hud::plugin);
         app.add_plugins(plugins::beam::plugin);
         app.add_plugins(plugins::claim::plugin);
         app.add_plugins(plugins::damage::plugin);

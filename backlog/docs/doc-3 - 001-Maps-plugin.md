@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-06-15 12:01'
+updated_date: '2026-07-14 12:00'
 ---
 # Maps Plugin
 
@@ -22,7 +22,7 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}`
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}`, `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin)
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
@@ -50,7 +50,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads t
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20, max:100}`, and `BeamCharges{current:10, max:10}` on the player entity.
+3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20, max:100}`, `BeamCharges{current:10, max:10}`, and `ClaimedTileCount{current:0}` on the player entity. The `ClaimedTileCount` starts at zero and is maintained thereafter by the Claim plugin as tile ownership flips.
 4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
 
 ### Initialize Claimed Tiles
@@ -289,7 +289,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, and `AbilityList` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin, `doc-12`) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control.
+- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, and `ClaimedTileCount` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin, `doc-12`) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control. `ClaimedTileCount` is initialized to zero and maintained thereafter by the Claim plugin (`doc-13`) as tile ownership flips.
 
 ```mermaid
 ---
@@ -315,6 +315,7 @@ pe_damage_effect>"`**DamageEffectTarget**`"]
 pe_health>"`**Health**`"]
 pe_beam_charges>"`**BeamCharges**`"]
 pe_ability_list>"`**AbilityList**`"]
+pe_claimed_tile_count>"`**ClaimedTileCount**`"]
 ce_anchor>"`**Anchor**`"]
 
 world@{ shape: st-rect, label: "World" }
@@ -328,6 +329,7 @@ pe_damage_effect --> |inserted on| player_entity
 pe_health --> |inserted on| player_entity
 pe_beam_charges --> |inserted on| player_entity
 pe_ability_list --> |inserted on| player_entity
+pe_claimed_tile_count --> |inserted on| player_entity
 ce_anchor --> |inserted on| child_entity
 
 initialize_players ---> |reads| player_loadouts_res
@@ -338,6 +340,7 @@ initialize_players ---> |inserts component| pe_damage_effect
 initialize_players ---> |inserts component| pe_health
 initialize_players ---> |inserts component| pe_beam_charges
 initialize_players ---> |inserts component| pe_ability_list
+initialize_players ---> |inserts component| pe_claimed_tile_count
 initialize_players ---> |inserts component| ce_anchor
 ```
 

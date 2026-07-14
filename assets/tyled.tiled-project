@@ -7303,14 +7303,26 @@
                     "type": "class",
                     "value": {
                         "matrix3": {
-                            "x_axis": null,
-                            "y_axis": null,
-                            "z_axis": null
+                            "x_axis": {
+                                "x": 1,
+                                "y": 0,
+                                "z": 0
+                            },
+                            "y_axis": {
+                                "x": 0,
+                                "y": 1,
+                                "z": 0
+                            },
+                            "z_axis": {
+                                "x": 0,
+                                "y": 0,
+                                "z": 1
+                            }
                         },
                         "translation": {
-                            "x": null,
-                            "y": null,
-                            "z": null
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
                         }
                     }
                 }
@@ -8162,8 +8174,14 @@
                     "type": "class",
                     "value": {
                         "matrix2": {
-                            "x_axis": null,
-                            "y_axis": null
+                            "x_axis": {
+                                "x": 1,
+                                "y": 0
+                            },
+                            "y_axis": {
+                                "x": 0,
+                                "y": 1
+                            }
                         },
                         "translation": {
                             "x": 0,
@@ -10732,19 +10750,19 @@
                     "type": "class",
                     "value": {
                         "x_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
+                            "x": 1,
+                            "y": 0,
+                            "z": 0
                         },
                         "y_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
+                            "x": 0,
+                            "y": 1,
+                            "z": 0
                         },
                         "z_axis": {
-                            "x": null,
-                            "y": null,
-                            "z": null
+                            "x": 0,
+                            "y": 0,
+                            "z": 1
                         }
                     }
                 },
@@ -11177,6 +11195,28 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 553,
+            "members": [
+                {
+                    "name": "position",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::components::digit::Digit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 550,
             "members": [
                 {
@@ -11239,6 +11279,18 @@
                 }
             ],
             "name": "tyled::components::grid_coords::GridCoords",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 554,
+            "members": [
+            ],
+            "name": "tyled::components::markers::Character",
             "type": "class",
             "useAs": [
                 "property"
@@ -11329,20 +11381,10 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 553,
+            "id": 556,
             "members": [
-                {
-                    "name": "position",
-                    "type": "int",
-                    "value": 0
-                },
-                {
-                    "name": "value",
-                    "type": "int",
-                    "value": 0
-                }
             ],
-            "name": "tyled::components::digit::Digit",
+            "name": "tyled::components::beam_charges::BeamChargesDigit",
             "type": "class",
             "useAs": [
                 "property"
@@ -11351,10 +11393,10 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 554,
+            "id": 557,
             "members": [
             ],
-            "name": "tyled::components::markers::Character",
+            "name": "tyled::components::claim::ClaimedTilesDigit",
             "type": "class",
             "useAs": [
                 "property"

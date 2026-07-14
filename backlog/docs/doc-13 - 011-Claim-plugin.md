@@ -3,7 +3,7 @@ id: doc-13
 title: '[011] Claim plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-07-12 12:00'
+updated_date: '2026-07-14 12:00'
 ---
 # Claim Plugin
 
@@ -21,6 +21,7 @@ The only coupling to the Beam plugin is the `BeamResolved` message: this plugin 
                 - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
             - Writes:
                 - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
+                - On a real flip (owner actually changes), increments the new owner's `ClaimedTileCount` and decrements the previous owner's (if any)
                 - Emits a `TileClaimed` message (`position`, `old_owner`, `new_owner`) recording the ownership flip
 
 ## Plugin Systems
@@ -28,6 +29,8 @@ The only coupling to the Beam plugin is the `BeamResolved` message: this plugin 
 ### Claim Tile
 
 Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player and emits a `TileClaimed` message capturing the `old_owner` (before the write) and `new_owner`. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance; `TileClaimed` is the ability-system hook that distinguishes a real ownership flip from a no-op resolve (no consumers yet).
+
+The same system keeps each player's `ClaimedTileCount` in sync: when a tile actually changes hands (`old_owner != Some(new_owner)`), it increments the new owner's count and decrements the previous owner's (saturating at zero). No-op reclaims of an already-owned tile leave the counts untouched. This per-player count is the authoritative owned-tile tally that the HUD plugin reads to render each player's claimed-tile percentage on the HUD.
 
 ## Components, Resources and Messages CRUD
 
@@ -139,4 +142,35 @@ update -.-> claim_tile
 tile_claimed_message(["`**TileClaimed**`"])
 
 claim_tile ---> |writes| tile_claimed_message
+```
+
+### Write ClaimedTileCount (claim tile)
+
+Used in the following systems:
+- **claim_tile**: on a real ownership flip, increments the new owner's `ClaimedTileCount::current` and decrements the previous owner's (saturating at zero)
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+claim_tile["`**claim_tile**`"]
+
+update -.-> claim_tile
+
+counts_query{{"`counts (mutable)`"}}:::query
+claim_tile ---> counts_query
+
+player_entity@{ shape: st-rect, label: "Player Entity" }
+
+ctc_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
+ctc_current>"`**current**`"] --> |field of| ctc_count
+
+counts_query ---> |writes| ctc_current
 ```

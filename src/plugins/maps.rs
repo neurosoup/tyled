@@ -223,6 +223,7 @@ fn initialize_players(
                         max: 100.0,
                     },
                     BeamCharges::new((map_info.ground_entities.len() as u32) / 2),
+                    ClaimedTileCount::default(),
                     AbilityList(loadouts.for_player(player.player_id)),
                 ));
 

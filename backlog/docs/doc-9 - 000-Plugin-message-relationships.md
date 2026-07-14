@@ -3,7 +3,7 @@ id: doc-9
 title: '[000] Plugin message relationships'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-07-12 12:00'
+updated_date: '2026-07-14 12:00'
 ---
 # Plugin Message Relationships
 
@@ -11,7 +11,7 @@ This document summarises how the game's plugins are connected to each other thro
 
 There are two categories of messages in this codebase:
 
-- **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Maps, Camera, and Animations plugins respectively to react to map and object loading completion.
+- **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Maps, Camera, Animations, and HUD plugins to react to map and object loading completion. `MapCreated` is read by the Maps and Camera plugins; `ObjectCreated` is read by both the Animations plugin (to initialize player animations) and the HUD plugin (to initialize digit-counter animations).
 - **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `TileClaimed` and `ChargeSpent` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin and `ChargeSpent` by the Beam plugin, but neither has consumers yet. `ChargeRegen` is declared for the same substrate but is not yet emitted, so it does not appear in the diagram below.
 
 The diagram below shows every plugin as a node, every message type as a distinct node, and the write/read relationships as directed edges. The flow generally moves from left to right: external events bootstrap the world, player input drives movement and combat, beam collisions trigger tile ownership changes, damage accumulates on claimed tiles, and visual effects react to the resulting state changes.
@@ -55,6 +55,7 @@ map_created_message ---> |reads| maps_plugin
 map_created_message ---> |reads| camera_plugin
 
 object_created_message ---> |reads| animations_plugin
+object_created_message ---> |reads| hud_plugin
 
 input_plugin ---> |writes| entity_moved_message
 input_plugin ---> |writes| beam_fired_message
