@@ -30,7 +30,6 @@ const ZOOM_LEVELS: [f32; 4] = [1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0, 1.0];
 const CLEAR_COLOR_SATURATION: f32 = 0.312;
 const CLEAR_COLOR_LIGHTNESS: f32 = 0.365;
 
-const HUD_MAP_WIDTH: u32 = 48;
 const HUD_TILES_H: u32 = 4;
 const HUD_TILE_SIZE: u32 = 16;
 const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
@@ -124,6 +123,9 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         Camera2d,
         Msaa::Off,
         Projection::Orthographic(OrthographicProjection {
+            // Pixel-perfect 2× at spawn; otherwise the HUD renders at scale 1.0 until the
+            // first WindowResized fires (see update_hud_viewport).
+            scale: window.scale_factor() / HUD_SCALE,
             ..OrthographicProjection::default_2d()
         }),
         Camera {
@@ -151,9 +153,9 @@ fn update_hud_viewport(
     }
     hud_camera.viewport = Some(hud_viewport(window.physical_width()));
     if let Projection::Orthographic(ortho) = projection.as_mut() {
-        let hud_physical_w = window.physical_width() as f32;
-        let hud_content_w = (HUD_MAP_WIDTH * HUD_TILE_SIZE) as f32;
-        ortho.scale = hud_content_w / hud_physical_w;
+        // Pixel-perfect: physical px per world unit = scale_factor / scale, so scale =
+        // scale_factor / HUD_SCALE renders every 16px tile at exactly 16 * HUD_SCALE physical px.
+        ortho.scale = window.scale_factor() / HUD_SCALE;
     }
 }
 

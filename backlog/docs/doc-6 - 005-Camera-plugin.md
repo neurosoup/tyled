@@ -34,7 +34,7 @@ The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `Vie
         - Lerps the orthographic scale toward the nearest pixel-perfect zoom level (`ZOOM_DECAY_RATE`), then snaps exactly once within 0.001 to guarantee a clean 1/n value
     - `update_hud_viewport`:
         - Reacts to `WindowResized` events
-        - Recalculates the HUD camera viewport rect and orthographic scale to keep the HUD correctly sized regardless of window dimensions
+        - Recalculates the HUD camera viewport rect and re-applies the pixel-perfect fixed 2× orthographic scale on window resize
 
 ## Plugin Systems
 
@@ -43,7 +43,7 @@ The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `Vie
 Spawns two camera entities at startup, resulting in three active cameras at runtime:
 
 1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `ZOOM_LEVELS[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera and HUD camera.
-2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
+2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window, and its `OrthographicProjection` scale is initialized to the pixel-perfect fixed 2× (`scale_factor / HUD_SCALE`) at spawn so the HUD is correct from the first frame. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
 
 ### Randomize Clear Color
 
@@ -65,7 +65,7 @@ Zoom is pixel-perfect: only the four levels in `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1
 
 ### Update HUD Viewport
 
-Runs whenever a `WindowResized` event is received. Recomputes the HUD camera's `Viewport` rect — position and size — to keep the HUD strip anchored to the top of the window at the correct pixel dimensions. Also updates the HUD camera's `OrthographicProjection` scale so the HUD tiles remain at their intended size regardless of the window resolution.
+Runs whenever a `WindowResized` event is received. Recomputes the HUD camera's `Viewport` rect — a full-window-width strip of fixed height anchored to the top of the window. The `OrthographicProjection` scale is set to `window.scale_factor() / HUD_SCALE`, a pixel-perfect fixed 2×: since physical pixels per world unit = `scale_factor / scale`, every 16px HUD tile maps to exactly `16 * HUD_SCALE` physical pixels at any DPI. The HUD is therefore a fixed-size, horizontally-centered band (the camera sits at the origin and the map uses `TilemapAnchor::Center`) rather than stretched to fill the window width — the transparent side margins show the game world beneath.
 
 ## Components, Resources and Messages CRUD
 
