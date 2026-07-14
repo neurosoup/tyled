@@ -7,13 +7,25 @@ updated_date: '2026-06-02 00:00'
 ---
 # Damage Plugin
 
-Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. Two sources of damage are handled: periodic tile damage for characters standing on an opponent-owned tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by both sources.
+Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
+
+The two tile systems are complementary and chained (entry before poll): on-enter (`Changed<GridCoords>`) cannot phase-miss a tile the way the timer poll can when a character crosses faster than the 500 ms sample, while the poll covers the case on-enter cannot — a tile becoming hostile *beneath* a stationary character, whose `GridCoords` never changes. Damage amounts are named constants: `ON_ENTER_DAMAGE` (5.0) per hostile tile entered and `STANDING_DAMAGE` (1.0) per 500 ms poll tick.
 
 ## Plugin workflow
 
 - Startup phase
     - `setup_timer` inserts the `DamageTimer` resource (500 ms repeating).
 - Update phase
+    - Apply Owned Tile Entry Damage (chained before the poll):
+        - Triggers when a `Character`'s `GridCoords` changes (moved onto, or knocked onto, a tile)
+            - Reads:
+                - `GridCoords` and `Health` on `Character` entities (filtered by `Changed<GridCoords>`)
+                - `ClaimedTile` component on ground tile entities (to identify the owner)
+                - `MapInfo` resource (to resolve a `GridCoords` → claimed tile entity)
+            - Writes:
+                - Decrements `Health::current` by `ON_ENTER_DAMAGE` on a character that moved onto an opponent-owned tile
+                - Resets `DamageTimer` so the poll below cannot double-hit the same frame
+                - Writes a `DamageableDied` message if `Health::current` drops to zero
     - Apply Owned Tile Damage:
         - Runs every `DamageTimer` tick (500 ms)
             - Reads:
@@ -22,7 +34,7 @@ Contains systems responsible for dealing damage to entities and emitting `Damage
                 - `ClaimedTile` component on ground tile entities (to identify the owner)
                 - `MapInfo` resource (to resolve a `GridCoords` → claimed tile entity)
             - Writes:
-                - Decrements `Health::current` on characters standing on an opponent-owned tile
+                - Decrements `Health::current` by `STANDING_DAMAGE` on characters standing on an opponent-owned tile
                 - Writes a `DamageableDied` message if `Health::current` drops to zero
     - Apply Beam Damage:
         - Triggers when any `Beam` entity's `GridCoords` changes (i.e. each beam step)
@@ -40,9 +52,13 @@ Contains systems responsible for dealing damage to entities and emitting `Damage
 
 Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer` with a 500 ms period — that gates how frequently tile damage is applied.
 
+### Apply Owned Tile Entry Damage
+
+Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by the effects plugin). For each live character now on a hostile tile (via `is_hostile_tile`), calls `deal_damage` with `ON_ENTER_DAMAGE` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. This is the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
+
 ### Apply Owned Tile Damage
 
-Runs every `DamageTimer` tick. Iterates over all `Character` entities with `Health` and checks whether their current `GridCoords` maps to a `ClaimedTile` owned by a different entity. If so, calls `deal_damage` to decrement `Health::current` by 1 and emit `DamageableDied` if the entity is now dead. Entities with `Health::current <= 0` are skipped up front so already-dead entities do not generate duplicate death messages.
+Runs every `DamageTimer` tick. Iterates over all `Character` entities with `Health` and checks (via `is_hostile_tile`) whether their current `GridCoords` maps to a `ClaimedTile` owned by a different entity. If so, calls `deal_damage` to decrement `Health::current` by `STANDING_DAMAGE` and emit `DamageableDied` if the entity is now dead. Entities with `Health::current <= 0` are skipped up front so already-dead entities do not generate duplicate death messages. Besides standing damage-over-time, this covers the case the entry system cannot: a tile becoming hostile beneath a stationary character (no `GridCoords` change, so no entry trigger).
 
 ### Apply Beam Damage
 
@@ -50,7 +66,11 @@ Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities
 
 ### deal_damage (helper)
 
-Private helper, not a system. Decrements `Health::current` by the given `amount` and, if the result is ≤ 0, writes a `DamageableDied` message via the provided `MessageWriter`. Both `apply_owned_tile_damage` and `apply_beam_damage` delegate to this function to avoid duplicating the decrement-and-emit pattern.
+Private helper, not a system. Decrements `Health::current` by the given `amount` and, if the result is ≤ 0, writes a `DamageableDied` message via the provided `MessageWriter`. All three damage systems delegate to this function to avoid duplicating the decrement-and-emit pattern.
+
+### is_hostile_tile (helper)
+
+Private helper, not a system. Given `MapInfo`, the `ClaimedTile` query, a `GridCoords`, and a character `Entity`, returns whether that coord holds a claimed tile owned by a *different* entity. Resolves the coord via `MapInfo::get_claimed_entity_by_position`, looks up the `ClaimedTile`, and checks `owner.is_some_and(|o| o != character)`. Shared by `apply_owned_tile_entry_damage` and `apply_owned_tile_damage`.
 
 ## Components, Resources and Messages CRUD
 
@@ -84,6 +104,7 @@ setup_timer ---> |inserts| damage_timer_res
 ### Read/Write DamageTimer resource
 
 Used in the following systems:
+- **apply_owned_tile_entry_damage**: resets the timer on a hostile-tile entry so the poll cannot double-hit the same frame
 - **apply_owned_tile_damage**: ticks the timer and gates damage application to every 500 ms
 
 ```mermaid
@@ -96,8 +117,10 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 
+update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 
 world@{ shape: st-rect, label: "World" }
@@ -105,13 +128,15 @@ damage_timer_res@{ shape: doc, label: "DamageTimer" }
 
 damage_timer_res --> |belongs to| world
 
+apply_owned_tile_entry_damage ---> |resets| damage_timer_res
 apply_owned_tile_damage ---> |ticks| damage_timer_res
 ```
 
 ### Query Character entities (tile damage)
 
 Used in the following systems:
-- **apply_owned_tile_damage**: reads `GridCoords` to locate the tile, writes `Health::current` to apply damage
+- **apply_owned_tile_entry_damage**: reads `GridCoords` (filtered by `Changed<GridCoords>`) to locate the entered tile, writes `Health::current` to apply on-enter damage
+- **apply_owned_tile_damage**: reads `GridCoords` to locate the tile, writes `Health::current` to apply standing damage
 
 ```mermaid
 ---
@@ -124,11 +149,15 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
+apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 
+update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 
+entry_characters_query{{"`characters_query (Changed#60;GridCoords#62;)`"}}:::query
 characters_query{{"`characters_query`"}}:::query
+apply_owned_tile_entry_damage ---> entry_characters_query
 apply_owned_tile_damage ---> characters_query
 
 character_entity@{ shape: st-rect, label: "Character Entity" }
@@ -138,6 +167,9 @@ ce_coords>"`**GridCoords**`"] --> |belongs to| character_entity
 ce_health>"`**Health**`"] --> |belongs to| character_entity
 ce_character>"`**Character**`"] --> |belongs to| character_entity
 
+entry_characters_query ---> |reads| ce_entity
+entry_characters_query ---> |reads| ce_coords
+entry_characters_query ---> |writes| ce_health
 characters_query ---> |reads| ce_entity
 characters_query ---> |reads| ce_coords
 characters_query ---> |writes| ce_health
@@ -146,7 +178,8 @@ characters_query ---> |writes| ce_health
 ### Read MapInfo resource
 
 Used in the following systems:
-- **apply_owned_tile_damage**: resolves a `GridCoords` to the claimed tile entity via `get_claimed_entity_by_position`
+- **apply_owned_tile_entry_damage**: resolves the entered `GridCoords` to the claimed tile entity via `get_claimed_entity_by_position` (through `is_hostile_tile`)
+- **apply_owned_tile_damage**: resolves a `GridCoords` to the claimed tile entity via `get_claimed_entity_by_position` (through `is_hostile_tile`)
 
 ```mermaid
 ---
@@ -158,8 +191,10 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 
+update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 
 world@{ shape: st-rect, label: "World" }
@@ -167,13 +202,15 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 
 map_info_res --> |belongs to| world
 
+apply_owned_tile_entry_damage ---> |reads `get_claimed_entity_by_position`| map_info_res
 apply_owned_tile_damage ---> |reads `get_claimed_entity_by_position`| map_info_res
 ```
 
 ### Query ClaimedTile (tile damage)
 
 Used in the following systems:
-- **apply_owned_tile_damage**: reads `ClaimedTile::owner` to determine whether the standing tile belongs to a different entity
+- **apply_owned_tile_entry_damage**: reads `ClaimedTile::owner` (via `is_hostile_tile`) to determine whether the entered tile belongs to a different entity
+- **apply_owned_tile_damage**: reads `ClaimedTile::owner` (via `is_hostile_tile`) to determine whether the standing tile belongs to a different entity
 
 ```mermaid
 ---
@@ -186,11 +223,14 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
+apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 
+update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 
 claimed_tiles_query{{"`claimed_tiles_query`"}}:::query
+apply_owned_tile_entry_damage ---> claimed_tiles_query
 apply_owned_tile_damage ---> claimed_tiles_query
 
 claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
@@ -298,6 +338,7 @@ apply_beam_damage ---> |inserts component| de_knockback
 ### Write DamageableDied messages
 
 Used in the following systems:
+- **apply_owned_tile_entry_damage**: emits `DamageableDied` when a character's HP reaches zero on entering an opponent-owned tile
 - **apply_owned_tile_damage**: emits `DamageableDied` when a character's HP reaches zero on an opponent-owned tile
 - **apply_beam_damage**: emits `DamageableDied` when an entity's HP reaches zero after a beam hit
 
@@ -311,14 +352,17 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 apply_beam_damage["`**apply_beam_damage**`"]
 
+update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 update -.-> apply_beam_damage
 
 damageable_died_message(["`**DamageableDied**`"])
 
+apply_owned_tile_entry_damage ---> |writes| damageable_died_message
 apply_owned_tile_damage ---> |writes| damageable_died_message
 apply_beam_damage ---> |writes| damageable_died_message
 ```
