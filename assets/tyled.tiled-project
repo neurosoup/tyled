@@ -11401,6 +11401,18 @@
             "useAs": [
                 "property"
             ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 558,
+            "members": [
+            ],
+            "name": "tyled::components::countdown::CountdownDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
         }
     ]
 }

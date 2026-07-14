@@ -7,7 +7,7 @@ updated_date: '2026-07-14 12:00'
 ---
 # HUD Plugin
 
-Owns all HUD animations rendered on the HUD camera (render layer 1): the HP-bar fill (`animate_hp`) and the numeric counters rendered as rolling-odometer digit sprites. For the counters it holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites, lerping the HP bar's `Transform` toward the current health ratio and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
+Owns all HUD animations rendered on the HUD camera (render layer 1): the HP-bar fill (`animate_hp`) and the numeric counters rendered as rolling-odometer digit sprites. For the counters it holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin, the round countdown by the Round plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites, lerping the HP bar's `Transform` toward the current health ratio and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
 
 It is registered immediately after the Animations plugin in `AppPlugin`.
 
@@ -52,6 +52,16 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
                 - Computes per-digit target value from that percentage by position (`(percent / 10^position) % 10`)
                 - Switches `SpritesheetAnimation` on the child sprite entity to the matching from→to transition clip
                 - Updates `Digit::value` to the new digit
+    - Animate Countdown:
+        - Runs every frame
+            - Reads:
+                - `Countdown` resource (optional; skipped until it exists)
+                - All `CountdownDigit`-marked entities with `Entity` and `Digit` components
+                - `DigitAnimations` resource (optional/`If`)
+            - Writes:
+                - Computes per-digit target value from `Countdown::remaining` by position (`(remaining / 10^position) % 10`)
+                - Switches `SpritesheetAnimation` on the child sprite entity to the matching from→to transition clip
+                - Updates `Digit::value` to the new digit
 
 ## Plugin Systems
 
@@ -63,9 +73,13 @@ Runs every frame. Queries all player entities that carry `DamageEffectTarget`, r
 
 Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 2)` + `add_partial_row(2, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
 
+### Drive Digit (shared helper)
+
+`drive_digit` is a private helper (not a system) that drives one `Digit` entity to display the decimal place selected by its `Digit::position`. Given the entity, its `Digit`, and a target `value`, it computes the target as `(value / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. It is idempotent: when the digit already shows the target value, `from == to`, `DigitAnimations` returns no handle, and it is a no-op — so systems may call it every frame without spurious switches.
+
 ### Drive Digit Counter (shared helper)
 
-`drive_digit_counter<M: Component>` is a private helper (not a system) that holds the shared per-digit driving loop used by both counter systems. Given a `player_id`, a target `value`, and the digit query filtered by marker `M`, it iterates all `M`-marked entities whose `Player::player_id` matches, computes each digit's target as `(value / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. The two `animate_*` systems below own only their domain-specific value derivation and delegate the rest to this helper.
+`drive_digit_counter<M: Component>` is a private helper (not a system) that drives all `M`-marked, player-scoped digits. Given a `player_id`, a target `value`, and the digit query filtered by marker `M`, it iterates all `M`-marked entities whose `Player::player_id` matches and delegates each to `drive_digit`. The per-player `animate_*` systems own only their domain-specific value derivation and delegate the rest to this helper; the player-agnostic `animate_countdown` calls `drive_digit` directly.
 
 ### Animate Beam Charges
 
@@ -74,6 +88,10 @@ Runs every frame, filtered by `Changed<BeamCharges>`. For each player entity who
 ### Animate Claimed Tiles
 
 Runs every frame, filtered by `Changed<ClaimedTileCount>`. Reads `MapInfo::ground_entities` to obtain the total number of ground tiles (returning early if that total is zero). For each player entity whose `ClaimedTileCount` changed, computes the owned-tile count as a rounded percentage of the whole board (`(count.current * 100 + total / 2) / total`, giving a value in `0..=100`), then calls `drive_digit_counter::<ClaimedTilesDigit>` with that percentage. It is the digit-display counterpart of `animate_beam_charges`, but renders each player's owned-tile count as a rounded percentage rather than a raw charge count.
+
+### Animate Countdown
+
+Runs every frame. Reads the optional `Countdown` resource (returning early until it exists) and drives every `CountdownDigit`-marked digit to display `Countdown::remaining`. Unlike the per-player counters, the countdown is global, so this reads a resource rather than a per-`Player` value and calls `drive_digit` directly with no `Player` filter. It carries no change-detection gate: the `Countdown` resource is mutated every frame by the Round plugin's tick system (so it always reads as changed), and correctness instead comes from `drive_digit` being idempotent — the animation switches only on the second the value actually changes.
 
 ## Components, Resources and Messages CRUD
 

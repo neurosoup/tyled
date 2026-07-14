@@ -66,34 +66,34 @@
   </object>
   <object id="13" gid="120" x="363.5" y="42" width="16" height="16">
    <properties>
+    <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
      <properties>
       <property name="position" type="int" value="2"/>
       <property name="value" type="int" value="9"/>
      </properties>
     </property>
-    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
   <object id="14" gid="120" x="376.5" y="42" width="16" height="16">
    <properties>
+    <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
      <properties>
       <property name="position" type="int" value="1"/>
       <property name="value" type="int" value="9"/>
      </properties>
     </property>
-    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
   <object id="15" gid="120" x="389.5" y="42" width="16" height="16">
    <properties>
+    <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
      <properties>
       <property name="value" type="int" value="9"/>
      </properties>
     </property>
-    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
   <object id="18" gid="42" x="326" y="61" width="16" height="16"/>

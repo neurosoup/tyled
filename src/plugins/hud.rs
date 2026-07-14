@@ -20,6 +20,7 @@ pub(crate) fn plugin(app: &mut App) {
             animate_hp,
             animate_beam_charges,
             animate_claimed_tiles,
+            animate_countdown,
             initialize_digit_animations,
         ),
     );
@@ -57,10 +58,40 @@ impl DigitAnimations {
     }
 }
 
+/// Drives a single digit sprite to display the decimal place selected by its
+/// `Digit::position`, switching its child `SpritesheetAnimation` to the from→to
+/// rolling-odometer animation. Idempotent: when the digit already shows the
+/// target value, `from == to`, `DigitAnimations::get` returns `None`, and this
+/// is a no-op — so callers may run every frame without spurious switches.
+fn animate_digit(
+    entity: Entity,
+    digit: &mut Digit,
+    value: u32,
+    children_query: &Query<&Children>,
+    sprite_animations: &mut Query<&mut SpritesheetAnimation>,
+    digit_animations: &DigitAnimations,
+) {
+    let divisor = 10u32.pow(digit.position as u32);
+    let to = ((value / divisor) % 10) as u8;
+
+    let from = digit.value;
+    let Some(handle) = digit_animations.get(from, to) else {
+        return;
+    };
+    digit.value = to;
+
+    for descendant in children_query.iter_descendants(entity) {
+        let Ok(mut animation) = sprite_animations.get_mut(descendant) else {
+            continue;
+        };
+        animation.switch(handle);
+        break;
+    }
+}
+
 /// Drives every digit sprite marked `M` for the given player to display `value`
-/// (one decimal digit per `Digit::position`), switching each digit's child
-/// `SpritesheetAnimation` to the from→to rolling-odometer animation.
-fn drive_digit_counter<M: Component>(
+/// (one decimal digit per `Digit::position`).
+fn animate_digits_for_player<M: Component>(
     player_id: u8,
     value: u32,
     digits: &mut Query<(Entity, &Player, &mut Digit), With<M>>,
@@ -73,22 +104,14 @@ fn drive_digit_counter<M: Component>(
             continue;
         }
 
-        let divisor = 10u32.pow(digit.position as u32);
-        let to = ((value / divisor) % 10) as u8;
-
-        let from = digit.value;
-        let Some(handle) = digit_animations.get(from, to) else {
-            continue;
-        };
-        digit.value = to;
-
-        for descendant in children_query.iter_descendants(entity) {
-            let Ok(mut animation) = sprite_animations.get_mut(descendant) else {
-                continue;
-            };
-            animation.switch(handle);
-            break;
-        }
+        animate_digit(
+            entity,
+            &mut digit,
+            value,
+            children_query,
+            sprite_animations,
+            digit_animations,
+        );
     }
 }
 
@@ -100,7 +123,7 @@ fn animate_beam_charges(
     digit_animations: If<Res<DigitAnimations>>,
 ) {
     for (player, beam_charges) in &players {
-        drive_digit_counter(
+        animate_digits_for_player(
             player.player_id,
             beam_charges.current,
             &mut digits,
@@ -127,10 +150,42 @@ fn animate_claimed_tiles(
     for (player, count) in &players {
         // Owned-tile count as a rounded percentage of the whole board (0..=100).
         let percent = (count.current * 100 + total / 2) / total;
-        drive_digit_counter(
+        animate_digits_for_player(
             player.player_id,
             percent,
             &mut digits,
+            &children_query,
+            &mut sprite_animations,
+            &digit_animations,
+        );
+    }
+}
+
+/// Drives the round countdown digits from the global `Countdown` resource. The
+/// countdown is player-agnostic, so this reads a resource rather than a
+/// per-`Player` value and drives the digits directly (no `Player` filter).
+///
+/// Runs every frame with no change-detection gate: `Countdown` is mutated every
+/// frame by its tick system (marking it changed constantly), so a `Changed`/
+/// `is_changed` gate would buy nothing. Correctness comes from `drive_digit`
+/// being idempotent — the animation only switches on the second it actually
+/// changes.
+fn animate_countdown(
+    countdown: Option<Res<Countdown>>,
+    mut digits: Query<(Entity, &mut Digit), With<CountdownDigit>>,
+    children_query: Query<&Children>,
+    mut sprite_animations: Query<&mut SpritesheetAnimation>,
+    digit_animations: If<Res<DigitAnimations>>,
+) {
+    let Some(countdown) = countdown else {
+        return;
+    };
+
+    for (entity, mut digit) in digits.iter_mut() {
+        animate_digit(
+            entity,
+            &mut digit,
+            countdown.remaining,
             &children_query,
             &mut sprite_animations,
             &digit_animations,

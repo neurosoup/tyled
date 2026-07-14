@@ -37,6 +37,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `defaults` | Bevy `DefaultPlugins` with nearest-neighbor filtering |
 | `messages` | Registers all game-wide `Message` types |
 | `maps` | Loads Tiled maps, populates `MapInfo` resource, initializes players/tiles/HP bars |
+| `round` | Owns round-level state: the global `Countdown` resource (a player-agnostic seconds timer), started on `MapCreated` and ticked down each second |
 | `camera` | Pixel-perfect main camera via `bevy_smooth_pixel_camera` (`PixelCamera`, layer 2 viewport, order 2) with dynamic zoom snapping to `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) + HUD camera on `RenderLayers(1)`, order 3 |
 | `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages; gates `BeamFired` when player's `BeamCharges` is exhausted |
 | `controller` | Reads `EntityMoved` messages, validates against `MapInfo`, updates player `GridCoords` |
@@ -45,7 +46,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied` |
 | `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
 | `animations` | `bevy_spritesheet_animation` setup; attaches and switches world-space player/tile sprite animations |
-| `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile percentage) |
+| `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile percentage, round countdown) |
 | `debug` | `bevy-inspector-egui` world inspector (always enabled) |
 
 ### Communication pattern
@@ -105,6 +106,18 @@ Input ticks at 75ms intervals; beam step ticks at 62.5ms (0.0625s).
 ### Documentation
 
 Each plugin and component has a corresponding doc in `backlog/docs/`. These docs are kept in sync with the code and are authoritative: use them as the primary source for understanding a plugin's systems, queries, message flows, and component lifecycle before reading the source. When modifying a plugin or component — adding/removing systems, changing queries, altering message fields, renaming things — update the matching doc to keep the workflow descriptions, system descriptions, and CRUD/mermaid diagrams in sync.
+
+### HUD numeric counters (adding a new one)
+
+Every HUD number is a **rolling-odometer digit group**: one `Digit` Tiled object per decimal place (`Digit::position` = 0 for ones, 1 for tens, 2 for hundreds…), all sharing a **marker component** that binds the group to a value source. `initialize_digit_animations` (`hud.rs`) auto-attaches a `SpritesheetAnimation` to *every* `With<Digit>` entity and builds the shared `DigitAnimations` from→to table once; each `animate_*` system just picks a target value and calls `animate_digit`, which is idempotent (no-ops when the shown digit already matches, so it can run every frame without change-detection).
+
+**Reflect / Tiled generation:** marker + custom components derive `#[derive(Component, Reflect, Default)]` + `#[reflect(Component, Default)]`. Bevy 0.18 **auto-registers** `Reflect` types (no `register_type` call), and `bevy_ecs_tiled`'s `user_properties` feature exports the whole registry to `tiled_types_export.json` on every startup. So the loop for a new component is: define it → `cargo run` once to regenerate the export → in Tiled, re-import types and select the new class as an object property. The type appears as its full path, e.g. `tyled::components::countdown::CountdownDigit`.
+
+To add a counter:
+1. Define a zero-sized marker in `src/components/` (mirror `BeamChargesDigit` / `CountdownDigit`) and re-export it in `components/mod.rs`.
+2. `cargo run` once so the marker lands in `tiled_types_export.json`.
+3. In Tiled (`assets/hud2.tmx`, `Numbers` object group): duplicate a digit object per decimal place, set each `Digit.position`, and add the marker class. Include `Player` (with `player_id`) **only** for per-player counters; omit it for global ones.
+4. Add an `animate_*` system in `hud.rs` and register it in the plugin. Per-player counters call `animate_digits_for_player::<Marker>` (filters by `Player`, value from a domain component gated on `Changed<…>`); global counters query `With<Marker>` and call `animate_digit` directly (value from a resource, e.g. `Countdown`). The value is always owned by a domain plugin — hud only reads it.
 
 ### Asset pipeline
 
