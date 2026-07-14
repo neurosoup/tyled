@@ -52,28 +52,28 @@ damageable_died_message(["`**DamageableDied**`"])
 tiled_plugin ---> |writes| map_created_message
 tiled_plugin ---> |writes| object_created_message
 
-map_created_message ---> |reads| maps_plugin
-map_created_message ---> |reads| camera_plugin
-map_created_message ---> |reads| round_plugin
+map_created_message ---> |read by| maps_plugin
+map_created_message ---> |read by| camera_plugin
+map_created_message ---> |read by| round_plugin
 
-object_created_message ---> |reads| animations_plugin
-object_created_message ---> |reads| hud_plugin
+object_created_message ---> |read by| animations_plugin
+object_created_message ---> |read by| hud_plugin
 
 input_plugin ---> |writes| entity_moved_message
 input_plugin ---> |writes| beam_fired_message
 
-entity_moved_message ---> |reads| controller_plugin
+entity_moved_message ---> |read by| controller_plugin
 
-beam_fired_message ---> |reads| beam_plugin
+beam_fired_message ---> |read by| beam_plugin
 
 beam_plugin ---> |writes| beam_resolved_message
 beam_plugin ---> |writes| charge_spent_message
 
-beam_resolved_message ---> |reads| claim_plugin
-beam_resolved_message ---> |reads| animations_plugin
+beam_resolved_message ---> |read by| claim_plugin
+beam_resolved_message ---> |read by| animations_plugin
 
 claim_plugin ---> |writes| tile_claimed_message
 
 damage_plugin ---> |writes| damageable_died_message
 
-damageable_died_message ---> |reads| effects_plugin
+damageable_died_message ---> |read by| effects_plugin
