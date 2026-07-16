@@ -7,22 +7,24 @@ updated_date: '2026-05-31 00:00'
 ---
 # Camera Plugin
 
-Contains systems related to camera initialization and runtime updates. The plugin uses `bevy_smooth_pixel_camera` for pixel-perfect sub-pixel smoothing on the main camera. Three cameras are active at runtime:
+Contains systems related to camera initialization and runtime updates. The plugin uses `bevy_smooth_pixel_camera` for pixel-perfect sub-pixel smoothing on the main camera. Four cameras are active at runtime:
 
 | Camera | Render layer | Order | Purpose |
 |--------|-------------|-------|---------|
 | Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders the game world to an off-screen texture |
 | ViewportCamera | layer 2 | 2 | Spawned automatically by `PixelCamera`; composites the off-screen texture onto the window |
 | HUD camera | layer 1 | 3 | Renders the HUD map in a fixed viewport strip at the top of the window |
+| Overlay camera | layer 3 | 4 | Renders screen-space round-phase banners (intro countdown, etc.) full-window, on top of everything; content is drawn by the round `intro` submodule (`doc-16`) |
 
 The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `ViewportImage` sprite child. Its `snap_camera_position` system (PostUpdate) snaps the main camera's `GlobalTransform` to the nearest integer world unit and offsets the `ViewportImage` by the subpixel remainder to produce smooth motion without pixel crawl.
 
 ## Plugin workflow
 
 - Startup phase
-    - `initialize_cameras` spawns two camera entities:
+    - `initialize_cameras` spawns three camera entities:
         - A main `Camera2d` with `PixelCamera` (`ViewportScalingMode::PixelSize(1.0)`) and an `OrthographicProjection` starting at `ZOOM_LEVELS[0]` (1/4). `PixelCamera` automatically spawns a `ViewportCamera` child on layer 2 with render order 2.
         - A HUD `Camera2d` assigned to `RenderLayers` layer 1, render order 3, with a fixed viewport occupying the top strip of the window.
+        - An overlay `Camera2d` assigned to `RenderLayers` layer 3, render order 4, `ClearColorConfig::None`, with a `ScalingMode::FixedVertical` orthographic projection (constant fraction of screen height at any window size, centred on the origin — no resize handling needed).
     - `randomize_clear_color` randomizes the background hue each run (fixed saturation and lightness).
 - Update phase
     - `initialize_hud_rendering`:
@@ -40,10 +42,11 @@ The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `Vie
 
 ### Initialize Cameras
 
-Spawns two camera entities at startup, resulting in three active cameras at runtime:
+Spawns three camera entities at startup, resulting in four active cameras at runtime:
 
-1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `ZOOM_LEVELS[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera and HUD camera.
+1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `ZOOM_LEVELS[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera, HUD camera, and overlay camera. **Invariant:** every non-main camera must carry an explicit `RenderLayers`, or that `Single` matches more than one entity and breaks.
 2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window, and its `OrthographicProjection` scale is initialized to the pixel-perfect fixed 2× (`scale_factor / HUD_SCALE`) at spawn so the HUD is correct from the first frame. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
+3. **Overlay camera** — carries `Camera2d`, `RenderLayers` layer 3, `Msaa::Off` (matching the HUD camera to avoid a sample-count mismatch), and `Camera { order: 4, clear_color: ClearColorConfig::None }`. Its `OrthographicProjection` uses `ScalingMode::FixedVertical { viewport_height: OVERLAY_VIEWPORT_HEIGHT }`, keeping banner glyphs a constant fraction of screen height at any resolution and centred on the origin — so no `WindowResized` handling is needed. Order 4 composites it above the HUD. The banners it renders are spawned by the round `intro` submodule (`doc-16`).
 
 ### Randomize Clear Color
 
@@ -284,7 +287,7 @@ initialize_hud_rendering ---> |inserts component| hm_propagate
 ### Write commands — initialize_cameras (Startup)
 
 Used in the following systems:
-- **initialize_cameras**: spawns the main camera and the HUD camera entities with their initial components. `PixelCamera::on_add` automatically spawns additional child entities (`ViewportCamera` on layer 2 / order 2, and `ViewportImage`).
+- **initialize_cameras**: spawns the main camera, the HUD camera, and the overlay camera entities with their initial components. `PixelCamera::on_add` automatically spawns additional child entities (`ViewportCamera` on layer 2 / order 2, and `ViewportImage`).
 
 ```mermaid
 ---
@@ -303,6 +306,7 @@ startup -.-> initialize_cameras
 main_camera_entity@{ shape: st-rect, label: "Main Camera (spawned)" }
 viewport_camera_entity@{ shape: st-rect, label: "ViewportCamera + ViewportImage (auto-spawned by PixelCamera)" }
 hud_camera_entity@{ shape: st-rect, label: "HUD Camera (spawned)" }
+overlay_camera_entity@{ shape: st-rect, label: "Overlay Camera (spawned)" }
 
 mc_camera2d>"`**Camera2d**`"]
 mc_pixel_camera>"`**PixelCamera (PixelSize 1.0, layer 2, order 2)**`"]
@@ -311,6 +315,11 @@ mc_projection>"`**Projection (Orthographic, scale ZOOM_LEVELS[0])**`"]
 hc_camera2d>"`**Camera2d**`"]
 hc_render_layers>"`**RenderLayers (layer 1)**`"]
 hc_camera>"`**Camera (order 3, viewport top strip)**`"]
+
+oc_camera2d>"`**Camera2d + Msaa::Off**`"]
+oc_render_layers>"`**RenderLayers (layer 3)**`"]
+oc_camera>"`**Camera (order 4, ClearColorConfig::None)**`"]
+oc_projection>"`**Projection (Orthographic, FixedVertical)**`"]
 
 mc_camera2d --> |spawned on| main_camera_entity
 mc_pixel_camera --> |spawned on| main_camera_entity
@@ -327,4 +336,14 @@ initialize_cameras ---> |spawns entity with| mc_projection
 initialize_cameras ---> |spawns entity with| hc_camera2d
 initialize_cameras ---> |spawns entity with| hc_render_layers
 initialize_cameras ---> |spawns entity with| hc_camera
+
+oc_camera2d --> |spawned on| overlay_camera_entity
+oc_render_layers --> |spawned on| overlay_camera_entity
+oc_camera --> |spawned on| overlay_camera_entity
+oc_projection --> |spawned on| overlay_camera_entity
+
+initialize_cameras ---> |spawns entity with| oc_camera2d
+initialize_cameras ---> |spawns entity with| oc_render_layers
+initialize_cameras ---> |spawns entity with| oc_camera
+initialize_cameras ---> |spawns entity with| oc_projection
 ```

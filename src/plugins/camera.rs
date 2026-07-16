@@ -1,10 +1,10 @@
 /*
- * Plugin for camera behavior and viewport management (HUD).
+ * Camera setup and runtime updates (world, HUD, and overlay cameras).
  */
 use crate::prelude::*;
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
-    camera::{Viewport, visibility::RenderLayers},
+    camera::{ScalingMode, Viewport, visibility::RenderLayers},
     prelude::*,
     render::view::Msaa,
     window::WindowResized,
@@ -41,6 +41,8 @@ const HUD_VIEWPORT_H: f32 = HUD_LOGICAL_H as f32 * HUD_SCALE; // 128
 
 pub const HUD_RENDER_LAYER: usize = 1;
 pub const LEVEL_RENDER_LAYER: usize = 2;
+pub const OVERLAY_RENDER_LAYER: usize = 3;
+const OVERLAY_VIEWPORT_HEIGHT: f32 = 180.0;
 
 pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::hsl(
@@ -111,7 +113,6 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
         PixelCamera {
             viewport_size: ViewportScalingMode::PixelSize(1.0),
             smoothing: false,
-            // Use LEVEL_RENDER_LAYER (2) for the pixel viewport to avoid colliding with HUD_RENDER_LAYER (1).
             viewport_layers: RenderLayers::layer(LEVEL_RENDER_LAYER),
             viewport_order: 2,
         },
@@ -129,13 +130,30 @@ fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
             ..OrthographicProjection::default_2d()
         }),
         Camera {
-            // Must be > viewport_order (2) so HUD composites on top of the game world.
             order: 3,
             viewport: Some(hud_viewport(window.physical_width())),
             clear_color: ClearColorConfig::None,
             ..default()
         },
         RenderLayers::layer(HUD_RENDER_LAYER),
+    ));
+
+    commands.spawn((
+        Name::new("Overlay Camera"),
+        Camera2d,
+        Msaa::Off,
+        Projection::Orthographic(OrthographicProjection {
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: OVERLAY_VIEWPORT_HEIGHT,
+            },
+            ..OrthographicProjection::default_2d()
+        }),
+        Camera {
+            order: 4,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        RenderLayers::layer(OVERLAY_RENDER_LAYER),
     ));
 }
 

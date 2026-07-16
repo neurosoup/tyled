@@ -37,8 +37,9 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `defaults` | Bevy `DefaultPlugins` with nearest-neighbor filtering |
 | `messages` | Registers all game-wide `Message` types |
 | `maps` | Loads Tiled maps, populates `MapInfo` resource, initializes players/tiles/HP bars |
-| `round` | Owns round-level state: the global `Countdown` resource (a player-agnostic seconds timer), started on `MapCreated` and ticked down each second |
-| `camera` | Pixel-perfect main camera via `bevy_smooth_pixel_camera` (`PixelCamera`, layer 2 viewport, order 2) with dynamic zoom snapping to `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`) + HUD camera on `RenderLayers(1)`, order 3 |
+| `round` | Feature folder (`src/plugins/round/`, one `plugin()` entry). Submodules: `state` — the `RoundPhase` state machine (`Loading`/`Starting`/`Playing`/`Outcome` — gameplay systems run only `in_state(Playing)`) + the global `Countdown` resource (started on `MapCreated`, ticked only while `Playing`); `intro` — the "3 · 2 · 1 · GO!" round-start banner shown `in_state(Starting)`, drawn via `text`'s `spawn_label` onto the overlay camera. Shared `spawn_round_label` helper in `round/mod.rs` |
+| `camera` | Spawns all cameras: pixel-perfect main camera via `bevy_smooth_pixel_camera` (`PixelCamera`, layer 2 viewport, order 2) with dynamic zoom snapping to `ZOOM_LEVELS` (`[1/4, 1/3, 1/2, 1]`), HUD camera on `RenderLayers(1)` order 3, and the fixed overlay camera on `RenderLayers(3)` order 4 (no clear, `FixedVertical`). Owns the `OVERLAY_RENDER_LAYER` const |
+| `text` | Bitmap-font text-rendering service: loads the shared font atlas (`assets/font.png`) into the `FontAtlas` resource and provides `spawn_label(text, transform, render_layers)` to compose a string into per-glyph sprites (`src/plugins/text.rs`) |
 | `inputs` | `leafwing-input-manager` setup; translates player input to `EntityMoved`/`BeamFired` messages; gates `BeamFired` when player's `BeamCharges` is exhausted |
 | `controller` | Reads `EntityMoved` messages, validates against `MapInfo`, updates player `GridCoords` |
 | `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
@@ -69,21 +70,24 @@ Systems communicate via **messages** (from `bevy_ecs_tiled`), not direct queries
 - `claimed_entities`: one `ClaimedTile` entity per ground tile (always present, owner is `None` until claimed)
 - `forbidden_areas`: impassable tiles (beam passes through but cannot resolve there)
 
-### Two maps, three cameras
+### Cameras (and adding a new one)
 
-The game renders two Tiled maps simultaneously:
-- `level1.tmx` — the game board (default render layer, main camera → off-screen texture → ViewportCamera)
-- `hud.tmx` — HP bar containers (render layer 1, HUD camera with a fixed top viewport)
-
-Three cameras are active at runtime:
+The game renders two Tiled maps simultaneously — the game board (default render layer, main camera → off-screen texture → ViewportCamera) and the HUD (render layer 1, HUD camera with a fixed top viewport). **Every camera is spawned in one place — `initialize_cameras` (`src/plugins/camera.rs`) — so render-layer and render-order allocations stay coherent and auditable in a single file.** Four cameras are active at runtime:
 
 | Camera | Layer | Order | Role |
 |--------|-------|-------|------|
 | Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders game world to off-screen texture |
 | ViewportCamera (auto-spawned) | 2 | 2 | Composites off-screen texture onto window with subpixel smoothing |
 | HUD camera | 1 | 3 | Renders HUD strip at top of window |
+| Overlay camera | 3 | 4 | Full-window screen-space round-phase banners (content owned by the `overlay` plugin) |
 
-HUD entities carry `Propagate(RenderLayers::from_layers(&[1]))` so all their children are also on layer 1.
+Render layers have named consts in `camera.rs`: `HUD_RENDER_LAYER` (1), `LEVEL_RENDER_LAYER` (2), `OVERLAY_RENDER_LAYER` (3). HUD entities carry `Propagate(RenderLayers::from_layers(&[1]))` so all their children are also on layer 1.
+
+**To add a camera**, spawn it in `initialize_cameras` and:
+1. Give it a **unique render layer** (add a new `*_RENDER_LAYER` const) and a **unique `order`** that stacks correctly — higher order composites on top (main viewport 2 < HUD 3 < overlay 4).
+2. **Attach an explicit `RenderLayers` to it** — this is mandatory for *every* camera except the main one. `update_camera` isolates the main world camera as the only `Camera2d` *without* a `RenderLayers` (`Single<…, Without<RenderLayers>>`); a second layer-less camera makes that query match more than one entity and panics.
+3. For a camera that draws *on top of* the world (HUD, overlay), use `clear_color: ClearColorConfig::None` so it doesn't wipe what's beneath, and `Msaa::Off` to match the others (mismatched sample counts trigger a wgpu validation error).
+4. Content for a dedicated camera lives in its own plugin/feature (e.g. the `hud` plugin, or the round `intro` submodule for the overlay camera); only the camera entity itself belongs in `camera.rs`.
 
 ### Effect components
 

@@ -16,7 +16,8 @@ pub(crate) fn plugin(app: &mut App) {
         (
             (apply_owned_tile_entry_damage, apply_owned_tile_damage).chain(),
             apply_beam_damage,
-        ),
+        )
+            .run_if(in_state(RoundPhase::Playing)),
     );
 }
 

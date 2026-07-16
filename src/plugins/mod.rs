@@ -14,6 +14,7 @@ pub(super) mod inputs;
 pub(super) mod maps;
 pub(super) mod messages;
 pub(super) mod round;
+pub(super) mod text;
 
 pub use abilities::*;
 pub use animations::*;
@@ -31,3 +32,4 @@ pub use inputs::*;
 pub use maps::*;
 pub use messages::*;
 pub use round::*;
+pub use text::*;

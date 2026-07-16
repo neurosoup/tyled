@@ -10,7 +10,10 @@ use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
-    app.add_systems(Update, (spawn_beam, beam_step, spend_charge_on_fire));
+    app.add_systems(
+        Update,
+        (spawn_beam, beam_step, spend_charge_on_fire).run_if(in_state(RoundPhase::Playing)),
+    );
 }
 
 #[derive(Resource)]

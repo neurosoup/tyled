@@ -11,7 +11,12 @@ use bevy_tweening::{lens::TransformPositionLens, *};
 use crate::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, move_characters.before(super::beam::beam_step));
+    app.add_systems(
+        Update,
+        move_characters
+            .before(super::beam::beam_step)
+            .run_if(in_state(RoundPhase::Playing)),
+    );
 }
 
 fn move_characters(
