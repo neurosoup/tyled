@@ -16,6 +16,8 @@ pub(crate) fn plugin(app: &mut App) {
         (
             animate_player,
             animate_claimed_tile,
+            animate_unclaimed_tile,
+            tick_unclaim_reverts,
             initialize_player_animations,
             initialize_claimed_tile_animations,
         ),
@@ -41,6 +43,15 @@ struct ClaimedTileAnimations {
     unclaimed: Handle<Animation>,
     to_player_one: Handle<Animation>,
     to_player_two: Handle<Animation>,
+    from_player_one: Handle<Animation>,
+    from_player_two: Handle<Animation>,
+}
+
+const UNCLAIM_CASCADE_SECS: f32 = 3.0;
+
+#[derive(Component)]
+struct UnclaimRevert {
+    timer: Timer,
 }
 
 fn animate_claimed_tile(
@@ -76,6 +87,76 @@ fn animate_claimed_tile(
         commands
             .entity(*claimed_tile_entity)
             .insert(BounceEffectTarget);
+    }
+}
+
+fn animate_unclaimed_tile(
+    mut commands: Commands,
+    claimed_query: Query<
+        (Entity, &GridCoords, &ClaimedTile, &SpritesheetAnimation),
+        Changed<ClaimedTile>,
+    >,
+    claimed_tile_animations: If<Res<ClaimedTileAnimations>>,
+    map_info: Res<MapInfo>,
+) {
+    for (entity, grid_coords, claimed_tile, animation) in &claimed_query {
+        // `owner` has already been cleared by the time this runs, so `None` marks
+        // a tile that just became unclaimed; a still-owned tile (a fresh claim or
+        // a retained reset exception) keeps its color and is skipped here.
+        if claimed_tile.owner.is_some() {
+            continue;
+        }
+
+        let is_colored = animation.animation == claimed_tile_animations.to_player_one
+            || animation.animation == claimed_tile_animations.to_player_two;
+        if !is_colored {
+            continue;
+        }
+
+        commands.entity(entity).insert(UnclaimRevert {
+            timer: Timer::from_seconds(unclaim_delay(*grid_coords, &map_info), TimerMode::Once),
+        });
+    }
+}
+
+fn unclaim_delay(grid_coords: GridCoords, map_info: &MapInfo) -> f32 {
+    let center_x = (map_info.map_size.x as f32 - 1.0) / 2.0;
+    let center_y = (map_info.map_size.y as f32 - 1.0) / 2.0;
+    let offset_x = grid_coords.x as f32 - center_x;
+    let offset_y = grid_coords.y as f32 - center_y;
+    let distance = (offset_x * offset_x + offset_y * offset_y).sqrt();
+    let max_distance = (center_x * center_x + center_y * center_y).sqrt().max(1.0);
+    (distance / max_distance) * UNCLAIM_CASCADE_SECS
+}
+
+fn tick_unclaim_reverts(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut reverts_query: Query<(
+        Entity,
+        &ClaimedTile,
+        &mut SpritesheetAnimation,
+        &mut UnclaimRevert,
+    )>,
+    claimed_tile_animations: If<Res<ClaimedTileAnimations>>,
+) {
+    for (entity, claimed_tile, mut animation, mut revert) in &mut reverts_query {
+        revert.timer.tick(time.delta());
+        if !revert.timer.is_finished() {
+            continue;
+        }
+
+        // Skip the revert if the tile was re-claimed while its delay ran down,
+        // so a freshly claimed tile is not wrongly un-colored.
+        if claimed_tile.owner.is_none() {
+            if animation.animation == claimed_tile_animations.to_player_one {
+                animation.switch(claimed_tile_animations.from_player_one.clone());
+            } else if animation.animation == claimed_tile_animations.to_player_two {
+                animation.switch(claimed_tile_animations.from_player_two.clone());
+            }
+        }
+
+        commands.entity(entity).remove::<UnclaimRevert>();
     }
 }
 
@@ -166,6 +247,24 @@ fn initialize_claimed_tile_animations(
                     .add_partial_row(1, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
                     .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .build(),
+            ),
+            from_player_one: animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(0, 0..=7)
+                    .set_repetitions(AnimationRepeat::Times(1))
+                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_direction(AnimationDirection::Backwards)
+                    .build(),
+            ),
+            from_player_two: animations.add(
+                spritesheet
+                    .create_animation()
+                    .add_partial_row(1, 0..=7)
+                    .set_repetitions(AnimationRepeat::Times(1))
+                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_direction(AnimationDirection::Backwards)
                     .build(),
             ),
         });

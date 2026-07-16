@@ -9,7 +9,7 @@ updated_date: '2026-07-14 12:00'
 
 Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages.
 
-HUD animation more broadly — both the HP bars and the numeric rolling-odometer counters — now lives in the HUD plugin (see `doc-14`).
+HUD animation more broadly — both the HP bars and the numeric rolling-odometer counters — now lives in the HUD plugin.
 
 ## Plugin workflow
 
@@ -47,6 +47,19 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
             - Writes:
                 - Switches `SpritesheetAnimation` clip on the claimed tile entity to the player-color animation
                 - Inserts `BounceEffectTarget` on the claimed tile entity
+    - Animate Unclaimed Tile:
+        - Runs on `Changed<ClaimedTile>` (fires when the round reset clears a tile's `owner` back to `None`)
+            - Reads:
+                - `ClaimedTile` entities whose ownership changed, with their `GridCoords` and `SpritesheetAnimation`
+                - `ClaimedTileAnimations` resource; `MapInfo` (for the board center)
+            - Writes:
+                - For a tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay is the tile's distance from the board center scaled over the cascade window — staggering the revert into a radial wave rather than reverting instantly
+    - Tick Unclaim Reverts:
+        - Runs every frame
+            - Reads:
+                - `Time`; `ClaimedTile` + `SpritesheetAnimation` + `UnclaimRevert` on scheduled tiles; `ClaimedTileAnimations` resource
+            - Writes:
+                - Ticks each `UnclaimRevert` timer; when it elapses, if the tile is still unowned, switches its `SpritesheetAnimation` to the reverse of the player-color flip it is showing (returning it to the neutral sprite), then removes `UnclaimRevert` (a tile re-claimed during the cascade is left colored)
 
 ## Plugin Systems
 
@@ -65,6 +78,14 @@ Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed til
 ### Animate Claimed Tile
 
 Reads `BeamResolved` messages. For each message, resolves the claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position. Reads the `ClaimedTileAnimations` resource to select the correct player-color clip based on the owning player id, then switches the `SpritesheetAnimation` clip on the claimed tile entity. Also inserts `BounceEffectTarget` on the claimed tile entity to trigger the bounce visual effect.
+
+### Animate Unclaimed Tile
+
+The counterpart to Animate Claimed Tile, keeping tile visuals in sync when ownership is *cleared* rather than gained — the round reset (see the Round plugin doc) sets every reverted tile's `owner` back to `None`, which the authoritative claim data reflects but the sprite would not. It does **not** revert the sprite directly: because the reset clears every tile in the same frame, an immediate switch would revert the whole board at once. Instead, runs on `Changed<ClaimedTile>` and, for each tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay grows with the tile's distance from the board center (`MapInfo::map_size`), scaled across a fixed cascade window (`UNCLAIM_CASCADE_SECS`). This spreads the reverts into a radial wave from the center outward. It reads the currently-shown clip to confirm the tile is colored, so an already-unclaimed tile is skipped, and it never fights Animate Claimed Tile (which only handles ownership *gained*).
+
+### Tick Unclaim Reverts
+
+Drives the staggered revert scheduled by Animate Unclaimed Tile. Each frame it ticks every `UnclaimRevert` timer; when one elapses it switches that tile's `SpritesheetAnimation` to the reverse of the player-color flip it is displaying (`from_player_one`/`from_player_two`), animating it back to the neutral sprite, then removes `UnclaimRevert`. It first rechecks `ClaimedTile::owner`: a tile re-claimed while its delay ran down (once play resumes) is left colored rather than wrongly un-colored.
 
 ## Components, Resources and Messages CRUD
 
@@ -326,6 +347,7 @@ sprites_query ---> |reads/writes| ce_anim
 
 Used in the following systems:
 - **animate_claimed_tile**: used to resolve the `GridCoords` in the `BeamResolved` message to a claimed tile entity via `MapInfo::claimed_entities`
+- **animate_unclaimed_tile**: reads `MapInfo::map_size` to find the board center when computing each tile's radial revert delay
 
 ```mermaid
 ---
@@ -338,8 +360,10 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 animate_claimed_tile["`**animate_claimed_tile**`"]
+animate_unclaimed_tile["`**animate_unclaimed_tile**`"]
 
 update -.-> animate_claimed_tile
+update -.-> animate_unclaimed_tile
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
@@ -347,6 +371,7 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 map_info_res --> |belongs to| world
 
 animate_claimed_tile ---> |reads `claimed_entities`| map_info_res
+animate_unclaimed_tile ---> |reads `map_size`| map_info_res
 ```
 
 ### Read PlayerOneAnimations and PlayerTwoAnimations resources
@@ -398,6 +423,8 @@ animate_player ---> |reads| p2_res
 
 Used in the following systems:
 - **animate_claimed_tile**: used to retrieve the correct player-color animation clip handle when switching a claimed tile's animation
+- **animate_unclaimed_tile**: reads the `to_player_one`/`to_player_two` handles to confirm a tile is currently showing a player color before scheduling its revert
+- **tick_unclaim_reverts**: reads the `from_player_one`/`from_player_two` reverse handles to switch a tile back to the neutral sprite when its delay elapses
 
 ```mermaid
 ---
@@ -410,20 +437,30 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 animate_claimed_tile["`**animate_claimed_tile**`"]
+animate_unclaimed_tile["`**animate_unclaimed_tile**`"]
+tick_unclaim_reverts["`**tick_unclaim_reverts**`"]
 
 update -.-> animate_claimed_tile
+update -.-> animate_unclaimed_tile
+update -.-> tick_unclaim_reverts
 
 world@{ shape: st-rect, label: "World" }
 ct_anims_res@{ shape: doc, label: "ClaimedTileAnimations" }
 
-ct_anims_player1>"`**player1_clip**`"]
-ct_anims_player2>"`**player2_clip**`"]
+ct_anims_to1>"`**to_player_one**`"]
+ct_anims_to2>"`**to_player_two**`"]
+ct_anims_from1>"`**from_player_one**`"]
+ct_anims_from2>"`**from_player_two**`"]
 
 ct_anims_res --> |belongs to| world
-ct_anims_player1 --> |field of| ct_anims_res
-ct_anims_player2 --> |field of| ct_anims_res
+ct_anims_to1 --> |field of| ct_anims_res
+ct_anims_to2 --> |field of| ct_anims_res
+ct_anims_from1 --> |field of| ct_anims_res
+ct_anims_from2 --> |field of| ct_anims_res
 
 animate_claimed_tile ---> |reads| ct_anims_res
+animate_unclaimed_tile ---> |reads| ct_anims_res
+tick_unclaim_reverts ---> |reads| ct_anims_res
 ```
 
 ### Write PlayerOneAnimations and PlayerTwoAnimations resources
@@ -598,4 +635,139 @@ ct_bounce_target --> |inserted on| claimed_tile_entity
 
 claimed_tiles_query ---> |writes| ct_anim
 animate_claimed_tile ---> |inserts component| ct_bounce_target
+```
+
+### Query ClaimedTile entities (schedule revert)
+
+Used in the following systems:
+- **animate_unclaimed_tile**: reacts to `Changed<ClaimedTile>` to find tiles whose ownership was just cleared, reading their `GridCoords` and `SpritesheetAnimation` to compute the radial delay and confirm the tile is still colored
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_unclaimed_tile["`**animate_unclaimed_tile**`"]
+
+update -.-> animate_unclaimed_tile
+
+claimed_tiles_query{{"`claimed_query`"}}:::query
+animate_unclaimed_tile ---> claimed_tiles_query
+
+claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
+
+ct_entity>"`**Entity**`"] --> |belongs to| claimed_tile_entity
+ct_coords>"`**GridCoords**`"] --> |belongs to| claimed_tile_entity
+ct_claimed>"`**ClaimedTile**`"] --> |belongs to| claimed_tile_entity
+ct_anim>"`**SpritesheetAnimation**`"] --> |belongs to| claimed_tile_entity
+
+claimed_tiles_query ---> |reads| ct_entity
+claimed_tiles_query ---> |reads| ct_coords
+claimed_tiles_query ---> |reads| ct_anim
+claimed_tiles_query -..-> |filter Changed| ct_claimed
+```
+
+### Query UnclaimRevert entities
+
+Used in the following systems:
+- **tick_unclaim_reverts**: iterates tiles carrying a scheduled `UnclaimRevert` timer, mutating the timer and (when it elapses) the `SpritesheetAnimation`, and reading `ClaimedTile` to confirm the tile is still unowned
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+tick_unclaim_reverts["`**tick_unclaim_reverts**`"]
+
+update -.-> tick_unclaim_reverts
+
+reverts_query{{"`reverts_query (mutable)`"}}:::query
+tick_unclaim_reverts ---> reverts_query
+
+revert_tile_entity@{ shape: st-rect, label: "Reverting Tile Entity" }
+
+rt_entity>"`**Entity**`"] --> |belongs to| revert_tile_entity
+rt_claimed>"`**ClaimedTile**`"] --> |belongs to| revert_tile_entity
+rt_anim>"`**SpritesheetAnimation**`"] --> |belongs to| revert_tile_entity
+rt_revert>"`**UnclaimRevert**`"] --> |belongs to| revert_tile_entity
+
+reverts_query ---> |reads| rt_entity
+reverts_query ---> |reads| rt_claimed
+reverts_query ---> |reads/writes| rt_anim
+reverts_query ---> |reads/writes| rt_revert
+```
+
+### Write commands (schedule unclaim revert)
+
+Used in the following systems:
+- **animate_unclaimed_tile**: inserts an `UnclaimRevert` timer component on each just-unclaimed, still-colored tile, its duration set by the tile's distance from the board center
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+animate_unclaimed_tile["`**animate_unclaimed_tile**`"]
+
+update -.-> animate_unclaimed_tile
+
+claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
+
+ct_revert>"`**UnclaimRevert**`"]
+
+ct_revert --> |inserted on| claimed_tile_entity
+
+animate_unclaimed_tile ---> |inserts component| ct_revert
+```
+
+### Write commands (revert unclaimed tile)
+
+Used in the following systems:
+- **tick_unclaim_reverts**: when a tile's `UnclaimRevert` timer elapses, switches its `SpritesheetAnimation` to the reverse clip (only if still unowned) and removes the `UnclaimRevert` component
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+tick_unclaim_reverts["`**tick_unclaim_reverts**`"]
+
+update -.-> tick_unclaim_reverts
+
+reverts_query{{"`reverts_query (mutable)`"}}:::query
+tick_unclaim_reverts ---> reverts_query
+
+revert_tile_entity@{ shape: st-rect, label: "Reverting Tile Entity" }
+
+rt_anim>"`**SpritesheetAnimation**`"]
+rt_revert>"`**UnclaimRevert**`"]
+
+rt_anim --> |belongs to| revert_tile_entity
+rt_revert --> |removed from| revert_tile_entity
+
+reverts_query ---> |writes| rt_anim
+tick_unclaim_reverts ---> |removes component| rt_revert
 ```
