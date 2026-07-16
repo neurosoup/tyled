@@ -19,7 +19,7 @@ It owns only the banner **content** (the countdown logic). Text is composed with
 
 - `CountdownNumber` — a marker **component** on the number label currently shown ("3"/"2"/"1"); the advance system swaps it out each step by querying `With<CountdownNumber>` and despawning.
 
-- `GoBanner` — a marker **component** on the "GO!" label. It carries a `TweenAnim` (`bevy_tweening`, `TransformScaleLens`) that scales it up over ~0.5s; on completion the label is despawned.
+- `GoBanner` — a marker **component** on the "GO!" label. It carries a `TweenAnim` (`bevy_tweening`, `TransformScaleLens` with `EaseFunction::ExponentialIn`) that accelerates the label's scale up to a screen-overflowing size, so it reads as rushing toward the players and flying off-screen; the label is despawned on completion.
 
 - `IntroCountdown` — a **resource** driving the number sequence: a one-second repeating `Timer` plus the current number (`3 → 2 → 1`, then `0` meaning "fire GO!"). Inserted on entering `Starting`, removed when "GO!" fires.
 

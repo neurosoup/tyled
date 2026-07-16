@@ -16,9 +16,12 @@ use crate::prelude::*;
 /// How long each intro number ("3", "2", "1") stays on screen, in seconds.
 const COUNTDOWN_STEP_SECS: f32 = 1.0;
 /// How long the "GO!" banner scales up before it despawns.
-const GO_LINGER_MS: u64 = 1000;
-/// Peak scale the "GO!" banner reaches at the end of its pop.
-const GO_END_SCALE: f32 = 1.8;
+const GO_LINGER_MS: u64 = 500;
+/// Scale the "GO!" banner rushes to before despawning. Large enough to overflow
+/// the screen (the overlay viewport is ~180 world-units tall and a glyph cell is
+/// 16px, so ~11× already fills the height) — it should read as flying past the
+/// players and out of frame, not just growing a little.
+const GO_END_SCALE: f32 = 24.0;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(OnEnter(RoundPhase::Starting), begin_intro_countdown);
@@ -88,13 +91,15 @@ fn advance_intro_countdown(
         return;
     }
 
-    // Countdown finished: pop "GO!" and unfreeze gameplay in the same run. The
-    // banner keeps animating into `Playing`; `despawn_go_banner` reaps it.
+    // Countdown finished: launch "GO!" and unfreeze gameplay in the same run. The
+    // banner keeps animating into `Playing`; `despawn_go_banner` reaps it once it
+    // has rushed off-screen. `ExponentialIn` holds it small then explodes it
+    // outward, so it reads as charging toward the players and flying past.
     let go = spawn_round_label(&mut commands, &font, "GO!");
     commands.entity(go).insert((
         GoBanner,
         TweenAnim::new(Tween::new(
-            EaseFunction::BackOut,
+            EaseFunction::ExponentialIn,
             Duration::from_millis(GO_LINGER_MS),
             TransformScaleLens {
                 start: Vec3::ONE,
