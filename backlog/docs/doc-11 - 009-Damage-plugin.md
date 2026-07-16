@@ -7,7 +7,9 @@ updated_date: '2026-06-02 00:00'
 ---
 # Damage Plugin
 
-Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
+Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile *from a non-hostile tile*, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
+
+The on-enter spike fires only on a *fresh incursion* — a step whose destination is hostile but whose origin was not. It reads the origin from a `PreviousGridCoords` component that the entry system updates on every observed move, so crossing a contiguous run of enemy tiles costs a single spike plus the ongoing standing tick, not a spike per tile.
 
 The two tile systems are complementary and chained (entry before poll): on-enter (`Changed<GridCoords>`) cannot phase-miss a tile the way the timer poll can when a character crosses faster than the 500 ms sample, while the poll covers the case on-enter cannot — a tile becoming hostile *beneath* a stationary character, whose `GridCoords` never changes. Damage amounts are named constants: `ON_ENTER_DAMAGE` (5.0) per hostile tile entered and `STANDING_DAMAGE` (1.0) per 500 ms poll tick.
 
@@ -19,11 +21,12 @@ The two tile systems are complementary and chained (entry before poll): on-enter
     - Apply Owned Tile Entry Damage (chained before the poll):
         - Triggers when a `Character`'s `GridCoords` changes (moved onto, or knocked onto, a tile)
             - Reads:
-                - `GridCoords` and `Health` on `Character` entities (filtered by `Changed<GridCoords>`)
+                - `GridCoords`, `PreviousGridCoords`, and `Health` on `Character` entities (filtered by `Changed<GridCoords>`)
                 - `ClaimedTile` component on ground tile entities (to identify the owner)
                 - `MapInfo` resource (to resolve a `GridCoords` → claimed tile entity)
             - Writes:
-                - Decrements `Health::current` by `ON_ENTER_DAMAGE` on a character that moved onto an opponent-owned tile
+                - Updates `PreviousGridCoords` to the current `GridCoords` on every observed move
+                - Decrements `Health::current` by `ON_ENTER_DAMAGE` on a character that moved onto an opponent-owned tile *from a non-hostile tile*
                 - Resets `DamageTimer` so the poll below cannot double-hit the same frame
                 - Writes a `DamageableDied` message if `Health::current` drops to zero
     - Apply Owned Tile Damage:
@@ -54,7 +57,7 @@ Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer`
 
 ### Apply Owned Tile Entry Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by the effects plugin). For each live character now on a hostile tile (via `is_hostile_tile`), calls `deal_damage` with `ON_ENTER_DAMAGE` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. This is the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
+Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by the effects plugin). For each live character it first records the current `GridCoords` into `PreviousGridCoords` (on every move, hostile or not), then applies the spike only on a *fresh incursion*: the destination is hostile (via `is_hostile_tile`) **and** the tile it came from — read from the pre-update `PreviousGridCoords` — was not. On such an entry it calls `deal_damage` with `ON_ENTER_DAMAGE` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. Gating on the origin tile means a character walking through a contiguous enemy region is charged once, not per tile, while the standing poll keeps ticking as it traverses. Reading and updating `PreviousGridCoords` in the same system keeps it order-independent of the controller and effects plugins. This is also the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
 
 ### Apply Owned Tile Damage
 
@@ -135,7 +138,7 @@ apply_owned_tile_damage ---> |ticks| damage_timer_res
 ### Query Character entities (tile damage)
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: reads `GridCoords` (filtered by `Changed<GridCoords>`) to locate the entered tile, writes `Health::current` to apply on-enter damage
+- **apply_owned_tile_entry_damage**: reads `GridCoords` (filtered by `Changed<GridCoords>`) to locate the entered tile and `PreviousGridCoords` for the origin tile, writes `PreviousGridCoords` (to the current position) and `Health::current` to apply on-enter damage
 - **apply_owned_tile_damage**: reads `GridCoords` to locate the tile, writes `Health::current` to apply standing damage
 
 ```mermaid
@@ -164,11 +167,13 @@ character_entity@{ shape: st-rect, label: "Character Entity" }
 
 ce_entity>"`**Entity**`"] --> |belongs to| character_entity
 ce_coords>"`**GridCoords**`"] --> |belongs to| character_entity
+ce_prev>"`**PreviousGridCoords**`"] --> |belongs to| character_entity
 ce_health>"`**Health**`"] --> |belongs to| character_entity
 ce_character>"`**Character**`"] --> |belongs to| character_entity
 
 entry_characters_query ---> |reads| ce_entity
 entry_characters_query ---> |reads| ce_coords
+entry_characters_query ---> |reads/writes| ce_prev
 entry_characters_query ---> |writes| ce_health
 characters_query ---> |reads| ce_entity
 characters_query ---> |reads| ce_coords

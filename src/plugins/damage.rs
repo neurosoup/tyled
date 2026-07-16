@@ -91,17 +91,23 @@ fn apply_owned_tile_entry_damage(
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut characters_query: Query<
-        (Entity, &GridCoords, &mut Health),
+        (Entity, &GridCoords, &mut PreviousGridCoords, &mut Health),
         (With<Character>, Changed<GridCoords>),
     >,
     claimed_tiles_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
 ) {
-    for (entity, position, mut health) in &mut characters_query {
+    for (entity, position, mut previous, mut health) in &mut characters_query {
         if health.current <= 0.0 {
             continue;
         }
-        if is_hostile_tile(&map_info, &claimed_tiles_query, *position, entity) {
+        let came_from = previous.0;
+        previous.0 = *position;
+        // Only spike on a fresh incursion: don't re-charge a step taken entirely
+        // within enemy territory.
+        if is_hostile_tile(&map_info, &claimed_tiles_query, *position, entity)
+            && !is_hostile_tile(&map_info, &claimed_tiles_query, came_from, entity)
+        {
             deal_damage(entity, &mut health, ON_ENTER_DAMAGE, &mut damageable_died_writer);
             // Restart the standing clock so the poll below can't double-hit this same frame.
             timer.0.reset();
