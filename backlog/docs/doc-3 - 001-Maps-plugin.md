@@ -289,7 +289,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, and `ClaimedTileCount` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin, `doc-12`) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control. `ClaimedTileCount` is initialized to zero and maintained thereafter by the Claim plugin (`doc-13`) as tile ownership flips.
+- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, and `ClaimedTileCount` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. `SpawnPoint` captures the player's initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement has overwritten the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control. `ClaimedTileCount` is initialized to zero and maintained thereafter by the Claim plugin as tile ownership flips.
 
 ```mermaid
 ---

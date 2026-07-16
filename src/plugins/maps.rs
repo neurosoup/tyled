@@ -215,6 +215,8 @@ fn initialize_players(
             {
                 commands.entity(entity).insert((
                     grid_coords,
+                    SpawnPoint(grid_coords),
+                    PreviousGridCoords(grid_coords),
                     look_direction,
                     TranslateEffectTarget,
                     DamageEffectTarget,

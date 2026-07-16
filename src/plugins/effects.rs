@@ -175,7 +175,11 @@ fn apply_death_effect(
     }
 }
 
-// Apply post-death effects associated with a death effect (e.g., despawn entities with IsDead)
+// Once the death bounce finishes, hide the dead entity and clear its bounce
+// rather than despawning it. In a round-based match the loser must survive to be
+// restored by the round reset (`reset_round`, round `state` submodule); the
+// `IsDead` marker is kept so the entity stays inert until then. Only players
+// carry `DamageEffectTarget`, so this only ever hides players.
 fn on_death_effect_completed(
     mut commands: Commands,
     mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
@@ -183,7 +187,10 @@ fn on_death_effect_completed(
 ) {
     for anim_completed_message in anim_completed_reader.read() {
         if let Ok(entity) = dead_entities.get(anim_completed_message.anim_entity) {
-            commands.entity(entity).despawn();
+            commands
+                .entity(entity)
+                .insert(Visibility::Hidden)
+                .remove::<BounceEffect>();
         }
     }
 }

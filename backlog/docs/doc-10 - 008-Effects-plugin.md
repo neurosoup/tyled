@@ -7,7 +7,7 @@ updated_date: '2026-06-14 16:30'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities. This plugin drives smooth translation tweens for moving entities, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, and death animations that despawn entities after playback completes.
+Contains systems responsible for all visual effects applied to game entities. This plugin drives smooth translation tweens for moving entities, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, and death animations that hide entities after playback completes (kept alive for the round reset to restore).
 
 ## Plugin workflow
 
@@ -40,7 +40,7 @@ Contains systems responsible for all visual effects applied to game entities. Th
             - Inserts `BounceEffect`, `BounceEffectTarget`, and `IsDead` on the dying entity
     - `on_death_effect_completed`:
         - Reads `AnimCompletedEvent` events
-            - Despawns entities that carry both `IsDead` and `BounceEffect` (i.e. entities whose death bounce animation has finished)
+            - Hides (sets `Visibility::Hidden`) and removes `BounceEffect` from entities that carry both `IsDead` and `BounceEffect` (i.e. entities whose death bounce animation has finished), keeping `IsDead`. The entity is **not** despawned — in a round-based match the loser survives to be restored by the round reset (see the Round plugin doc); only players carry `DamageEffectTarget`, so this only ever hides players.
 
 ## Plugin Systems
 
@@ -66,11 +66,11 @@ Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker
 
 ### Apply Death Effect
 
-Reads `DamageableDied` messages. For each message, inserts three components on the named entity: `BounceEffect` (to carry the death animation context), `BounceEffectTarget` (to immediately trigger `apply_bounce_effect`), and `IsDead` (to mark the entity for despawn once the animation completes).
+Reads `DamageableDied` messages. For each message, inserts three components on the named entity: `BounceEffect` (to carry the death animation context), `BounceEffectTarget` (to immediately trigger `apply_bounce_effect`), and `IsDead` (to mark the entity as dead; it is hidden, not despawned, once the animation completes, so the round reset can revive it).
 
 ### On Death Effect Completed
 
-Reads `AnimCompletedEvent` events emitted by the tweening system. For each event, checks whether the completed animation's target entity carries both `IsDead` and `BounceEffect`. If so, despawns the entity, ending its lifecycle cleanly after the death bounce has played out.
+Reads `AnimCompletedEvent` events emitted by the tweening system. For each event, checks whether the completed animation's target entity carries both `IsDead` and `BounceEffect`. If so, hides the entity (`Visibility::Hidden`) and removes its `BounceEffect`, keeping it alive and still marked `IsDead` so the round reset can revive it after the death bounce has played out.
 
 ## Components, Resources and Messages CRUD
 
@@ -482,7 +482,7 @@ sprites_query ---> |writes| ce_tween
 ### Read AnimCompletedEvent (death effect)
 
 Used in the following systems:
-- **on_death_effect_completed**: reads tween completion events to know when a death bounce animation has finished so the entity can be despawned
+- **on_death_effect_completed**: reads tween completion events to know when a death bounce animation has finished so the entity can be hidden
 
 ```mermaid
 ---
@@ -510,7 +510,7 @@ event_reader ---> |reads| anim_completed_event
 ### Query IsDead entities (death completed)
 
 Used in the following systems:
-- **on_death_effect_completed**: checks whether the entity whose animation completed carries both `IsDead` and `BounceEffect` before despawning
+- **on_death_effect_completed**: checks whether the entity whose animation completed carries both `IsDead` and `BounceEffect` before hiding it
 
 ```mermaid
 ---
@@ -665,7 +665,7 @@ apply_death_effect ---> |inserts component| de_is_dead
 ### Write commands (on_death_effect_completed)
 
 Used in the following systems:
-- **on_death_effect_completed**: despawns the entity after its death bounce animation has completed
+- **on_death_effect_completed**: hides the entity and removes its `BounceEffect` after its death bounce animation has completed (the entity survives for the round reset)
 
 ```mermaid
 ---
@@ -681,7 +681,7 @@ on_death_effect_completed["`**on_death_effect_completed**`"]
 
 update -.-> on_death_effect_completed
 
-dead_entity@{ shape: st-rect, label: "Dying Entity (despawned)" }
+dead_entity@{ shape: st-rect, label: "Dying Entity (hidden)" }
 
-on_death_effect_completed ---> |despawns| dead_entity
+on_death_effect_completed ---> |hides + removes BounceEffect| dead_entity
 ```
