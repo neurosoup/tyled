@@ -16,7 +16,7 @@ use crate::prelude::*;
 /// How long each intro number ("3", "2", "1") stays on screen, in seconds.
 const COUNTDOWN_STEP_SECS: f32 = 1.0;
 /// How long the "GO!" banner scales up before it despawns.
-const GO_LINGER_MS: u64 = 500;
+const GO_LINGER_MS: u64 = 1000;
 /// Peak scale the "GO!" banner reaches at the end of its pop.
 const GO_END_SCALE: f32 = 1.8;
 
