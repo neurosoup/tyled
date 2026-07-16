@@ -14,7 +14,7 @@ Contains systems related to camera initialization and runtime updates. The plugi
 | Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders the game world to an off-screen texture |
 | ViewportCamera | layer 2 | 2 | Spawned automatically by `PixelCamera`; composites the off-screen texture onto the window |
 | HUD camera | layer 1 | 3 | Renders the HUD map in a fixed viewport strip at the top of the window |
-| Overlay camera | layer 3 | 4 | Renders screen-space round-phase banners (intro countdown, etc.) full-window, on top of everything; content is drawn by the round `intro` submodule (`doc-16`) |
+| Overlay camera | layer 3 | 4 | Renders screen-space round-phase banners (intro countdown, etc.) full-window, on top of everything; content is drawn by the round `intro` submodule |
 
 The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `ViewportImage` sprite child. Its `snap_camera_position` system (PostUpdate) snaps the main camera's `GlobalTransform` to the nearest integer world unit and offsets the `ViewportImage` by the subpixel remainder to produce smooth motion without pixel crawl.
 
@@ -46,7 +46,7 @@ Spawns three camera entities at startup, resulting in four active cameras at run
 
 1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `ZOOM_LEVELS[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera, HUD camera, and overlay camera. **Invariant:** every non-main camera must carry an explicit `RenderLayers`, or that `Single` matches more than one entity and breaks.
 2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window, and its `OrthographicProjection` scale is initialized to the pixel-perfect fixed 2× (`scale_factor / HUD_SCALE`) at spawn so the HUD is correct from the first frame. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
-3. **Overlay camera** — carries `Camera2d`, `RenderLayers` layer 3, `Msaa::Off` (matching the HUD camera to avoid a sample-count mismatch), and `Camera { order: 4, clear_color: ClearColorConfig::None }`. Its `OrthographicProjection` uses `ScalingMode::FixedVertical { viewport_height: OVERLAY_VIEWPORT_HEIGHT }`, keeping banner glyphs a constant fraction of screen height at any resolution and centred on the origin — so no `WindowResized` handling is needed. Order 4 composites it above the HUD. The banners it renders are spawned by the round `intro` submodule (`doc-16`).
+3. **Overlay camera** — carries `Camera2d`, `RenderLayers` layer 3, `Msaa::Off` (matching the HUD camera to avoid a sample-count mismatch), and `Camera { order: 4, clear_color: ClearColorConfig::None }`. Its `OrthographicProjection` uses `ScalingMode::FixedVertical { viewport_height: OVERLAY_VIEWPORT_HEIGHT }`, keeping banner glyphs a constant fraction of screen height at any resolution and centred on the origin — so no `WindowResized` handling is needed. Order 4 composites it above the HUD. The banners it renders are spawned by the round `intro` submodule.
 
 ### Randomize Clear Color
 

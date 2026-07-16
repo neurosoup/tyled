@@ -7,7 +7,7 @@ updated_date: '2026-07-16 12:00'
 ---
 # Text Plugin
 
-A small bitmap-font text-rendering service. It loads the shared font atlas (`assets/font.png`) into the `FontAtlas` resource at startup and exposes `spawn_label`, which composes a string into a horizontal row of per-glyph sprites. Any feature can render text with it without owning font loading itself — today the round `intro` submodule's countdown (`doc-16`); later a win banner and shop price labels.
+A small bitmap-font text-rendering service. It loads the shared font atlas (`assets/font.png`) into the `FontAtlas` resource at startup and exposes `spawn_label`, which composes a string into a horizontal row of per-glyph sprites. Any feature can render text with it without owning font loading itself — the round `intro` submodule's countdown and the `outcome` submodule's win banner both render through it.
 
 It is not tied to any camera: the caller passes the `RenderLayers` the glyphs should render on, so the same helper serves the overlay layer, a HUD layer, or the world.
 
@@ -41,7 +41,7 @@ Runs once at `Startup`. Loads `assets/font.png`, builds the `TextureAtlasLayout`
 ## Components, Resources and Messages CRUD
 
 Definitions and where they are used:
-- `FontAtlas` — `#[derive(Resource, Clone)]` (`src/plugins/text.rs`), inserted by `setup_font_atlas` (this plugin), read by consumers (e.g. the round `intro` submodule's countdown systems, `doc-16`) as the argument to `spawn_label`.
+- `FontAtlas` — `#[derive(Resource, Clone)]` (`src/plugins/text.rs`), inserted by `setup_font_atlas` (this plugin), read by consumers (e.g. the round `intro` submodule's countdown systems) as the argument to `spawn_label`.
 
 ```mermaid
 ---

@@ -7,15 +7,15 @@ updated_date: '2026-07-16 12:00'
 ---
 # Round Intro
 
-The `intro` submodule of the `round` plugin (`src/plugins/round/intro.rs`; the round feature is `doc-15`). It renders the round-start "3 · 2 · 1 · GO!" banner shown while the round is in `RoundPhase::Starting`. More round-phase banners (e.g. a win banner for `Outcome`) will join as sibling submodules later.
+The `intro` submodule of the `round` plugin (`src/plugins/round/intro.rs`; the round feature is covered by the Round plugin doc). It renders the round-start "3 · 2 · 1 · GO!" banner shown while the round is in `RoundPhase::Starting`. Its sibling `outcome` submodule (`src/plugins/round/outcome.rs`, see the Round outcome doc) renders the win banner for `RoundPhase::Outcome` using the same overlay + glyph machinery.
 
-It owns only the banner **content** (the countdown logic). Text is composed with `spawn_label` from the Text plugin (`doc-17`), and the banners render on the **overlay camera**, spawned by the Camera plugin (`doc-6`). This keeps the submodule free of both font loading and camera setup, mirroring the HUD split (HUD content in the HUD plugin, HUD camera in the Camera plugin). Its systems are wired into the app by `round/mod.rs`.
+It owns only the banner **content** (the countdown logic). Text is composed with `spawn_label` from the Text plugin, and the banners render on the **overlay camera**, spawned by the Camera plugin. This keeps the submodule free of both font loading and camera setup, mirroring the HUD split (HUD content in the HUD plugin, HUD camera in the Camera plugin). Its systems are wired into the app by `round/mod.rs`.
 
 ## Concepts
 
-- **Overlay camera** — spawned and owned by the Camera plugin (`doc-6`), not here. It is a fixed, full-window fourth camera on `OVERLAY_RENDER_LAYER` (layer 3), order 4, `ClearColorConfig::None`, that composites banners on top of the world and HUD. The banners spawned here pass `RenderLayers::layer(OVERLAY_RENDER_LAYER)` to `spawn_label` so this camera sees them.
+- **Overlay camera** — spawned and owned by the Camera plugin, not here. It is a fixed, full-window fourth camera on `OVERLAY_RENDER_LAYER` (layer 3), order 4, `ClearColorConfig::None`, that composites banners on top of the world and HUD. The banners spawned here pass `RenderLayers::layer(OVERLAY_RENDER_LAYER)` to `spawn_label` so this camera sees them.
 
-- **Text rendering** — `FontAtlas` (resource) and `spawn_label` come from the Text plugin (`doc-17`); this submodule is a consumer. The round's shared `spawn_round_label` helper (in `round/mod.rs`) wraps `spawn_label` with the fixed choices for round banners (centred at the origin, on `OVERLAY_RENDER_LAYER`).
+- **Text rendering** — `FontAtlas` (resource) and `spawn_label` come from the Text plugin; this submodule is a consumer. The round's shared `spawn_round_label` helper (in `round/mod.rs`) wraps `spawn_label` with the fixed choices for round banners (centred at the origin, on `OVERLAY_RENDER_LAYER`).
 
 - `CountdownNumber` — a marker **component** on the number label currently shown ("3"/"2"/"1"); the advance system swaps it out each step by querying `With<CountdownNumber>` and despawning.
 
@@ -49,12 +49,12 @@ Runs every frame **only `in_state(RoundPhase::Starting)`**. Ticks the `IntroCoun
 
 ### Despawn Go Banner
 
-Runs every frame and is **deliberately ungated** — by the time the "GO!" tween finishes, the state is already `Playing`, so gating it on `Starting` would strand the banner on screen (`TweenAnim` auto-removes only its own component on completion, not the entity). Reads `AnimCompletedEvent` and, when the completed animation belongs to a `GoBanner` entity, despawns it (recursively removing its glyph children). Mirrors the Effects plugin's death-effect cleanup (`doc-10`).
+Runs every frame and is **deliberately ungated** — by the time the "GO!" tween finishes, the state is already `Playing`, so gating it on `Starting` would strand the banner on screen (`TweenAnim` auto-removes only its own component on completion, not the entity). Reads `AnimCompletedEvent` and, when the completed animation belongs to a `GoBanner` entity, despawns it (recursively removing its glyph children). Mirrors the Effects plugin's death-effect cleanup.
 
 ## Components and Resources CRUD
 
 Definitions and where they are used:
-- `FontAtlas` — owned by the Text plugin (`doc-17`); read here by `begin_intro_countdown` and `advance_intro_countdown` via `spawn_round_label`.
+- `FontAtlas` — owned by the Text plugin; read here by `begin_intro_countdown` and `advance_intro_countdown` via `spawn_round_label`.
 - `CountdownNumber` — marker `#[derive(Component)]` (this plugin), attached in `begin_intro_countdown` / `advance_intro_countdown`, queried/despawned by `advance_intro_countdown`.
 - `GoBanner` — marker `#[derive(Component)]` (this plugin), attached in `advance_intro_countdown`, queried/despawned by `despawn_go_banner`.
 - `IntroCountdown` — `#[derive(Resource)]` (this plugin), inserted by `begin_intro_countdown`, mutated and removed by `advance_intro_countdown`.
@@ -67,6 +67,7 @@ config:
 
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
 
 on_starting(("`OnEnter(Starting)`")):::system-group
 update(("`Update`")):::system-group
@@ -84,12 +85,15 @@ update -.-> despawn
 font_res@{ shape: doc, label: "FontAtlas" }
 intro_res@{ shape: doc, label: "IntroCountdown" }
 next_state@{ shape: doc, label: "NextState<RoundPhase>" }
-anim_msg@{ shape: das, label: "AnimCompletedEvent" }
+
+despawn_reader{{"MessageReader#60;AnimCompletedEvent#62;"}}:::reader
+anim_message(["`**AnimCompletedEvent**`"])
 
 font_res --> |read by| begin
 begin --> |inserts| intro_res
 font_res --> |read by| advance
 intro_res --> |ticked/removed by| advance
 advance --> |sets Playing| next_state
-anim_msg --> |read by| despawn
+despawn ---> despawn_reader
+despawn_reader ---> |reads| anim_message
 ```
