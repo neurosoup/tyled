@@ -7,7 +7,7 @@ use crate::prelude::*;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 use bevy_spritesheet_animation::prelude::*;
-use bevy_tweening::{Tween, Tweenable, lens::TransformPositionLens};
+use bevy_tweening::{lens::TransformPositionLens, Tween, Tweenable};
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(SpritesheetAnimationPlugin);
@@ -47,7 +47,7 @@ struct ClaimedTileAnimations {
     from_player_two: Handle<Animation>,
 }
 
-const UNCLAIM_CASCADE_SECS: f32 = 3.0;
+const UNCLAIM_CASCADE_SECS: f32 = 2.5;
 
 #[derive(Component)]
 struct UnclaimRevert {
