@@ -9,10 +9,11 @@ updated_date: '2026-07-14 12:00'
 
 This document summarises how the game's plugins are connected to each other through the message-passing system. Messages are the only coupling point between plugins — a plugin never calls into another plugin directly. Each message is written by one system and consumed by one or more systems in other plugins.
 
-There are two categories of messages in this codebase:
+There are three categories of messages in this codebase:
 
 - **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Maps, Camera, Round, Animations, and HUD plugins to react to map and object loading completion. `MapCreated` is read by the Maps, Camera, and Round plugins (the Round plugin (re)starts the countdown on map creation); `ObjectCreated` is read by both the Animations plugin (to initialize player animations) and the HUD plugin (to initialize digit-counter animations).
-- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `TileClaimed` and `ChargeSpent` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin and `ChargeSpent` by the Beam plugin, but neither has consumers yet. `ChargeRegen` is declared for the same substrate but is not yet emitted, so it does not appear in the diagram below.
+- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `DamageableDied` is emitted by the Damage plugin and read by both the Effects plugin (death bounce) and the Round plugin (round resolution — every `resolve_*` vector reads it, to end the round on a kill or to defer to a kill). `TileClaimed` and `ChargeSpent` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin and `ChargeSpent` by the Beam plugin, but neither has consumers yet. `ChargeRegen` is declared for the same substrate but is not yet emitted, so it does not appear in the diagram below.
+- **Library tween events** (`AnimCompletedEvent`) — emitted by the external `bevy_tweening` library when a tween finishes. Externally emitted like the Tiled events, but they drive cross-plugin reactions, so they belong on the map. Consumed by the Effects plugin (to hide a player once its death-bounce tween completes, and to clear `IsKnockedBack` once a knockback slide completes) and the round Intro submodule (to despawn the "GO!" banner once its scale-up tween completes).
 
 The diagram below shows every plugin as a node, every message type as a distinct node, and the write/read relationships as directed edges. The flow generally moves from left to right: external events bootstrap the world, player input drives movement and combat, beam collisions trigger tile ownership changes, damage accumulates on claimed tiles, and visual effects react to the resulting state changes.
 
@@ -27,6 +28,7 @@ classDef system-group stroke-dasharray: 5 5
 classDef external stroke-dasharray: 8 2
 
 tiled_plugin(["`**TiledPlugin**`"]):::external
+tweening_lib(["`**bevy_tweening**`"]):::external
 
 maps_plugin["`**Maps Plugin**`"]:::system-group
 camera_plugin["`**Camera Plugin**`"]:::system-group
@@ -48,6 +50,7 @@ beam_resolved_message(["`**BeamResolved**`"])
 tile_claimed_message(["`**TileClaimed**`"])
 charge_spent_message(["`**ChargeSpent**`"])
 damageable_died_message(["`**DamageableDied**`"])
+anim_completed_message(["`**AnimCompletedEvent**`"])
 
 tiled_plugin ---> |writes| map_created_message
 tiled_plugin ---> |writes| object_created_message
@@ -77,3 +80,9 @@ claim_plugin ---> |writes| tile_claimed_message
 damage_plugin ---> |writes| damageable_died_message
 
 damageable_died_message ---> |read by| effects_plugin
+damageable_died_message ---> |read by| round_plugin
+
+tweening_lib ---> |writes| anim_completed_message
+
+anim_completed_message ---> |read by| effects_plugin
+anim_completed_message ---> |read by| round_plugin
