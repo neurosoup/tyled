@@ -18,7 +18,7 @@ The `round` feature — everything scoped to a single round of the match. It is 
 
 The countdown timer is a global, player-agnostic count from `Countdown::START_SECONDS` down to 0. The plugin holds the `Countdown` resource — the authoritative remaining-seconds value — and the systems that (re)start and tick it. The HUD plugin only *reads* `Countdown::remaining` to drive the on-screen digits; this plugin never touches HUD sprites.
 
-Round resolution implements the two-vector win model. **Kill** (`resolve_kill`) ends the round the instant a player's HP reaches zero — the surviving player wins; a same-frame mutual kill is broken by tile count, then seat. **Timeout** (`resolve_timeout`) ends the round when the countdown reaches zero, resolving by tile count → HP → seat; a same-frame kill preempts it. Either path records the `RoundResult`, credits the `MatchScore`, and enters `Outcome`. The `outcome` submodule shows the win banner and, after a short linger, loops back to `Starting`; leaving `Outcome` runs `reset_round`, an in-place full wipe of board ownership + charges + health + positions that also revives the dead loser (players are hidden rather than despawned on death — see the Effects plugin doc). Tile ownership is wiped except for entries in `RoundResetExceptions`, the generic carve-out hook reserved for future burst-claim abilities; it is empty today.
+Round resolution implements the two-vector win model. **Kill** (`resolve_kill`) ends the round the instant a player's HP reaches zero — the surviving player wins; a same-frame mutual kill is broken by tile count, then seat. **Timeout** (`resolve_timeout`) ends the round when the countdown reaches zero, resolving by tile count → HP → seat; a same-frame kill preempts it. **Charge exhaustion** (`resolve_charge_exhaustion`) ends the round when every player has spent their last charge and no beam is still in flight — neither side can act, so it resolves immediately by the same tile count → HP → seat tiebreak rather than idling until the timeout; a same-frame kill preempts it, and it defers to the timeout branch on the countdown-zero frame so the score is never credited twice. The two backstops share the `winner_by_standing` ranking helper. Every path records the `RoundResult`, credits the `MatchScore`, and enters `Outcome`. The `outcome` submodule shows the win banner and, after a short linger, loops back to `Starting`; leaving `Outcome` runs `reset_round`, an in-place full wipe of board ownership + charges + health + positions that also revives the dead loser (players are hidden rather than despawned on death — see the Effects plugin doc). Tile ownership is wiped except for entries in `RoundResetExceptions`, the generic carve-out hook reserved for future burst-claim abilities; it is empty today.
 
 It is registered immediately after the Maps plugin in `AppPlugin`, since it reacts to the map being created (both to enter `Starting` and to start the countdown).
 
@@ -68,6 +68,12 @@ The digit *sprites* that render the countdown are per-entity `Digit` components 
                 - `DamageableDied` messages (to defer to Resolve Kill if any fired); `Countdown`; `Player` + `ClaimedTileCount` + `Health` of all players
             - Writes:
                 - Sets `RoundResult::winner`, credits `MatchScore`, sets `NextState<RoundPhase>` to `Outcome`
+    - Resolve Charge Exhaustion (runs only `in_state(Playing)`):
+        - Runs when every player's `BeamCharges` is empty and no `Beam` is in flight
+            - Reads:
+                - `DamageableDied` messages (to defer to Resolve Kill if any fired); `Countdown` (to defer to Resolve Timeout on the countdown-zero frame); all `Beam` entities (to wait for the board to settle); `Player` + `ClaimedTileCount` + `Health` + `BeamCharges` of all players
+            - Writes:
+                - Sets `RoundResult::winner`, credits `MatchScore`, sets `NextState<RoundPhase>` to `Outcome`
 - State-transition schedules
     - Reset Round (runs on `OnExit(RoundPhase::Outcome)`):
         - Reads:
@@ -95,7 +101,11 @@ Runs only `in_state(RoundPhase::Playing)`. Reads `DamageableDied` messages; if n
 
 ### Resolve Timeout
 
-Runs only `in_state(RoundPhase::Playing)`. Returns early if any `DamageableDied` fired this frame (a kill preempts the timeout), or if the `Countdown` is absent or still above zero. When the countdown has reached zero it ranks players by `ClaimedTileCount`, then `Health`, then seat (lower `player_id`), and passes the winner to `conclude_round`. This is the mandatory backstop so no round can stall forever.
+Runs only `in_state(RoundPhase::Playing)`. Returns early if any `DamageableDied` fired this frame (a kill preempts the timeout), or if the `Countdown` is absent or still above zero. When the countdown has reached zero it ranks players by `ClaimedTileCount`, then `Health`, then seat (lower `player_id`) via `winner_by_standing`, and passes the winner to `conclude_round`. This is the mandatory backstop so no round can stall forever.
+
+### Resolve Charge Exhaustion
+
+Runs only `in_state(RoundPhase::Playing)`. Charges are spent at fire time, and with no charge-regen source in the current build a round can otherwise idle until the timeout once both players run dry. This system ends the round as soon as that state is reached. It returns early if any `DamageableDied` fired this frame (a kill preempts it), if the `Countdown` is present and at zero (the timeout branch resolves that frame with the same result, so deferring avoids double-crediting the score), or if any `Beam` is still in flight — a shot spends its charge on fire but keeps travelling for several steps before it resolves and claims, so it waits for the board to settle so the winner is decided on a final tile count. Once no beam remains and every player's `BeamCharges` is empty (with at least one player present), it ranks players with the shared `winner_by_standing` helper — tile count, then `Health`, then seat — and passes the winner to `conclude_round`.
 
 ### Reset Round
 
@@ -175,6 +185,7 @@ tick_countdown --> |decrements remaining| countdown_res
 Used in the following systems:
 - **resolve_kill**: reads deaths to end the round instantly, the surviving player winning
 - **resolve_timeout**: reads deaths only to defer — if any fired this frame, the kill takes priority so timeout bails
+- **resolve_charge_exhaustion**: reads deaths only to defer — if any fired this frame, the kill takes priority so charge exhaustion bails
 
 ```mermaid
 ---
@@ -189,18 +200,23 @@ classDef reader stroke-dasharray: 3 3
 update(("`Update`")):::system-group
 resolve_kill["`**resolve_kill**`"]
 resolve_timeout["`**resolve_timeout**`"]
+resolve_charge_exhaustion["`**resolve_charge_exhaustion**`"]
 
 update -.-> resolve_kill
 update -.-> resolve_timeout
+update -.-> resolve_charge_exhaustion
 
 resolve_kill_reader{{"MessageReader#60;DamageableDied#62;"}}:::reader
 resolve_timeout_reader{{"MessageReader#60;DamageableDied#62;"}}:::reader
+resolve_exhaustion_reader{{"MessageReader#60;DamageableDied#62;"}}:::reader
 resolve_kill ---> resolve_kill_reader
 resolve_timeout ---> resolve_timeout_reader
+resolve_charge_exhaustion ---> resolve_exhaustion_reader
 
 damageable_died_message(["`**DamageableDied**`"])
 resolve_kill_reader ---> |reads| damageable_died_message
 resolve_timeout_reader ---> |reads| damageable_died_message
+resolve_exhaustion_reader ---> |reads| damageable_died_message
 ```
 
 ### Query player entities (resolution)
@@ -208,6 +224,7 @@ resolve_timeout_reader ---> |reads| damageable_died_message
 Used in the following systems:
 - **resolve_kill**: reads each player's `Entity`, `Player` and `ClaimedTileCount` to pick the winner (and break a mutual kill by tile count, then seat)
 - **resolve_timeout**: reads each player's `Player`, `ClaimedTileCount` and `Health` to rank by tiles → HP → seat
+- **resolve_charge_exhaustion**: reads each player's `Player`, `ClaimedTileCount`, `Health` and `BeamCharges` — the charges to detect universal exhaustion, the rest to rank by tiles → HP → seat
 
 ```mermaid
 ---
@@ -221,9 +238,11 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 resolve_kill["`**resolve_kill**`"]
 resolve_timeout["`**resolve_timeout**`"]
+resolve_charge_exhaustion["`**resolve_charge_exhaustion**`"]
 
 update -.-> resolve_kill
 update -.-> resolve_timeout
+update -.-> resolve_charge_exhaustion
 
 player_entity@{ shape: st-rect, label: "Player Entity" }
 
@@ -231,6 +250,7 @@ pe_entity>"`**Entity**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
 pe_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
 pe_health>"`**Health**`"] --> |belongs to| player_entity
+pe_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
 
 resolve_kill ---> |reads| pe_entity
 resolve_kill ---> |reads| pe_player
@@ -238,12 +258,16 @@ resolve_kill ---> |reads| pe_count
 resolve_timeout ---> |reads| pe_player
 resolve_timeout ---> |reads| pe_count
 resolve_timeout ---> |reads| pe_health
+resolve_charge_exhaustion ---> |reads| pe_player
+resolve_charge_exhaustion ---> |reads| pe_count
+resolve_charge_exhaustion ---> |reads| pe_health
+resolve_charge_exhaustion ---> |reads| pe_charges
 ```
 
 ### RoundResult resource
 
 Used in the following systems:
-- **resolve_kill** / **resolve_timeout** (via `conclude_round`): write `winner`
+- **resolve_kill** / **resolve_timeout** / **resolve_charge_exhaustion** (via `conclude_round`): write `winner`
 - **show_outcome_banner** (`outcome` submodule): reads `winner` to label the banner
 
 ```mermaid
@@ -258,10 +282,12 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 resolve_kill["`**resolve_kill**`"]
 resolve_timeout["`**resolve_timeout**`"]
+resolve_charge_exhaustion["`**resolve_charge_exhaustion**`"]
 show_outcome_banner["`**show_outcome_banner**`"]
 
 update -.-> resolve_kill
 update -.-> resolve_timeout
+update -.-> resolve_charge_exhaustion
 update -.-> show_outcome_banner
 
 world@{ shape: st-rect, label: "World" }
@@ -270,13 +296,14 @@ round_result_res@{ shape: doc, label: "RoundResult" }
 round_result_res --> |belongs to| world
 resolve_kill ---> |writes winner| round_result_res
 resolve_timeout ---> |writes winner| round_result_res
+resolve_charge_exhaustion ---> |writes winner| round_result_res
 show_outcome_banner ---> |reads winner| round_result_res
 ```
 
 ### MatchScore resource
 
 Used in the following systems:
-- **resolve_kill** / **resolve_timeout** (via `conclude_round`): increment the winner's `wins`; persists across the round reset
+- **resolve_kill** / **resolve_timeout** / **resolve_charge_exhaustion** (via `conclude_round`): increment the winner's `wins`; persists across the round reset
 
 ```mermaid
 ---
@@ -290,9 +317,11 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 resolve_kill["`**resolve_kill**`"]
 resolve_timeout["`**resolve_timeout**`"]
+resolve_charge_exhaustion["`**resolve_charge_exhaustion**`"]
 
 update -.-> resolve_kill
 update -.-> resolve_timeout
+update -.-> resolve_charge_exhaustion
 
 world@{ shape: st-rect, label: "World" }
 match_score_res@{ shape: doc, label: "MatchScore" }
@@ -300,6 +329,7 @@ match_score_res@{ shape: doc, label: "MatchScore" }
 match_score_res --> |belongs to| world
 resolve_kill ---> |increments wins| match_score_res
 resolve_timeout ---> |increments wins| match_score_res
+resolve_charge_exhaustion ---> |increments wins| match_score_res
 ```
 
 ### RoundResetExceptions resource
@@ -332,7 +362,7 @@ reset_round ---> |reads| exceptions_res
 
 Used in the following systems:
 - **start_round_on_map_created**: sets `Starting` once the level map is created
-- **resolve_kill** / **resolve_timeout** (via `conclude_round`): set `Outcome` when the round ends
+- **resolve_kill** / **resolve_timeout** / **resolve_charge_exhaustion** (via `conclude_round`): set `Outcome` when the round ends
 
 (The `intro` and `outcome` submodules also drive later transitions — see their docs.)
 
@@ -349,16 +379,19 @@ update(("`Update`")):::system-group
 start_round_on_map_created["`**start_round_on_map_created**`"]
 resolve_kill["`**resolve_kill**`"]
 resolve_timeout["`**resolve_timeout**`"]
+resolve_charge_exhaustion["`**resolve_charge_exhaustion**`"]
 
 update -.-> start_round_on_map_created
 update -.-> resolve_kill
 update -.-> resolve_timeout
+update -.-> resolve_charge_exhaustion
 
 next_state_res@{ shape: doc, label: "NextState<RoundPhase>" }
 
 start_round_on_map_created ---> |sets Starting| next_state_res
 resolve_kill ---> |sets Outcome| next_state_res
 resolve_timeout ---> |sets Outcome| next_state_res
+resolve_charge_exhaustion ---> |sets Outcome| next_state_res
 ```
 
 ### Reset Round world writes

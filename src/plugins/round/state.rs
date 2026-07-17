@@ -19,7 +19,9 @@
  *
  * Round resolution (the two-vector win model): `resolve_kill` ends the round the
  * instant a player dies (highest priority); `resolve_timeout` ends it when the
- * countdown hits 0, resolving by tile count → HP → seat. Either sets
+ * countdown hits 0; `resolve_charge_exhaustion` ends it when every player has
+ * spent their last charge and no beam is still in flight — both backstops
+ * resolve by tile count → HP → seat. Either sets
  * `RoundResult`, bumps `MatchScore`, and enters `Outcome`. Leaving `Outcome`
  * runs `reset_round`, an in-place full wipe of board + charges + health +
  * positions (honouring the `RoundResetExceptions` carve-out) before the loop
@@ -57,7 +59,13 @@ pub(crate) fn plugin(app: &mut App) {
         (
             start_countdown,
             start_round_on_map_created.run_if(in_state(RoundPhase::Loading)),
-            (tick_countdown, resolve_kill, resolve_timeout).run_if(in_state(RoundPhase::Playing)),
+            (
+                tick_countdown,
+                resolve_kill,
+                resolve_timeout,
+                resolve_charge_exhaustion,
+            )
+                .run_if(in_state(RoundPhase::Playing)),
         ),
     );
     // A full board + charge reset runs on leaving `Outcome`, so the very first
@@ -208,6 +216,23 @@ fn resolve_kill(
     conclude_round(winner, &mut result, &mut score, &mut next_phase);
 }
 
+/// Ranks players by tile count, then HP, then seat (lower `player_id`) and
+/// returns the leader's `player_id`. The shared tiebreak used by both backstop
+/// vectors (timeout and charge exhaustion).
+fn winner_by_standing<'a>(
+    players: impl Iterator<Item = (&'a Player, &'a ClaimedTileCount, &'a Health)>,
+) -> Option<u8> {
+    players
+        .max_by(|(a_player, a_count, a_health), (b_player, b_count, b_health)| {
+            a_count
+                .current
+                .cmp(&b_count.current)
+                .then(a_health.current.total_cmp(&b_health.current))
+                .then(b_player.player_id.cmp(&a_player.player_id))
+        })
+        .map(|(player, ..)| player.player_id)
+}
+
 /// Timeout vector (backstop): when the countdown reaches zero the round ends,
 /// resolved by tile count, then HP, then seat (lower `player_id`). A same-frame
 /// kill preempts this — if any death fired this frame, defer to `resolve_kill`.
@@ -229,17 +254,46 @@ fn resolve_timeout(
         return;
     }
 
-    let winner = players
-        .iter()
-        .max_by(|(a_player, a_count, a_health), (b_player, b_count, b_health)| {
-            a_count
-                .current
-                .cmp(&b_count.current)
-                .then(a_health.current.total_cmp(&b_health.current))
-                .then(b_player.player_id.cmp(&a_player.player_id))
-        })
-        .map(|(player, ..)| player.player_id);
+    let winner = winner_by_standing(players.iter());
+    conclude_round(winner, &mut result, &mut score, &mut next_phase);
+}
 
+/// Charge-exhaustion vector (backstop): when every player has spent their last
+/// charge and no beam is still in flight, neither side can act, so the round
+/// ends immediately rather than idling until the timeout.
+fn resolve_charge_exhaustion(
+    mut died_reader: MessageReader<DamageableDied>,
+    countdown: Option<Res<Countdown>>,
+    beams: Query<(), With<Beam>>,
+    players: Query<(&Player, &ClaimedTileCount, &Health, &BeamCharges)>,
+    mut result: ResMut<RoundResult>,
+    mut score: ResMut<MatchScore>,
+    mut next_phase: ResMut<NextState<RoundPhase>>,
+) {
+    if died_reader.read().next().is_some() {
+        return;
+    }
+    if countdown.is_some_and(|countdown| countdown.remaining == 0) {
+        return;
+    }
+    if !beams.is_empty() {
+        return;
+    }
+
+    let mut any_player = false;
+    let all_exhausted = players.iter().all(|(.., charges)| {
+        any_player = true;
+        charges.is_empty()
+    });
+    if !any_player || !all_exhausted {
+        return;
+    }
+
+    let winner = winner_by_standing(
+        players
+            .iter()
+            .map(|(player, count, health, _)| (player, count, health)),
+    );
     conclude_round(winner, &mut result, &mut score, &mut next_phase);
 }
 
