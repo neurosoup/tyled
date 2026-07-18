@@ -3,11 +3,11 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-05-11 00:00'
+updated_date: '2026-07-18 00:00'
 ---
 # Input Plugin
 
-Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, sets up an input throttle timer resource, attaches input maps to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions.
+Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, sets up an input throttle timer resource, attaches input maps to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions. A facing change while the direction is unlocked starts a transient `IsTurning` state that rotates the character in place through an intermediate 3/4 pose before movement in the new direction resumes.
 
 ## Plugin workflow
 
@@ -18,8 +18,11 @@ Contains systems related to player input handling. This plugin registers the `In
 - Update phase
     - Handle Characters Input ticks the timer and, for each character:
         - Handles `Action::Lock` (toggles look-direction lock)
-        - Handles `Action::Shoot` (writes a `BeamFired` message only if the player's `BeamCharges` is not exhausted)
-        - When the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
+        - Handles `Action::Shoot` (writes a `BeamFired` message only if the player's `BeamCharges` is not exhausted) — allowed even mid-turn
+        - On a `Action::Move` axis that implies a new facing (while unlocked), inserts an `IsTurning` state and skips movement this frame; a fresh facing change mid-turn restarts the turn toward the new target
+        - While an `IsTurning` state is present but the facing has not changed, movement stays suppressed
+        - When no turn is active and the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
+    - Tick Turning advances each `IsTurning` timer through its segments and, only once the target facing is reached, commits `LookDirection` to the target and removes `IsTurning`; `LookDirection` is left untouched mid-turn so it keeps the original heading
 
 ## Plugin Systems
 
@@ -33,7 +36,11 @@ Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that 
 
 ### Handle Characters Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities. Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the character's `BeamCharges::current > 0`. When the timer is finished, reads the movement axis from `Action::Move`, updates `LookDirection`, and emits an `EntityMoved` message with the new target `GridCoords`.
+Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the character's `BeamCharges::current > 0`; both stay active during a turn. For movement it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) inserts an `IsTurning` state — starting or restarting the turn immediately, bypassing the throttle — and skips movement that frame. If a turn is already in progress toward the same target, movement stays suppressed. Otherwise, when the timer is finished, it updates `LookDirection` and emits an `EntityMoved` message with the new target `GridCoords`. Locked characters never turn (direction is frozen) and keep strafing along the pressed axis.
+
+### Tick Turning
+
+Runs in `Update` (gated on `RoundPhase::Playing`). Ticks each character's `IsTurning` timer; when a segment elapses it pops the next cardinal waypoint and advances the turn's internal `from` (which the 3/4 pose depends on), then either resets the timer for the next quarter or, once the final target is reached, commits `LookDirection` to the target and removes `IsTurning`. `LookDirection` is deliberately **not** changed mid-turn: it holds the character's original heading for the whole turn, so a shot fired mid-turn fires along the direction the player was facing before the turn began. A 90° turn is one segment; a 180° turn is two, routed through a fixed middle cardinal.
 
 ## Components, Resources and Messages CRUD
 
@@ -139,7 +146,7 @@ attach_players_actions ---> |inserts component| pe_input_map
 ### Query Character entities for input handling
 
 Used in the following systems:
-- **handle_characters_input**: reads action state and grid coords, mutably updates look direction for all `Character` entities
+- **handle_characters_input**: reads action state and grid coords, mutably updates look direction, and reads the optional `IsTurning` state for all `Character` entities (excluding those with `IsKnockedBack`)
 
 ```mermaid
 ---
@@ -167,19 +174,23 @@ pe_grid_coords>"`**GridCoords**`"] --> |belongs to| character_entity
 pe_look_direction>"`**LookDirection**`"] --> |belongs to| character_entity
 pe_character>"`**Character**`"] --> |belongs to| character_entity
 pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| character_entity
+pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
+pe_is_knocked_back>"`**IsKnockedBack**`"] --> |belongs to| character_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_action_state
 players_query ---> |reads| pe_grid_coords
 players_query ---> |writes| pe_look_direction
 players_query ---> |"reads (optional)"| pe_beam_charges
+players_query ---> |"reads (optional)"| pe_is_turning
 players_query -..-> |filter With| pe_character
+players_query -..-> |filter Without| pe_is_knocked_back
 ```
 
 ### Write EntityMoved messages
 
 Used in the following systems:
-- **handle_characters_input**: emits an `EntityMoved` message when the movement axis is non-zero and the input timer has finished
+- **handle_characters_input**: emits an `EntityMoved` message when the movement axis is non-zero, no turn is in progress, and the input timer has finished
 
 
 ```mermaid
@@ -224,4 +235,68 @@ update -.-> handle_characters_input
 beam_fired_message(["`**BeamFired**`"])
 
 handle_characters_input ---> |writes| beam_fired_message
+```
+
+### Write commands — insert IsTurning
+
+Used in the following systems:
+- **handle_characters_input**: inserts (or replaces) an `IsTurning` state on a character when an unlocked facing change is detected, starting or restarting the turn
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+handle_characters_input["`**handle_characters_input**`"]
+
+update -.-> handle_characters_input
+
+character_entity@{ shape: st-rect, label: "Character" }
+
+pe_is_turning>"`**IsTurning**`"]
+
+pe_is_turning --> |inserted on| character_entity
+
+handle_characters_input ---> |inserts component| pe_is_turning
+```
+
+### Query turning characters
+
+Used in the following systems:
+- **tick_turning**: advances each `IsTurning` timer and, when the turn completes, commits `LookDirection` to the target facing and removes `IsTurning` (`LookDirection` is left unchanged mid-turn)
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+tick_turning["`**tick_turning**`"]
+
+update -.-> tick_turning
+
+turners_query{{"`turners`"}}:::query
+tick_turning ---> turners_query
+
+character_entity@{ shape: st-rect, label: "Character" }
+
+pe_entity>"`**Entity**`"] --> |belongs to| character_entity
+pe_look_direction>"`**LookDirection**`"] --> |belongs to| character_entity
+pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
+
+turners_query ---> |reads| pe_entity
+turners_query ---> |writes| pe_look_direction
+turners_query ---> |writes| pe_is_turning
+
+tick_turning ---> |removes component| pe_is_turning
 ```

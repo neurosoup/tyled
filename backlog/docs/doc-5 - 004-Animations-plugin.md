@@ -3,11 +3,11 @@ id: doc-5
 title: '[004] Animations plugin'
 type: other
 created_date: '2026-02-01 18:59'
-updated_date: '2026-07-14 12:00'
+updated_date: '2026-07-18 00:00'
 ---
 # Animations Plugin
 
-Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages.
+Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages. While a character carries an `IsTurning` state, its active clip is instead the intermediate 3/4 pose for the current turn segment (`diag_front`/`diag_back`, mirrored with `flip_x`).
 
 HUD animation more broadly — both the HP bars and the numeric rolling-odometer counters — now lives in the HUD plugin.
 
@@ -20,17 +20,17 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
                 - All `Player`-marked `TiledObject` entities and their `Entity` + `Player` components
                 - The `Sprite` component on each player's child sprite entity (to get the image handle)
             - Writes:
-                - Inserts `PlayerOneAnimations` or `PlayerTwoAnimations` resource into the world
+                - Inserts `PlayerOneAnimations` or `PlayerTwoAnimations` resource into the world (idle + `diag_front`/`diag_back` turn clips)
                 - Inserts `SpritesheetAnimation` on the child sprite entity
     - Animate Player:
         - Runs every frame
             - Reads:
-                - All `Player`-marked entities with `LookDirection`
+                - All `Player`-marked entities with `LookDirection` and the optional `IsTurning` state
                 - `PlayerOneAnimations` and `PlayerTwoAnimations` resources (optional/`If`)
                 - `Sprite` and `SpritesheetAnimation` on descendant sprite entities
             - Writes:
-                - Updates `SpritesheetAnimation` (switches active clip)
-                - Updates `Sprite::flip_x` for left/right facing directions
+                - Updates `SpritesheetAnimation` (switches active clip — the turn 3/4 pose while `IsTurning`, otherwise the idle clip for the current `LookDirection`)
+                - Updates `Sprite::flip_x` for left/right facing directions and for the mirrored side of each 3/4 pose
     - Initialize Claimed Tile Animations:
         - Reacts to `Added<ClaimedTile>` on newly spawned claimed tile entities
             - Reads:
@@ -65,11 +65,11 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
 
 ### Initialize Player Animations
 
-Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader when a player object is created. For each matching `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the child entity carrying a `Sprite`, reads its image handle to build a `Spritesheet`, then creates idle animation handles for the three directional variants (`idle_x`, `idle_down`, `idle_up`). It stores these handles in a per-player resource (`PlayerOneAnimations` or `PlayerTwoAnimations`) and inserts a `SpritesheetAnimation` on the child sprite entity with the initial idle clip.
+Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader when a player object is created. For each matching `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the child entity carrying a `Sprite`, reads its image handle to build a `Spritesheet`, then creates idle animation handles for the three directional variants (`idle_x`, `idle_down`, `idle_up`) plus two single-cell 3/4 turn poses (`diag_front`, `diag_back`, drawn left-facing and mirrored at runtime for the right-facing side). It stores these handles in a per-player resource (`PlayerOneAnimations` or `PlayerTwoAnimations`) and inserts a `SpritesheetAnimation` on the child sprite entity with the initial idle clip.
 
 ### Animate Player
 
-Runs every frame. For each `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the descendant with a `Sprite` and `SpritesheetAnimation`, then switches the active animation clip based on the player's current `LookDirection`. It also sets `Sprite::flip_x` to mirror the horizontal idle sprite when the player faces left.
+Runs every frame. For each `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the descendant with a `Sprite` and `SpritesheetAnimation`, then switches the active animation clip. While the player carries an active `IsTurning` state, it selects the 3/4 pose from `IsTurning::pose()` (`diag_front` for the front-facing turn, `diag_back` for the back-facing one, with `flip_x` choosing the mirrored side); otherwise it picks the idle clip for the current `LookDirection`. It also sets `Sprite::flip_x` to mirror the horizontal idle sprite when the player faces left. A turn whose waypoint queue is already empty is treated as not turning, so the idle clip shows on the frame the turn completes.
 
 ### Initialize Claimed Tile Animations
 
@@ -182,7 +182,7 @@ players_query -..-> |filter With| pe_tiled_object
 ### Query Player entities (update)
 
 Used in the following systems:
-- **animate_player**: used to get `Entity`, `Player::player_id` and `LookDirection` of each `TiledObject`-marked player entity to decide which animation clip to activate
+- **animate_player**: used to get `Entity`, `Player::player_id`, `LookDirection` and the optional `IsTurning` state of each `TiledObject`-marked player entity to decide which animation clip to activate
 
 ```mermaid
 ---
@@ -207,11 +207,13 @@ player_entity@{ shape: st-rect, label: "Player (TiledObject)" }
 pe_entity>"`**Entity**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
 pe_look_direction>"`**LookDirection**`"] --> |belongs to| player_entity
+pe_is_turning>"`**IsTurning**`"] --> |belongs to| player_entity
 pe_tiled_object>"`**TiledObject**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_player
 players_query ---> |reads| pe_look_direction
+players_query ---> |"reads (optional)"| pe_is_turning
 players_query -..-> |filter With| pe_tiled_object
 ```
 
@@ -401,19 +403,27 @@ p2_res@{ shape: doc, label: "PlayerTwoAnimations" }
 p1_idle_x>"`**idle_x**`"]
 p1_idle_up>"`**idle_up**`"]
 p1_idle_down>"`**idle_down**`"]
+p1_diag_front>"`**diag_front**`"]
+p1_diag_back>"`**diag_back**`"]
 
 p2_idle_x>"`**idle_x**`"]
 p2_idle_up>"`**idle_up**`"]
 p2_idle_down>"`**idle_down**`"]
+p2_diag_front>"`**diag_front**`"]
+p2_diag_back>"`**diag_back**`"]
 
 p1_res --> |belongs to| world
 p2_res --> |belongs to| world
 p1_idle_x --> |field of| p1_res
 p1_idle_up --> |field of| p1_res
 p1_idle_down --> |field of| p1_res
+p1_diag_front --> |field of| p1_res
+p1_diag_back --> |field of| p1_res
 p2_idle_x --> |field of| p2_res
 p2_idle_up --> |field of| p2_res
 p2_idle_down --> |field of| p2_res
+p2_diag_front --> |field of| p2_res
+p2_diag_back --> |field of| p2_res
 
 animate_player ---> |reads| p1_res
 animate_player ---> |reads| p2_res
@@ -490,19 +500,27 @@ p2_res@{ shape: doc, label: "PlayerTwoAnimations" }
 p1_idle_x>"`**idle_x**`"]
 p1_idle_up>"`**idle_up**`"]
 p1_idle_down>"`**idle_down**`"]
+p1_diag_front>"`**diag_front**`"]
+p1_diag_back>"`**diag_back**`"]
 
 p2_idle_x>"`**idle_x**`"]
 p2_idle_up>"`**idle_up**`"]
 p2_idle_down>"`**idle_down**`"]
+p2_diag_front>"`**diag_front**`"]
+p2_diag_back>"`**diag_back**`"]
 
 p1_res --> |belongs to| world
 p2_res --> |belongs to| world
 p1_idle_x --> |field of| p1_res
 p1_idle_up --> |field of| p1_res
 p1_idle_down --> |field of| p1_res
+p1_diag_front --> |field of| p1_res
+p1_diag_back --> |field of| p1_res
 p2_idle_x --> |field of| p2_res
 p2_idle_up --> |field of| p2_res
 p2_idle_down --> |field of| p2_res
+p2_diag_front --> |field of| p2_res
+p2_diag_back --> |field of| p2_res
 
 initialize_player_animations ---> |inserts resource| p1_res
 initialize_player_animations ---> |inserts resource| p2_res

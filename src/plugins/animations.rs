@@ -29,6 +29,8 @@ struct PlayerOneAnimations {
     idle_x: Handle<Animation>,
     idle_up: Handle<Animation>,
     idle_down: Handle<Animation>,
+    diag_front: Handle<Animation>,
+    diag_back: Handle<Animation>,
 }
 
 #[derive(Resource, Clone)]
@@ -36,6 +38,8 @@ struct PlayerTwoAnimations {
     idle_x: Handle<Animation>,
     idle_up: Handle<Animation>,
     idle_down: Handle<Animation>,
+    diag_front: Handle<Animation>,
+    diag_back: Handle<Animation>,
 }
 
 #[derive(Resource, Clone)]
@@ -162,7 +166,7 @@ fn tick_unclaim_reverts(
 
 fn animate_player(
     // Parent entity: has Player, LookDirection
-    players: Query<(Entity, &Player, &LookDirection)>,
+    players: Query<(Entity, &Player, &LookDirection, Option<&IsTurning>)>,
     // Used to traverse the hierarchy with iter_descendants
     children_query: Query<&Children>,
     // Child entity: has Sprite and SpritesheetAnimation (both must co-locate)
@@ -170,30 +174,26 @@ fn animate_player(
     player_one_animations: If<Res<PlayerOneAnimations>>,
     player_two_animations: If<Res<PlayerTwoAnimations>>,
 ) {
-    for (entity, player, look_direction) in &players {
-        let Some(direction) = look_direction.direction else {
-            continue;
-        };
-
+    for (entity, player, look_direction, turning) in &players {
         for descendant in children_query.iter_descendants(entity) {
             let Ok((mut sprite, mut animation)) = sprites.get_mut(descendant) else {
                 continue;
             };
 
-            let (target_handle, flip_x) = match player.player_id {
-                0 => match direction {
-                    Direction::Up => (player_one_animations.idle_up.clone(), sprite.flip_x),
-                    Direction::Down => (player_one_animations.idle_down.clone(), sprite.flip_x),
-                    Direction::Left => (player_one_animations.idle_x.clone(), false),
-                    Direction::Right => (player_one_animations.idle_x.clone(), true),
-                },
-                1 => match direction {
-                    Direction::Up => (player_two_animations.idle_up.clone(), sprite.flip_x),
-                    Direction::Down => (player_two_animations.idle_down.clone(), sprite.flip_x),
-                    Direction::Left => (player_two_animations.idle_x.clone(), false),
-                    Direction::Right => (player_two_animations.idle_x.clone(), true),
-                },
+            let selection = match player.player_id {
+                0 => {
+                    let anims: &PlayerOneAnimations = &player_one_animations;
+                    select_player_animation(anims, look_direction, turning, sprite.flip_x)
+                }
+                1 => {
+                    let anims: &PlayerTwoAnimations = &player_two_animations;
+                    select_player_animation(anims, look_direction, turning, sprite.flip_x)
+                }
                 _ => panic!("Invalid player ID"),
+            };
+
+            let Some((target_handle, flip_x)) = selection else {
+                break;
             };
 
             // switch() always resets to frame 0, so only call it when the animation changes
@@ -206,6 +206,53 @@ fn animate_player(
             break;
         }
     }
+}
+
+trait PlayerAnimationSet {
+    fn idle_x(&self) -> &Handle<Animation>;
+    fn idle_up(&self) -> &Handle<Animation>;
+    fn idle_down(&self) -> &Handle<Animation>;
+    fn diag_front(&self) -> &Handle<Animation>;
+    fn diag_back(&self) -> &Handle<Animation>;
+}
+
+impl PlayerAnimationSet for PlayerOneAnimations {
+    fn idle_x(&self) -> &Handle<Animation> { &self.idle_x }
+    fn idle_up(&self) -> &Handle<Animation> { &self.idle_up }
+    fn idle_down(&self) -> &Handle<Animation> { &self.idle_down }
+    fn diag_front(&self) -> &Handle<Animation> { &self.diag_front }
+    fn diag_back(&self) -> &Handle<Animation> { &self.diag_back }
+}
+
+impl PlayerAnimationSet for PlayerTwoAnimations {
+    fn idle_x(&self) -> &Handle<Animation> { &self.idle_x }
+    fn idle_up(&self) -> &Handle<Animation> { &self.idle_up }
+    fn idle_down(&self) -> &Handle<Animation> { &self.idle_down }
+    fn diag_front(&self) -> &Handle<Animation> { &self.diag_front }
+    fn diag_back(&self) -> &Handle<Animation> { &self.diag_back }
+}
+
+fn select_player_animation(
+    anims: &impl PlayerAnimationSet,
+    look_direction: &LookDirection,
+    turning: Option<&IsTurning>,
+    current_flip: bool,
+) -> Option<(Handle<Animation>, bool)> {
+    if let Some(turning) = turning.filter(|t| !t.remaining.is_empty()) {
+        return Some(match turning.pose() {
+            TurnPose::Se => (anims.diag_front().clone(), true),
+            TurnPose::Sw => (anims.diag_front().clone(), false),
+            TurnPose::Ne => (anims.diag_back().clone(), true),
+            TurnPose::Nw => (anims.diag_back().clone(), false),
+        });
+    }
+
+    look_direction.direction.map(|direction| match direction {
+        Direction::Up => (anims.idle_up().clone(), current_flip),
+        Direction::Down => (anims.idle_down().clone(), current_flip),
+        Direction::Left => (anims.idle_x().clone(), false),
+        Direction::Right => (anims.idle_x().clone(), true),
+    })
 }
 
 fn initialize_claimed_tile_animations(
@@ -378,17 +425,33 @@ fn initialize_player_animations(
             _ => panic!("Invalid player ID"),
         };
 
+        let diag_front_animation_handle = match player.player_id {
+            0 => animations.add(spritesheet.create_animation().add_cell(4, 0).build()),
+            1 => animations.add(spritesheet.create_animation().add_cell(4, 4).build()),
+            _ => panic!("Invalid player ID"),
+        };
+
+        let diag_back_animation_handle = match player.player_id {
+            0 => animations.add(spritesheet.create_animation().add_cell(4, 2).build()),
+            1 => animations.add(spritesheet.create_animation().add_cell(4, 6).build()),
+            _ => panic!("Invalid player ID"),
+        };
+
         if player.player_id == 0 {
             commands.insert_resource(PlayerOneAnimations {
                 idle_x: idle_left_right_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,
                 idle_up: idle_up_animation_handle,
+                diag_front: diag_front_animation_handle,
+                diag_back: diag_back_animation_handle,
             });
         } else if player.player_id == 1 {
             commands.insert_resource(PlayerTwoAnimations {
                 idle_x: idle_left_right_animation_handle.clone(),
                 idle_down: idle_down_animation_handle,
                 idle_up: idle_up_animation_handle,
+                diag_front: diag_front_animation_handle,
+                diag_back: diag_back_animation_handle,
             });
         } else {
             panic!("Invalid player ID");

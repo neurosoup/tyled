@@ -333,7 +333,7 @@ fn reset_round(
         commands
             .entity(entity)
             .insert((spawn.0, PreviousGridCoords(spawn.0), Visibility::Visible))
-            .remove::<IsDead>();
+            .remove::<(IsDead, IsTurning)>();
     }
 
     // Clear any beams still in flight when the round ended.

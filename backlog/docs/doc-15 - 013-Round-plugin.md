@@ -3,7 +3,7 @@ id: doc-15
 title: '[013] Round plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-07-15 12:00'
+updated_date: '2026-07-18 00:00'
 ---
 # Round Plugin
 
@@ -79,7 +79,7 @@ The digit *sprites* that render the countdown are per-entity `Digit` components 
         - Reads:
             - `RoundResetExceptions`; each player's `SpawnPoint`; all `ClaimedTile` + `GridCoords`; all `Beam` entities
         - Writes:
-            - Resets every `ClaimedTile::owner` (keeping carve-out tiles); restores each player's `Health`, `BeamCharges`, `ClaimedTileCount`, `GridCoords` and `PreviousGridCoords` (both to spawn) and `Visibility`, removing `IsDead`; despawns in-flight beams; re-inserts the `Countdown` resource
+            - Resets every `ClaimedTile::owner` (keeping carve-out tiles); restores each player's `Health`, `BeamCharges`, `ClaimedTileCount`, `GridCoords` and `PreviousGridCoords` (both to spawn) and `Visibility`, removing `IsDead` and any in-progress `IsTurning`; despawns in-flight beams; re-inserts the `Countdown` resource
 
 ## Plugin Systems
 
@@ -424,6 +424,7 @@ pe_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
 pe_coords>"`**GridCoords / PreviousGridCoords**`"] --> |inserted on| player_entity
 pe_vis>"`**Visibility**`"] --> |inserted on| player_entity
 pe_dead>"`**IsDead**`"] --> |removed from| player_entity
+pe_turning>"`**IsTurning**`"] --> |removed from| player_entity
 te_owner>"`**ClaimedTile::owner**`"] --> |belongs to| tile_entity
 
 reset_round ---> |reads| pe_spawn
@@ -433,6 +434,7 @@ reset_round ---> |resets to carve-out count| pe_count
 reset_round ---> |inserts spawn coord| pe_coords
 reset_round ---> |makes Visible| pe_vis
 reset_round ---> |removes| pe_dead
+reset_round ---> |removes| pe_turning
 reset_round ---> |resets owner| te_owner
 reset_round ---> |despawns| beam_entity
 reset_round ---> |re-inserts Countdown| world_res
