@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-07-14 12:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Maps Plugin
 
@@ -22,7 +22,7 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20,max:100}`, `BeamCharges{current:999,max:999}`, `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin)
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin)
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
@@ -43,14 +43,14 @@ Spawns two `TiledMap` entities at startup:
 
 ### Initialize Map Info
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads tilemap metadata components, iterates all `Ground`-marked tile entities (storing them in `ground_entities`) and all `ForbiddenArea`-marked tile entities (storing them in `forbidden_areas`). Also allocates the `claimed_entities` HashMap keyed by `GridCoords`. Writes all collected data into the `MapInfo` resource so it is available world-wide.
+Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads tilemap metadata components from the tilemap whose `TiledName` is `"ground"` **and** whose `TiledMapReference` matches the `MapCreated` event's origin (the current level map entity) — the level map and the HUD map both use the `ground.tsx` tileset, so both spawn a tilemap named `"ground"`, and this map-scoped filter ensures the level's own tile geometry (size, grid, tile-size, anchor) is read rather than the HUD map's. Iterates all `Ground`-marked tile entities (storing them in `ground_entities`) and all `ForbiddenArea`-marked tile entities (storing them in `forbidden_areas`). Also allocates the `claimed_entities` HashMap keyed by `GridCoords`. Writes all collected data into the `MapInfo` resource so it is available world-wide.
 
 ### Initialize Players
 
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health{current:20, max:100}`, `BeamCharges{current:10, max:10}`, and `ClaimedTileCount{current:0}` on the player entity. The `ClaimedTileCount` starts at zero and is maintained thereafter by the Claim plugin as tile ownership flips.
+3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), and `ClaimedTileCount{current:0}` on the player entity, reading these from the `GameConfig` resource. The `ClaimedTileCount` starts at zero and is maintained thereafter by the Claim plugin as tile ownership flips.
 4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
 
 ### Initialize Claimed Tiles

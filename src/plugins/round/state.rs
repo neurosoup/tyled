@@ -12,8 +12,8 @@
  * world for free. The intro countdown itself is rendered by the sibling `intro`
  * submodule.
  *
- * The `Countdown` resource is a global, player-agnostic count from
- * `Countdown::START_SECONDS` down to 0. It is inserted on `MapCreated` (so the
+ * The `Countdown` resource is a global, player-agnostic count from the configured
+ * round length down to 0. It is inserted on `MapCreated` (so the
  * HUD shows the starting value during the intro), only ticks down in `Playing`,
  * and reaching 0 triggers the timeout branch of round resolution.
  *
@@ -97,11 +97,9 @@ pub struct Countdown {
 }
 
 impl Countdown {
-    const START_SECONDS: u32 = 180;
-
-    fn new() -> Self {
+    fn new(start_secs: u32) -> Self {
         Self {
-            remaining: Self::START_SECONDS,
+            remaining: start_secs,
             timer: Timer::from_seconds(1.0, TimerMode::Repeating),
         }
     }
@@ -111,10 +109,11 @@ impl Countdown {
 /// display visibly begins at the starting value once the HUD digits are ready.
 fn start_countdown(
     mut commands: Commands,
+    config: Res<GameConfig>,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
 ) {
     for _ in map_created_reader.read() {
-        commands.insert_resource(Countdown::new());
+        commands.insert_resource(Countdown::new(config.round.round_duration_secs));
     }
 }
 
@@ -303,6 +302,7 @@ fn resolve_charge_exhaustion(
 /// in-flight beams, and restarts the countdown.
 fn reset_round(
     mut commands: Commands,
+    config: Res<GameConfig>,
     exceptions: Res<RoundResetExceptions>,
     mut players: Query<(
         Entity,
@@ -343,5 +343,5 @@ fn reset_round(
 
     // `start_countdown` is keyed on `MapCreated`, which does not re-fire in place,
     // so restart the timer here.
-    commands.insert_resource(Countdown::new());
+    commands.insert_resource(Countdown::new(config.round.round_duration_secs));
 }

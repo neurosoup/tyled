@@ -19,21 +19,29 @@ pub(crate) fn plugin(app: &mut App) {
         )
             .run_if(in_state(RoundPhase::Playing)),
     );
+    #[cfg(feature = "dev")]
+    app.add_systems(Update, resync_damage_timer);
 }
-
-/// Damage dealt per 500ms tick while standing on a hostile tile.
-const STANDING_DAMAGE: f32 = 1.0;
-/// Damage dealt each time a character moves onto a hostile tile.
-const ON_ENTER_DAMAGE: f32 = 5.0;
 
 #[derive(Resource)]
 pub struct DamageTimer(Timer);
 
-fn setup_timer(mut commands: Commands) {
+fn setup_timer(mut commands: Commands, config: Res<GameConfig>) {
     commands.insert_resource(DamageTimer(Timer::from_seconds(
-        0.500,
+        config.damage.tick_secs,
         TimerMode::Repeating,
     )));
+}
+
+#[cfg(feature = "dev")]
+fn resync_damage_timer(config: Res<GameConfig>, timer: Option<ResMut<DamageTimer>>) {
+    if config.is_changed()
+        && let Some(mut timer) = timer
+    {
+        timer
+            .0
+            .set_duration(Duration::from_secs_f32(config.damage.tick_secs));
+    }
 }
 
 fn deal_damage(
@@ -50,6 +58,7 @@ fn deal_damage(
 
 fn apply_beam_damage(
     mut commands: Commands,
+    config: Res<GameConfig>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
     beams_query: Query<(&Beam, &GridCoords), Changed<GridCoords>>,
@@ -60,7 +69,12 @@ fn apply_beam_damage(
                 continue;
             }
             if position == beam_position && beam.owner != entity {
-                deal_damage(entity, &mut health, 1.0, &mut damageable_died_writer);
+                deal_damage(
+                    entity,
+                    &mut health,
+                    config.damage.beam_contact,
+                    &mut damageable_died_writer,
+                );
                 commands.entity(entity).insert(KnockbackEffect {
                     direction: beam.direction,
                 });
@@ -88,6 +102,7 @@ fn is_hostile_tile(
 /// `GridCoords`, so it cannot phase-miss a tile the way the 500ms poll can when a player crosses
 /// faster than the poll samples. Also fires when a character is knocked onto a hostile tile.
 fn apply_owned_tile_entry_damage(
+    config: Res<GameConfig>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut characters_query: Query<
@@ -108,7 +123,12 @@ fn apply_owned_tile_entry_damage(
         if is_hostile_tile(&map_info, &claimed_tiles_query, *position, entity)
             && !is_hostile_tile(&map_info, &claimed_tiles_query, came_from, entity)
         {
-            deal_damage(entity, &mut health, ON_ENTER_DAMAGE, &mut damageable_died_writer);
+            deal_damage(
+                entity,
+                &mut health,
+                config.damage.on_enter,
+                &mut damageable_died_writer,
+            );
             // Restart the standing clock so the poll below can't double-hit this same frame.
             timer.0.reset();
         }
@@ -120,6 +140,7 @@ fn apply_owned_tile_entry_damage(
 /// `GridCoords` never changes, so no entry event fires).
 fn apply_owned_tile_damage(
     time: Res<Time>,
+    config: Res<GameConfig>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut characters_query: Query<(Entity, &GridCoords, &mut Health), With<Character>>,
@@ -136,7 +157,12 @@ fn apply_owned_tile_damage(
             continue;
         }
         if is_hostile_tile(&map_info, &claimed_tiles_query, *position, entity) {
-            deal_damage(entity, &mut health, STANDING_DAMAGE, &mut damageable_died_writer);
+            deal_damage(
+                entity,
+                &mut health,
+                config.damage.standing,
+                &mut damageable_died_writer,
+            );
         }
     }
 }

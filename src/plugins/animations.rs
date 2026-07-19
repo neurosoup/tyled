@@ -51,8 +51,6 @@ struct ClaimedTileAnimations {
     from_player_two: Handle<Animation>,
 }
 
-const UNCLAIM_CASCADE_SECS: f32 = 2.5;
-
 #[derive(Component)]
 struct UnclaimRevert {
     timer: Timer,
@@ -102,6 +100,7 @@ fn animate_unclaimed_tile(
     >,
     claimed_tile_animations: If<Res<ClaimedTileAnimations>>,
     map_info: Res<MapInfo>,
+    config: Res<GameConfig>,
 ) {
     for (entity, grid_coords, claimed_tile, animation) in &claimed_query {
         // `owner` has already been cleared by the time this runs, so `None` marks
@@ -118,19 +117,26 @@ fn animate_unclaimed_tile(
         }
 
         commands.entity(entity).insert(UnclaimRevert {
-            timer: Timer::from_seconds(unclaim_delay(*grid_coords, &map_info), TimerMode::Once),
+            timer: Timer::from_seconds(
+                unclaim_delay(
+                    *grid_coords,
+                    &map_info,
+                    config.animation.unclaim_cascade_secs,
+                ),
+                TimerMode::Once,
+            ),
         });
     }
 }
 
-fn unclaim_delay(grid_coords: GridCoords, map_info: &MapInfo) -> f32 {
+fn unclaim_delay(grid_coords: GridCoords, map_info: &MapInfo, cascade_secs: f32) -> f32 {
     let center_x = (map_info.map_size.x as f32 - 1.0) / 2.0;
     let center_y = (map_info.map_size.y as f32 - 1.0) / 2.0;
     let offset_x = grid_coords.x as f32 - center_x;
     let offset_y = grid_coords.y as f32 - center_y;
     let distance = (offset_x * offset_x + offset_y * offset_y).sqrt();
     let max_distance = (center_x * center_x + center_y * center_y).sqrt().max(1.0);
-    (distance / max_distance) * UNCLAIM_CASCADE_SECS
+    (distance / max_distance) * cascade_secs
 }
 
 fn tick_unclaim_reverts(
@@ -261,6 +267,7 @@ fn initialize_claimed_tile_animations(
     assets: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<Animation>>,
+    config: Res<GameConfig>,
 ) {
     for (entity, _, mut transform) in &mut unclaimed_tiles {
         // Sprite is 16×32 over a 16×16 grid cell; shift up so the bottom aligns
@@ -274,7 +281,7 @@ fn initialize_claimed_tile_animations(
         let layout = TextureAtlasLayout::from_grid(UVec2::new(16, 32), 12, 12, None, None);
         let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
-        const FLIP_FRAME_MS: u32 = 20;
+        let flip_frame_ms = config.animation.tile_flip_frame_ms;
 
         let unclaimed_animation_handle =
             animations.add(spritesheet.create_animation().add_cell(0, 2).build());
@@ -285,7 +292,7 @@ fn initialize_claimed_tile_animations(
                     .create_animation()
                     .add_partial_row(0, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(flip_frame_ms))
                     .build(),
             ),
             to_player_two: animations.add(
@@ -293,7 +300,7 @@ fn initialize_claimed_tile_animations(
                     .create_animation()
                     .add_partial_row(1, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(flip_frame_ms))
                     .build(),
             ),
             from_player_one: animations.add(
@@ -301,7 +308,7 @@ fn initialize_claimed_tile_animations(
                     .create_animation()
                     .add_partial_row(0, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(flip_frame_ms))
                     .set_direction(AnimationDirection::Backwards)
                     .build(),
             ),
@@ -310,7 +317,7 @@ fn initialize_claimed_tile_animations(
                     .create_animation()
                     .add_partial_row(1, 0..=7)
                     .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(FLIP_FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(flip_frame_ms))
                     .set_direction(AnimationDirection::Backwards)
                     .build(),
             ),
@@ -339,6 +346,7 @@ fn initialize_player_animations(
     mut commands: Commands,
     mut messages: MessageReader<TiledEvent<ObjectCreated>>,
     mut animations: ResMut<Assets<Animation>>,
+    config: Res<GameConfig>,
     // The Sprite lives on a child entity, so we only need Entity + Player here
     players: Query<(Entity, &Player), With<Character>>,
     // Used to traverse the hierarchy with iter_descendants
@@ -369,21 +377,21 @@ fn initialize_player_animations(
         };
 
         let spritesheet = Spritesheet::new(&image, 12, 12);
-        const FRAME_MS: u32 = 200;
+        let frame_ms = config.animation.player_idle_frame_ms;
 
         let idle_left_right_animation_handle = match player.player_id {
             0 => animations.add(
                 spritesheet
                     .create_animation()
                     .add_partial_row(1, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             1 => animations.add(
                 spritesheet
                     .create_animation()
                     .add_partial_row(5, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             _ => panic!("Invalid player ID"),
@@ -394,14 +402,14 @@ fn initialize_player_animations(
                 spritesheet
                     .create_animation()
                     .add_partial_row(0, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             1 => animations.add(
                 spritesheet
                     .create_animation()
                     .add_partial_row(4, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             _ => panic!("Invalid player ID"),
@@ -412,14 +420,14 @@ fn initialize_player_animations(
                 spritesheet
                     .create_animation()
                     .add_partial_row(2, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             1 => animations.add(
                 spritesheet
                     .create_animation()
                     .add_partial_row(6, 0..=3)
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .build(),
             ),
             _ => panic!("Invalid player ID"),

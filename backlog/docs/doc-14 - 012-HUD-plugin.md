@@ -3,7 +3,7 @@ id: doc-14
 title: '[012] HUD plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-07-14 12:00'
+updated_date: '2026-07-19 12:00'
 ---
 # HUD Plugin
 
@@ -26,6 +26,7 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
             - Reads:
                 - All `Digit`-marked `TiledObject` entities and their `Entity` components
                 - The `Sprite` component on each digit's child sprite entity (to get the image handle)
+                - The `GameConfig` resource for the per-frame roll duration (`config.animation.digit_roll_frame_ms`, default `100`)
             - Writes:
                 - Builds all 90 from→to transition animation handles (for all `from != to` in `0..10`) using a single `make_anim` closure
                 - Inserts `DigitAnimations` resource into the world
@@ -71,7 +72,7 @@ Runs every frame. Queries all player entities that carry `DamageEffectTarget`, r
 
 ### Initialize Digit Animations
 
-Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 2)` + `add_partial_row(2, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
+Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. Reads a `Res<GameConfig>` so each transition frame plays for `config.animation.digit_roll_frame_ms` (default `100`). For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 2)` + `add_partial_row(2, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
 
 ### Drive Digit (shared helper)
 

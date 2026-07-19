@@ -3,7 +3,7 @@ id: doc-18
 title: '[016] Round outcome'
 type: other
 created_date: '2026-07-16 12:00'
-updated_date: '2026-07-16 12:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Round Outcome
 
@@ -19,7 +19,7 @@ It owns only the banner **presentation**. Text is composed with `spawn_label` fr
 
 - `OutcomeBanner` — a marker **component** on the win-banner label. It is spawned on entering `Outcome` and despawned when the round loops out of it.
 
-- `OutcomeTimer` — a **resource** wrapping a one-shot `Timer` (`OUTCOME_LINGER_SECS`, ~2.5s) that counts down how long the banner stays on screen. The linger is long enough for the loser's death bounce (owned by the Effects plugin) to finish before the board resets. Inserted on entering `Outcome`, removed on leaving it.
+- `OutcomeTimer` — a **resource** wrapping a one-shot `Timer` (`config.round.outcome_linger_secs`, default 2.5s) that counts down how long the banner stays on screen. The linger is long enough for the loser's death bounce (owned by the Effects plugin) to finish before the board resets. Inserted on entering `Outcome`, removed on leaving it.
 
 - `RoundResult` — a **resource** owned by the `state` submodule (see the Round plugin doc). Read here to pick the banner text: `"P1 WINS"`, `"P2 WINS"`, or `"DRAW"` for `winner` `Some(0)` / `Some(_)` / `None`.
 
@@ -27,7 +27,7 @@ It owns only the banner **presentation**. Text is composed with `spawn_label` fr
 
 - `OnEnter(RoundPhase::Outcome)`
     - Show Outcome Banner:
-        - Reads: `FontAtlas` (from the Text plugin), `RoundResult` (the winner)
+        - Reads: `FontAtlas` (from the Text plugin), `RoundResult` (the winner), `GameConfig`
         - Writes: spawns the win-banner label (marked `OutcomeBanner`); inserts the `OutcomeTimer` resource
 - Update phase
     - Advance Outcome (runs only `in_state(Outcome)`):
@@ -42,7 +42,7 @@ It owns only the banner **presentation**. Text is composed with `spawn_label` fr
 
 ### Show Outcome Banner
 
-Runs on `OnEnter(RoundPhase::Outcome)`. Reads `RoundResult::winner` to choose the banner text (`"P1 WINS"` / `"P2 WINS"` / `"DRAW"`), spawns it at the origin via `spawn_round_label` (the round's shared wrapper around the Text plugin's `spawn_label`), tags it `OutcomeBanner`, and inserts a fresh one-shot `OutcomeTimer` for the on-screen linger.
+Runs on `OnEnter(RoundPhase::Outcome)`. Reads `RoundResult::winner` to choose the banner text (`"P1 WINS"` / `"P2 WINS"` / `"DRAW"`), spawns it at the origin via `spawn_round_label` (the round's shared wrapper around the Text plugin's `spawn_label`), tags it `OutcomeBanner`, and inserts a fresh one-shot `OutcomeTimer` (`config.round.outcome_linger_secs`, default 2.5s) for the on-screen linger.
 
 ### Advance Outcome
 
@@ -56,6 +56,7 @@ Runs on `OnExit(RoundPhase::Outcome)`. Despawns every `OutcomeBanner` entity (re
 
 Definitions and where they are used:
 - `FontAtlas` — owned by the Text plugin; read here by `show_outcome_banner` via `spawn_round_label`.
+- `GameConfig` — owned elsewhere; read here by `show_outcome_banner` for `outcome_linger_secs`.
 - `RoundResult` — owned by the `state` submodule (see the Round plugin doc); read here by `show_outcome_banner` to label the banner.
 - `OutcomeBanner` — marker `#[derive(Component)]` (this submodule), attached in `show_outcome_banner`, queried/despawned by `despawn_outcome_banner`.
 - `OutcomeTimer` — `#[derive(Resource)]` (this submodule), inserted by `show_outcome_banner`, ticked by `advance_outcome`, removed by `despawn_outcome_banner`.
@@ -83,12 +84,14 @@ update -.-> advance
 on_exit -.-> despawn
 
 font_res@{ shape: doc, label: "FontAtlas" }
+config_res@{ shape: doc, label: "GameConfig" }
 result_res@{ shape: doc, label: "RoundResult" }
 timer_res@{ shape: doc, label: "OutcomeTimer" }
 next_state@{ shape: doc, label: "NextState<RoundPhase>" }
 banner_entity@{ shape: st-rect, label: "Banner (OutcomeBanner)" }
 
 font_res --> |read by| show
+config_res --> |read by| show
 result_res --> |read by| show
 show --> |inserts| timer_res
 show --> |spawns| banner_entity

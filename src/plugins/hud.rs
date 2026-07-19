@@ -200,6 +200,7 @@ pub fn initialize_digit_animations(
     children_query: Query<&Children>,
     sprites: Query<&Sprite>,
     mut animations: ResMut<Assets<Animation>>,
+    config: Res<GameConfig>,
 ) {
     for message in messages.read() {
         let Ok(entity) = digits_query.get(message.origin) else {
@@ -221,7 +222,7 @@ pub fn initialize_digit_animations(
 
         let spritesheet = Spritesheet::new(&image, 40, 3);
 
-        const FRAME_MS: u32 = 100;
+        let frame_ms = config.animation.digit_roll_frame_ms;
         const DIGIT_ROW: usize = 2;
 
         let mut make_anim = |from: usize, to: usize| -> Handle<Animation> {
@@ -260,7 +261,7 @@ pub fn initialize_digit_animations(
             animations.add(
                 builder
                     .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(FRAME_MS))
+                    .set_duration(AnimationDuration::PerFrame(frame_ms))
                     .set_direction(direction)
                     .set_easing(Easing::In(EasingVariety::Quintic))
                     .build(),

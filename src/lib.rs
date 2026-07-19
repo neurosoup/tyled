@@ -17,6 +17,7 @@ pub struct AppPlugin;
 impl Plugin for AppPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(plugins::defaults::plugin);
+        app.add_plugins(plugins::config::plugin);
         app.add_plugins(plugins::messages::plugin);
         app.add_plugins(plugins::abilities::plugin);
         app.add_plugins(plugins::maps::plugin);

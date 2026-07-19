@@ -3,7 +3,7 @@ id: doc-15
 title: '[013] Round plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-07-18 00:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Round Plugin
 
@@ -16,7 +16,7 @@ The `round` feature — everything scoped to a single round of the match. It is 
 
 `RoundPhase` is the game's lifecycle state for a single round — `Loading` (waiting for the level map), `Starting` (the on-screen intro countdown, gameplay frozen), `Playing` (live), `Outcome` (the round is over). It is the project's only Bevy `States` type. Live-gameplay systems across the input, movement, beam, and damage plugins run only `in_state(RoundPhase::Playing)`, so the non-play phases freeze the world without any per-system pausing logic. The intro-countdown visuals themselves live in the sibling `intro` submodule; the `state` submodule only owns the phase transitions.
 
-The countdown timer is a global, player-agnostic count from `Countdown::START_SECONDS` down to 0. The plugin holds the `Countdown` resource — the authoritative remaining-seconds value — and the systems that (re)start and tick it. The HUD plugin only *reads* `Countdown::remaining` to drive the on-screen digits; this plugin never touches HUD sprites.
+The countdown timer is a global, player-agnostic count from `config.round.round_duration_secs` (default 180) down to 0. The plugin holds the `Countdown` resource — the authoritative remaining-seconds value — and the systems that (re)start and tick it. The HUD plugin only *reads* `Countdown::remaining` to drive the on-screen digits; this plugin never touches HUD sprites.
 
 Round resolution implements the two-vector win model. **Kill** (`resolve_kill`) ends the round the instant a player's HP reaches zero — the surviving player wins; a same-frame mutual kill is broken by tile count, then seat. **Timeout** (`resolve_timeout`) ends the round when the countdown reaches zero, resolving by tile count → HP → seat; a same-frame kill preempts it. **Charge exhaustion** (`resolve_charge_exhaustion`) ends the round when every player has spent their last charge and no beam is still in flight — neither side can act, so it resolves immediately by the same tile count → HP → seat tiebreak rather than idling until the timeout; a same-frame kill preempts it, and it defers to the timeout branch on the countdown-zero frame so the score is never credited twice. The two backstops share the `winner_by_standing` ranking helper. Every path records the `RoundResult`, credits the `MatchScore`, and enters `Outcome`. The `outcome` submodule shows the win banner and, after a short linger, loops back to `Starting`; leaving `Outcome` runs `reset_round`, an in-place full wipe of board ownership + charges + health + positions that also revives the dead loser (players are hidden rather than despawned on death — see the Effects plugin doc). Tile ownership is wiped except for entries in `RoundResetExceptions`, the generic carve-out hook reserved for future burst-claim abilities; it is empty today.
 
@@ -25,7 +25,7 @@ It is registered immediately after the Maps plugin in `AppPlugin`, since it reac
 ## Concepts
 
 - `RoundPhase` (`src/plugins/round/state.rs`) — a `#[derive(States)]` enum with variants `Loading` (default), `Starting`, `Playing`, `Outcome`. Registered with `init_state`. Gameplay systems in other plugins attach `.run_if(in_state(RoundPhase::Playing))`; `tick_countdown` in this plugin does the same, so the countdown only advances during live play.
-- `Countdown` (`src/plugins/round/state.rs`) — a **resource**, not a component, because the value is global and not tied to any `Player`. It holds `remaining: u32` (whole seconds, starting at `Countdown::START_SECONDS`) and a private repeating one-second `Timer`. It is inserted at runtime when a map is created rather than at startup, so the display begins at the full value (visible during the intro countdown) once the HUD digits are ready; it is only decremented in `Playing`. It is also re-inserted by `reset_round`, since the map-creation trigger does not re-fire on an in-place round loop.
+- `Countdown` (`src/plugins/round/state.rs`) — a **resource**, not a component, because the value is global and not tied to any `Player`. It holds `remaining: u32` (whole seconds, starting at `config.round.round_duration_secs`, default 180) and a private repeating one-second `Timer`. `Countdown::new(start_secs)` takes the starting seconds, and both `start_countdown` and `reset_round` pass `config.round.round_duration_secs` (read from the `GameConfig` resource); the one-second tick is fixed. It is inserted at runtime when a map is created rather than at startup, so the display begins at the full value (visible during the intro countdown) once the HUD digits are ready; it is only decremented in `Playing`. It is also re-inserted by `reset_round`, since the map-creation trigger does not re-fire on an in-place round loop.
 - `RoundResult` (`src/plugins/round/state.rs`) — a resource holding `winner: Option<u8>` (the winning `player_id`; `None` is a defensive draw fallback). Written by the resolution systems, read by the `outcome` submodule to label the banner.
 - `MatchScore` (`src/plugins/round/state.rs`) — a resource holding `wins: [u32; 2]`, the per-player tally of rounds won. It persists across the round reset (a round boundary wipes the board but not the score); credited by the resolution systems via `conclude_round`.
 - `RoundResetExceptions` (`src/plugins/round/state.rs`) — a resource wrapping `HashMap<GridCoords, Entity>`: tiles that keep their owner across the reset instead of reverting to unclaimed. The generic carve-out hook for future burst-claim abilities; empty in the current build but already applied by `reset_round`.
@@ -48,7 +48,7 @@ The digit *sprites* that render the countdown are per-entity `Digit` components 
             - Reads:
                 - `TiledEvent<MapCreated>` messages
             - Writes:
-                - Inserts a fresh `Countdown` resource (`remaining = Countdown::START_SECONDS`, one-second repeating timer)
+                - Inserts a fresh `Countdown` resource (`remaining = config.round.round_duration_secs`, one-second repeating timer)
     - Tick Countdown (runs only `in_state(Playing)`):
         - Runs every frame while playing
             - Reads:
@@ -89,7 +89,7 @@ Runs only `in_state(RoundPhase::Loading)`. Reads `TiledEvent<MapCreated>` messag
 
 ### Start Countdown
 
-Reads `TiledEvent<MapCreated>` messages and, for each, inserts a fresh `Countdown` resource. Inserting on map creation (rather than at `Startup` / via `init_resource`) guarantees the countdown begins at its full starting value at the same moment the board and HUD come up — so the value is visible on the HUD during the intro countdown, before it starts decrementing.
+Reads `TiledEvent<MapCreated>` messages and the `GameConfig` resource and, for each event, inserts a fresh `Countdown` resource seeded with `config.round.round_duration_secs`. Inserting on map creation (rather than at `Startup` / via `init_resource`) guarantees the countdown begins at its full starting value at the same moment the board and HUD come up — so the value is visible on the HUD during the intro countdown, before it starts decrementing.
 
 ### Tick Countdown
 
@@ -109,7 +109,7 @@ Runs only `in_state(RoundPhase::Playing)`. Charges are spent at fire time, and w
 
 ### Reset Round
 
-Runs on `OnExit(RoundPhase::Outcome)` — so it fires only after a genuine round, never on the first `Loading → Starting`. It wipes tile ownership (each `ClaimedTile::owner` set to its `RoundResetExceptions` entry, or `None`), restores every player to full `Health`/`BeamCharges`, resets `ClaimedTileCount` to the retained carve-out count, moves each player back to its `SpawnPoint` (seeding `PreviousGridCoords` to the same tile so no stale death-tile origin survives into the next round), makes it `Visibility::Visible` and removes `IsDead` (reviving the loser hidden on death), despawns any in-flight `Beam`, and re-inserts a fresh `Countdown` (the map-creation trigger does not re-fire on an in-place loop). Bevy runs this `OnExit` before the following `OnEnter(Starting)`, so the intro countdown always begins on a clean board.
+Runs on `OnExit(RoundPhase::Outcome)` — so it fires only after a genuine round, never on the first `Loading → Starting`. It wipes tile ownership (each `ClaimedTile::owner` set to its `RoundResetExceptions` entry, or `None`), restores every player to full `Health`/`BeamCharges`, resets `ClaimedTileCount` to the retained carve-out count, moves each player back to its `SpawnPoint` (seeding `PreviousGridCoords` to the same tile so no stale death-tile origin survives into the next round), makes it `Visibility::Visible` and removes `IsDead` (reviving the loser hidden on death), despawns any in-flight `Beam`, and re-inserts a fresh `Countdown` seeded with `config.round.round_duration_secs` from the `GameConfig` resource (the map-creation trigger does not re-fire on an in-place loop). Bevy runs this `OnExit` before the following `OnEnter(Starting)`, so the intro countdown always begins on a clean board.
 
 This system only touches the authoritative claim *data* (`ClaimedTile::owner`). Clearing an owner leaves the tile's sprite still showing its old player color, so the matching *visual* revert is owned by the Animations plugin: its Animate Unclaimed Tile system reacts to the ownership change and plays the claim flip in reverse back to the neutral sprite.
 

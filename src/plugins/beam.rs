@@ -14,16 +14,29 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (spawn_beam, beam_step, spend_charge_on_fire).run_if(in_state(RoundPhase::Playing)),
     );
+    #[cfg(feature = "dev")]
+    app.add_systems(Update, resync_beam_step_timer);
 }
 
 #[derive(Resource)]
 pub struct BeamStepTimer(Timer);
 
-fn setup_beam_step_timer(mut commands: Commands) {
+fn setup_beam_step_timer(mut commands: Commands, config: Res<GameConfig>) {
     commands.insert_resource(BeamStepTimer(Timer::from_seconds(
-        0.0625,
+        config.timing.beam_step_secs,
         TimerMode::Repeating,
     )));
+}
+
+#[cfg(feature = "dev")]
+fn resync_beam_step_timer(config: Res<GameConfig>, timer: Option<ResMut<BeamStepTimer>>) {
+    if config.is_changed()
+        && let Some(mut timer) = timer
+    {
+        timer.0.set_duration(std::time::Duration::from_secs_f32(
+            config.timing.beam_step_secs,
+        ));
+    }
 }
 
 /// System that shakes unclaimed tile entities in response to [`BeamFired`] messages.

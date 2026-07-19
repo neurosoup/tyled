@@ -27,10 +27,10 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-pub fn create_movement_tween(start: Vec3, end: Vec3) -> Tween {
+pub fn create_movement_tween(start: Vec3, end: Vec3, duration_ms: u64) -> Tween {
     Tween::new(
         EaseFunction::QuadraticOut,
-        Duration::from_millis(200),
+        Duration::from_millis(duration_ms),
         TransformPositionLens { start, end },
     )
 }
@@ -91,6 +91,7 @@ pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
 
 fn apply_knockback(
     mut commands: Commands,
+    config: Res<GameConfig>,
     mut query: Query<
         (Entity, &Transform, &mut GridCoords, &KnockbackEffect),
         (Added<KnockbackEffect>, Without<IsDead>),
@@ -104,7 +105,11 @@ fn apply_knockback(
             let destination = target.to_translation(&map_info);
             *coords = target;
             commands.entity(entity).insert((
-                TweenAnim::new(create_movement_tween(start, destination)),
+                TweenAnim::new(create_movement_tween(
+                    start,
+                    destination,
+                    config.effects.movement_tween_ms,
+                )),
                 IsKnockedBack,
             ));
         }
@@ -114,6 +119,7 @@ fn apply_knockback(
 
 fn apply_translate_effect(
     mut commands: Commands,
+    config: Res<GameConfig>,
     mut moving_objects: Query<
         (Entity, &Transform, &GridCoords),
         (Changed<GridCoords>, With<TranslateEffectTarget>, Without<KnockbackEffect>),
@@ -128,12 +134,14 @@ fn apply_translate_effect(
             .insert(TweenAnim::new(create_movement_tween(
                 transform.translation,
                 destination,
+                config.effects.movement_tween_ms,
             )));
     }
 }
 
 fn apply_damage_effect(
     mut commands: Commands,
+    config: Res<GameConfig>,
     damageable_query: Query<
         (Entity, Option<&Children>),
         (With<DamageEffectTarget>, Changed<Health>),
@@ -145,7 +153,9 @@ fn apply_damage_effect(
             if sprite_query.get(first_child).is_ok() {
                 commands
                     .entity(first_child)
-                    .insert(TweenAnim::new(create_color_flash_tween(150)));
+                    .insert(TweenAnim::new(create_color_flash_tween(
+                        config.effects.damage_flash_ms,
+                    )));
             }
         }
     }

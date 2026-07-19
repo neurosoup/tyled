@@ -3,6 +3,7 @@ pub(super) mod animations;
 pub(super) mod beam;
 pub(super) mod camera;
 pub(super) mod claim;
+pub(super) mod config;
 pub(super) mod controller;
 pub(super) mod damage;
 #[cfg(feature = "dev")]
@@ -21,6 +22,7 @@ pub use animations::*;
 pub use beam::*;
 pub use camera::*;
 pub use claim::*;
+pub use config::*;
 pub use controller::*;
 pub use damage::*;
 #[cfg(feature = "dev")]

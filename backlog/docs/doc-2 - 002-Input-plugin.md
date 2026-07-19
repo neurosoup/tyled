@@ -3,7 +3,7 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-07-18 00:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Input Plugin
 
@@ -12,7 +12,7 @@ Contains systems related to player input handling. This plugin registers the `In
 ## Plugin workflow
 
 - Startup phase
-    - Setup Input Timer creates the `InputTimer` repeating resource (75ms throttle).
+    - Setup Input Timer creates the `InputTimer` repeating resource (throttle period `config.timing.input_tick_secs`, default 0.075 s).
 - PreUpdate phase
     - Attach Players Actions reacts to newly added `Player` + `Character` entities (without `InputMap`) and inserts the appropriate `InputMap<Action>`.
 - Update phase
@@ -28,7 +28,7 @@ Contains systems related to player input handling. This plugin registers the `In
 
 ### Setup Input Timer
 
-Inserts the `InputTimer` resource, a repeating `Timer` with a 75ms period that acts as a throttle on movement inputs.
+Inserts the `InputTimer` resource, a repeating `Timer` whose period is `config.timing.input_tick_secs` (default 0.075 s) that acts as a throttle on movement inputs.
 
 ### Attach Players Actions
 

@@ -1,0 +1,55 @@
+// Central game-tuning file. Edit values here to rebalance the game.
+//
+// In a dev build (`cargo run`) this file hot-reloads: saving it applies changes
+// live. In a release build the values are baked in at compile time and this file
+// is ignored.
+//
+// Not everything updates instantly, even in dev:
+//   [live]       applies immediately on save
+//   [next-round] applies when the round next resets (or the next entity spawn)
+//   [restart]    only read once at startup; needs a re-run to take effect
+(
+    timing: (
+        input_tick_secs: 0.100,   // [live] seconds between movement steps; lower = faster
+        beam_step_secs: 0.0625,   // [live] seconds between beam steps; lower = faster beams
+        turn_step_ms: 100,        // [next-round] ms per in-place turn step
+    ),
+    damage: (
+        standing: 1.0,            // [live] damage per tick on a hostile tile
+        on_enter: 5.0,            // [live] damage on moving onto a hostile tile
+        beam_contact: 1.0,        // [live] damage from a beam passing through you
+        tick_secs: 0.5,           // [live] seconds between standing-damage ticks
+    ),
+    round: (
+        round_duration_secs: 180,  // [next-round] round length in seconds
+        intro_count: 3,            // [next-round] intro numbers before "GO!" (1/sec, so intro = this many secs)
+        go_linger_ms: 500,         // [next-round] ms the "GO!" banner scales up
+        go_end_scale: 24.0,        // [next-round] scale "GO!" rushes to
+        outcome_linger_secs: 2.5,  // [next-round] seconds the win banner lingers
+    ),
+    camera: (
+        decay_rate: 4.0,           // [live] camera position snap speed; higher = snappier
+        zoom_decay_rate: 8.0,      // [live] zoom lerp speed; higher = snappier
+        base_zoom_distance: 150.0, // [live] base distance for zoom math
+        zoom_levels: (0.25, 0.33333334, 0.5, 1.0), // [live] pixel-perfect 1/n zoom scales
+        zoom_min: 0.5,             // [live] lower bound on the distance-to-zoom factor
+        zoom_max: 3.0,             // [live] upper bound on the distance-to-zoom factor
+        bg_hue: 235.0,             // [live] background hue (0-360)
+        bg_saturation: 0.28,       // [live] background saturation (0-1)
+        bg_lightness: 0.18,        // [live] background lightness (0-1)
+    ),
+    player: (
+        starting_health: 100.0,    // [next-round] starting / max HP
+        beam_charges_divisor: 2,   // [next-round] charges = ground tiles / this
+    ),
+    animation: (
+        player_idle_frame_ms: 200, // [restart] ms per player idle frame
+        tile_flip_frame_ms: 20,    // [restart] ms per claimed-tile flip frame
+        digit_roll_frame_ms: 100,  // [restart] ms per HUD digit roll frame
+        unclaim_cascade_secs: 2.5, // [live] max unclaim-cascade delay, scaled by distance
+    ),
+    effects: (
+        movement_tween_ms: 200,    // [live] ms for the movement slide tween
+        damage_flash_ms: 150,      // [live] ms for the damage colour-flash tween
+    ),
+)

@@ -35,6 +35,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | Plugin | Responsibility |
 |--------|---------------|
 | `defaults` | Bevy `DefaultPlugins` with nearest-neighbor filtering |
+| `config` | Loads all tunable gameplay/timing/visual knobs from `assets/game_config.ron` into the `GameConfig` resource (read via `Res<GameConfig>`). Registered first so the resource exists before any `Startup` system. Dev builds hot-reload the file via the asset watcher; release builds bake it in with `include_str!` |
 | `messages` | Registers all game-wide `Message` types |
 | `maps` | Loads Tiled maps, populates `MapInfo` resource, initializes players/tiles/HP bars |
 | `round` | Feature folder (`src/plugins/round/`, one `plugin()` entry). Submodules: `state` — the `RoundPhase` state machine (`Loading`/`Starting`/`Playing`/`Outcome` — gameplay systems run only `in_state(Playing)`) + the global `Countdown` resource (started on `MapCreated`, ticked only while `Playing`); `intro` — the "3 · 2 · 1 · GO!" round-start banner shown `in_state(Starting)`, drawn via `text`'s `spawn_label` onto the overlay camera. Shared `spawn_round_label` helper in `round/mod.rs` |

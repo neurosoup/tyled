@@ -23,13 +23,29 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (handle_characters_input, tick_turning).run_if(in_state(RoundPhase::Playing)),
     );
+    #[cfg(feature = "dev")]
+    app.add_systems(Update, resync_input_timer);
 }
 
 #[derive(Resource)]
 pub struct InputTimer(Timer);
 
-fn setup_input_timer(mut commands: Commands) {
-    commands.insert_resource(InputTimer(Timer::from_seconds(0.075, TimerMode::Repeating)));
+fn setup_input_timer(mut commands: Commands, config: Res<GameConfig>) {
+    commands.insert_resource(InputTimer(Timer::from_seconds(
+        config.timing.input_tick_secs,
+        TimerMode::Repeating,
+    )));
+}
+
+#[cfg(feature = "dev")]
+fn resync_input_timer(config: Res<GameConfig>, timer: Option<ResMut<InputTimer>>) {
+    if config.is_changed()
+        && let Some(mut timer) = timer
+    {
+        timer
+            .0
+            .set_duration(Duration::from_secs_f32(config.timing.input_tick_secs));
+    }
 }
 
 fn attach_players_actions(
@@ -46,6 +62,7 @@ fn attach_players_actions(
 fn handle_characters_input(
     mut commands: Commands,
     time: Res<Time>,
+    config: Res<GameConfig>,
     mut timer: ResMut<InputTimer>,
     mut characters: Query<
         (
@@ -94,7 +111,9 @@ fn handle_characters_input(
                     && Some(desired) != current_target
                     && desired != from
                 {
-                    commands.entity(entity).insert(IsTurning::new(from, desired));
+                    commands
+                        .entity(entity)
+                        .insert(IsTurning::new(from, desired, config.timing.turn_step_ms));
                     continue;
                 }
             }

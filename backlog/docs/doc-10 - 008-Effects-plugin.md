@@ -3,7 +3,7 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-06-14 16:30'
+updated_date: '2026-07-19 12:00'
 ---
 # Effects Plugin
 
@@ -46,11 +46,11 @@ Contains systems responsible for all visual effects applied to game entities. Th
 
 ### Apply Knockback
 
-Reacts to `Added<KnockbackEffect>` on entities that are not yet dead (`Without<IsDead>`). Computes the knockback target tile (`GridCoords + direction`), validates it with `MapInfo::on_ground`. If valid, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`) to move the entity from its current world position to the destination. Running before `apply_translate_effect` and excluding the entity from that system (via `Without<KnockbackEffect>`) prevents a plain slide tween from overriding the knockback one. The `KnockbackEffect` component is removed unconditionally.
+Reacts to `Added<KnockbackEffect>` on entities that are not yet dead (`Without<IsDead>`). Computes the knockback target tile (`GridCoords + direction`), validates it with `MapInfo::on_ground`. If valid, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.movement_tween_ms`, default `200`) to move the entity from its current world position to the destination. Running before `apply_translate_effect` and excluding the entity from that system (via `Without<KnockbackEffect>`) prevents a plain slide tween from overriding the knockback one. The `KnockbackEffect` component is removed unconditionally.
 
 ### Apply Translate Effect
 
-Reacts to `Changed<GridCoords>` on entities that also carry a `TranslateEffectTarget` marker and do **not** carry `KnockbackEffect` (which handles its own tween). Computes the world-space destination using the `MapInfo` resource and sets a new `TransformPositionLens` tween on the entity's `TweenAnim` component to smoothly interpolate the `Transform` from its current position to the destination. This provides smooth movement interpolation for players and beams without any coupling to the input or controller plugins.
+Reacts to `Changed<GridCoords>` on entities that also carry a `TranslateEffectTarget` marker and do **not** carry `KnockbackEffect` (which handles its own tween). Computes the world-space destination using the `MapInfo` resource and sets a new `TransformPositionLens` tween (built by the `create_movement_tween` helper over `config.effects.movement_tween_ms`, default `200`) on the entity's `TweenAnim` component to smoothly interpolate the `Transform` from its current position to the destination. This provides smooth movement interpolation for players and beams without any coupling to the input or controller plugins.
 
 ### Apply Wave Effect
 
@@ -62,7 +62,7 @@ Reacts to `Added<BounceEffectTarget>` — fires once whenever any entity receive
 
 ### Apply Damage Effect
 
-Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker. Walks the entity's children to find the first child sprite entity and plays a short red color-flash tween on it (interpolating `Sprite::color` to red and back). Provides immediate visual feedback whenever a player loses health.
+Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker. Walks the entity's children to find the first child sprite entity and plays a short red color-flash tween on it (interpolating `Sprite::color` to red and back over `config.effects.damage_flash_ms`, default `150`). Provides immediate visual feedback whenever a player loses health.
 
 ### Apply Death Effect
 

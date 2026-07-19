@@ -14,22 +14,6 @@ use bevy_smooth_pixel_camera::components::ViewportCamera;
 use bevy_smooth_pixel_camera::prelude::*;
 use rand::Rng;
 
-/// How quickly should the camera snap to the desired location.
-const CAMERA_DECAY_RATE: f32 = 4.0;
-/// How quickly the zoom lerps between pixel-perfect levels.
-const ZOOM_DECAY_RATE: f32 = 8.0;
-/// Base distance for zoom calculations
-const BASE_ZOOM_DISTANCE: f32 = 150.0;
-
-/// Pixel-perfect zoom levels (1/n scales). With PixelSize(1.0), integer world positions
-/// map to integer screen pixels at any 1/n scale, so these are the only valid choices.
-const ZOOM_LEVELS: [f32; 4] = [1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0, 1.0];
-
-// HSL equivalent of srgb_u8(100, 122, 64): saturation and lightness are fixed,
-// only the hue is randomized each run.
-const CLEAR_COLOR_SATURATION: f32 = 0.312;
-const CLEAR_COLOR_LIGHTNESS: f32 = 0.365;
-
 const HUD_TILES_H: u32 = 4;
 const HUD_TILE_SIZE: u32 = 16;
 const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
@@ -45,15 +29,16 @@ pub const OVERLAY_RENDER_LAYER: usize = 3;
 const OVERLAY_VIEWPORT_HEIGHT: f32 = 180.0;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.insert_resource(ClearColor(Color::hsl(
-        0.0,
-        CLEAR_COLOR_SATURATION,
-        CLEAR_COLOR_LIGHTNESS,
-    )));
-    app.add_systems(Startup, (initialize_cameras, randomize_clear_color));
+    let (hue, saturation, lightness) = {
+        let camera = &app.world().resource::<GameConfig>().camera;
+        (camera.bg_hue, camera.bg_saturation, camera.bg_lightness)
+    };
+    app.insert_resource(ClearColor(Color::hsl(hue, saturation, lightness)));
+    app.add_systems(Startup, initialize_cameras);
     app.add_systems(
         Update,
         (
+            sync_clear_color,
             initialize_hud_rendering,
             update_camera,
             update_hud_viewport,
@@ -66,11 +51,15 @@ pub(crate) fn plugin(app: &mut App) {
     ));
 }
 
-fn randomize_clear_color(mut clear_color: ResMut<ClearColor>) {
-    let hue = 235.0; //rand::rng().random_range(0.0f32..360.0f32);
-    // clear_color.0 = Color::hsl(hue, CLEAR_COLOR_SATURATION, CLEAR_COLOR_LIGHTNESS);
-    clear_color.0 = Color::hsl(hue, 0.28, 0.18);
-    info!("HSL = {:?}", clear_color.0);
+/// Keeps the background clear colour in sync with the config (so it hot-reloads in dev).
+fn sync_clear_color(config: Res<GameConfig>, mut clear_color: ResMut<ClearColor>) {
+    if config.is_changed() {
+        clear_color.0 = Color::hsl(
+            config.camera.bg_hue,
+            config.camera.bg_saturation,
+            config.camera.bg_lightness,
+        );
+    }
 }
 
 /// Computes the HUD viewport for a given physical window width.
@@ -101,12 +90,16 @@ fn initialize_hud_rendering(
     }
 }
 
-fn initialize_cameras(mut commands: Commands, window: Single<&Window>) {
+fn initialize_cameras(
+    mut commands: Commands,
+    window: Single<&Window>,
+    config: Res<GameConfig>,
+) {
     commands.spawn((
         Camera2d,
         Msaa::Off,
         Projection::Orthographic(OrthographicProjection {
-            scale: ZOOM_LEVELS[0],
+            scale: config.camera.zoom_levels[0],
             ..OrthographicProjection::default_2d()
         }),
         IsDefaultUiCamera,
@@ -195,7 +188,9 @@ fn update_camera(
         Query<&Transform, With<Character>>,
     )>,
     time: Res<Time>,
+    config: Res<GameConfig>,
 ) {
+    let zoom_levels = config.camera.zoom_levels;
     // Calculate barycenter of all player positions
     let character_count = set.p1().count() as f32;
     if character_count == 0.0 {
@@ -233,13 +228,14 @@ fn update_camera(
         }
         max_dist
     } else {
-        BASE_ZOOM_DISTANCE // Default distance for single player
+        config.camera.base_zoom_distance // Default distance for single player
     };
 
     // Snap to the nearest pixel-perfect zoom level.
-    let zoom_factor = (max_distance / BASE_ZOOM_DISTANCE).clamp(0.5, 3.0);
-    let continuous_scale = ZOOM_LEVELS[0] * zoom_factor;
-    let target_scale = ZOOM_LEVELS
+    let zoom_factor = (max_distance / config.camera.base_zoom_distance)
+        .clamp(config.camera.zoom_min, config.camera.zoom_max);
+    let continuous_scale = zoom_levels[0] * zoom_factor;
+    let target_scale = zoom_levels
         .iter()
         .copied()
         .min_by(|&a, &b| {
@@ -261,7 +257,7 @@ fn update_camera(
     // blitted by the pixel camera — so this shift is safe at any zoom.
     let current_scale = match projection.as_ref() {
         Projection::Orthographic(ortho) => ortho.scale,
-        _ => ZOOM_LEVELS[0],
+        _ => zoom_levels[0],
     };
     let hud_offset_y = (HUD_VIEWPORT_H / 2.0) * current_scale;
 
@@ -270,17 +266,21 @@ fn update_camera(
         barycenter.y + hud_offset_y,
         camera_transform.translation.z,
     );
-    camera_transform
-        .translation
-        .smooth_nudge(&direction, CAMERA_DECAY_RATE, time.delta_secs());
+    camera_transform.translation.smooth_nudge(
+        &direction,
+        config.camera.decay_rate,
+        time.delta_secs(),
+    );
 
     if let Projection::Orthographic(ortho) = projection.as_mut() {
         if (ortho.scale - target_scale).abs() < 0.001 {
             ortho.scale = target_scale;
         } else {
-            ortho
-                .scale
-                .smooth_nudge(&target_scale, ZOOM_DECAY_RATE, time.delta_secs());
+            ortho.scale.smooth_nudge(
+                &target_scale,
+                config.camera.zoom_decay_rate,
+                time.delta_secs(),
+            );
         }
     }
 }

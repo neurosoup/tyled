@@ -14,9 +14,6 @@ use bevy::prelude::*;
 use super::spawn_round_label;
 use crate::prelude::*;
 
-/// How long the win banner stays on screen before the round loops, in seconds.
-const OUTCOME_LINGER_SECS: f32 = 2.5;
-
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(OnEnter(RoundPhase::Outcome), show_outcome_banner);
     app.add_systems(
@@ -35,7 +32,12 @@ struct OutcomeBanner;
 struct OutcomeTimer(Timer);
 
 /// On entering `Outcome`, show who won and start the linger timer.
-fn show_outcome_banner(mut commands: Commands, font: Res<FontAtlas>, result: Res<RoundResult>) {
+fn show_outcome_banner(
+    mut commands: Commands,
+    font: Res<FontAtlas>,
+    result: Res<RoundResult>,
+    config: Res<GameConfig>,
+) {
     let text = match result.winner {
         Some(0) => "P1 WINS",
         Some(_) => "P2 WINS",
@@ -45,7 +47,7 @@ fn show_outcome_banner(mut commands: Commands, font: Res<FontAtlas>, result: Res
     commands.entity(banner).insert(OutcomeBanner);
 
     commands.insert_resource(OutcomeTimer(Timer::from_seconds(
-        OUTCOME_LINGER_SECS,
+        config.round.outcome_linger_secs,
         TimerMode::Once,
     )));
 }

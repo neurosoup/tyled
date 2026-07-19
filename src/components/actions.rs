@@ -145,8 +145,6 @@ impl LookDirection {
     }
 }
 
-pub const TURN_STEP_MS: u64 = 100;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TurnPose {
     Ne,
@@ -164,9 +162,9 @@ pub struct IsTurning {
 }
 
 impl IsTurning {
-    pub fn new(from: Direction, target: Direction) -> Self {
+    pub fn new(from: Direction, target: Direction, step_ms: u64) -> Self {
         Self {
-            timer: Timer::new(Duration::from_millis(TURN_STEP_MS), TimerMode::Once),
+            timer: Timer::new(Duration::from_millis(step_ms), TimerMode::Once),
             from,
             target,
             remaining: Self::path(from, target),

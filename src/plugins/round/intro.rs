@@ -13,16 +13,6 @@ use bevy_tweening::{AnimCompletedEvent, Tween, TweenAnim, lens::TransformScaleLe
 use super::spawn_round_label;
 use crate::prelude::*;
 
-/// How long each intro number ("3", "2", "1") stays on screen, in seconds.
-const COUNTDOWN_STEP_SECS: f32 = 1.0;
-/// How long the "GO!" banner scales up before it despawns.
-const GO_LINGER_MS: u64 = 500;
-/// Scale the "GO!" banner rushes to before despawning. Large enough to overflow
-/// the screen (the overlay viewport is ~180 world-units tall and a glyph cell is
-/// 16px, so ~11× already fills the height) — it should read as flying past the
-/// players and out of frame, not just growing a little.
-const GO_END_SCALE: f32 = 24.0;
-
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(OnEnter(RoundPhase::Starting), begin_intro_countdown);
     app.add_systems(
@@ -53,13 +43,14 @@ struct IntroCountdown {
 }
 
 /// On entering `Starting`, show "3" immediately and start the step timer.
-fn begin_intro_countdown(mut commands: Commands, font: Res<FontAtlas>) {
-    let label = spawn_round_label(&mut commands, &font, "3");
+fn begin_intro_countdown(mut commands: Commands, font: Res<FontAtlas>, config: Res<GameConfig>) {
+    let label = spawn_round_label(&mut commands, &font, &config.round.intro_count.to_string());
     commands.entity(label).insert(CountdownNumber);
 
     commands.insert_resource(IntroCountdown {
-        timer: Timer::from_seconds(COUNTDOWN_STEP_SECS, TimerMode::Repeating),
-        remaining: 3,
+        // One number per second, so the intro lasts `intro_count` seconds.
+        timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+        remaining: config.round.intro_count,
     });
 }
 
@@ -69,6 +60,7 @@ fn advance_intro_countdown(
     mut commands: Commands,
     time: Res<Time>,
     font: Res<FontAtlas>,
+    config: Res<GameConfig>,
     mut intro: ResMut<IntroCountdown>,
     numbers: Query<Entity, With<CountdownNumber>>,
     mut next_phase: ResMut<NextState<RoundPhase>>,
@@ -100,10 +92,10 @@ fn advance_intro_countdown(
         GoBanner,
         TweenAnim::new(Tween::new(
             EaseFunction::ExponentialIn,
-            Duration::from_millis(GO_LINGER_MS),
+            Duration::from_millis(config.round.go_linger_ms),
             TransformScaleLens {
                 start: Vec3::ONE,
-                end: Vec3::splat(GO_END_SCALE),
+                end: Vec3::splat(config.round.go_end_scale),
             },
         )),
     ));

@@ -3,7 +3,7 @@ id: doc-5
 title: '[004] Animations plugin'
 type: other
 created_date: '2026-02-01 18:59'
-updated_date: '2026-07-18 00:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Animations Plugin
 
@@ -19,6 +19,7 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
             - Reads:
                 - All `Player`-marked `TiledObject` entities and their `Entity` + `Player` components
                 - The `Sprite` component on each player's child sprite entity (to get the image handle)
+                - `GameConfig` for `config.animation.player_idle_frame_ms` (200)
             - Writes:
                 - Inserts `PlayerOneAnimations` or `PlayerTwoAnimations` resource into the world (idle + `diag_front`/`diag_back` turn clips)
                 - Inserts `SpritesheetAnimation` on the child sprite entity
@@ -35,6 +36,7 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
         - Reacts to `Added<ClaimedTile>` on newly spawned claimed tile entities
             - Reads:
                 - `ClaimedTile` entity and its components
+                - `GameConfig` for `config.animation.tile_flip_frame_ms` (20)
             - Writes:
                 - Builds `ClaimedTileAnimations` resource
                 - Inserts `SpritesheetAnimation`, `Sprite`, and `BounceEffect` on the claimed tile entity
@@ -51,7 +53,7 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
         - Runs on `Changed<ClaimedTile>` (fires when the round reset clears a tile's `owner` back to `None`)
             - Reads:
                 - `ClaimedTile` entities whose ownership changed, with their `GridCoords` and `SpritesheetAnimation`
-                - `ClaimedTileAnimations` resource; `MapInfo` (for the board center)
+                - `ClaimedTileAnimations` resource; `MapInfo` (for the board center); `GameConfig` for `config.animation.unclaim_cascade_secs` (2.5)
             - Writes:
                 - For a tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay is the tile's distance from the board center scaled over the cascade window — staggering the revert into a radial wave rather than reverting instantly
     - Tick Unclaim Reverts:
@@ -65,7 +67,7 @@ HUD animation more broadly — both the HP bars and the numeric rolling-odometer
 
 ### Initialize Player Animations
 
-Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader when a player object is created. For each matching `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the child entity carrying a `Sprite`, reads its image handle to build a `Spritesheet`, then creates idle animation handles for the three directional variants (`idle_x`, `idle_down`, `idle_up`) plus two single-cell 3/4 turn poses (`diag_front`, `diag_back`, drawn left-facing and mirrored at runtime for the right-facing side). It stores these handles in a per-player resource (`PlayerOneAnimations` or `PlayerTwoAnimations`) and inserts a `SpritesheetAnimation` on the child sprite entity with the initial idle clip.
+Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader when a player object is created, and reads `Res<GameConfig>` for the idle per-frame duration `config.animation.player_idle_frame_ms` (200). For each matching `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the child entity carrying a `Sprite`, reads its image handle to build a `Spritesheet`, then creates idle animation handles for the three directional variants (`idle_x`, `idle_down`, `idle_up`) plus two single-cell 3/4 turn poses (`diag_front`, `diag_back`, drawn left-facing and mirrored at runtime for the right-facing side). It stores these handles in a per-player resource (`PlayerOneAnimations` or `PlayerTwoAnimations`) and inserts a `SpritesheetAnimation` on the child sprite entity with the initial idle clip.
 
 ### Animate Player
 
@@ -73,7 +75,7 @@ Runs every frame. For each `Player`-marked `TiledObject` entity, it walks the en
 
 ### Initialize Claimed Tile Animations
 
-Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed tile entity. Builds the `ClaimedTileAnimations` resource (if not already present) containing animation clip handles for each player color variant. Inserts `SpritesheetAnimation` (with the neutral/default clip), `Sprite`, and `BounceEffect` on the claimed tile entity so it is ready to display ownership animations.
+Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed tile entity — and reads `Res<GameConfig>` for the flip per-frame duration `config.animation.tile_flip_frame_ms` (20). Builds the `ClaimedTileAnimations` resource (if not already present) containing animation clip handles for each player color variant. Inserts `SpritesheetAnimation` (with the neutral/default clip), `Sprite`, and `BounceEffect` on the claimed tile entity so it is ready to display ownership animations.
 
 ### Animate Claimed Tile
 
@@ -81,7 +83,7 @@ Reads `BeamResolved` messages. For each message, resolves the claimed tile entit
 
 ### Animate Unclaimed Tile
 
-The counterpart to Animate Claimed Tile, keeping tile visuals in sync when ownership is *cleared* rather than gained — the round reset (see the Round plugin doc) sets every reverted tile's `owner` back to `None`, which the authoritative claim data reflects but the sprite would not. It does **not** revert the sprite directly: because the reset clears every tile in the same frame, an immediate switch would revert the whole board at once. Instead, runs on `Changed<ClaimedTile>` and, for each tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay grows with the tile's distance from the board center (`MapInfo::map_size`), scaled across a fixed cascade window (`UNCLAIM_CASCADE_SECS`). This spreads the reverts into a radial wave from the center outward. It reads the currently-shown clip to confirm the tile is colored, so an already-unclaimed tile is skipped, and it never fights Animate Claimed Tile (which only handles ownership *gained*).
+The counterpart to Animate Claimed Tile, keeping tile visuals in sync when ownership is *cleared* rather than gained — the round reset (see the Round plugin doc) sets every reverted tile's `owner` back to `None`, which the authoritative claim data reflects but the sprite would not. It does **not** revert the sprite directly: because the reset clears every tile in the same frame, an immediate switch would revert the whole board at once. Instead, runs on `Changed<ClaimedTile>` and, for each tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay grows with the tile's distance from the board center (`MapInfo::map_size`), scaled across the cascade window `config.animation.unclaim_cascade_secs` (2.5). This spreads the reverts into a radial wave from the center outward. It reads the currently-shown clip to confirm the tile is colored, so an already-unclaimed tile is skipped, and it never fights Animate Claimed Tile (which only handles ownership *gained*).
 
 ### Tick Unclaim Reverts
 

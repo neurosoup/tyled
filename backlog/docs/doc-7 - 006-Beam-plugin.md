@@ -3,7 +3,7 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-07-13 12:00'
+updated_date: '2026-07-19 12:00'
 ---
 # Beam Plugin
 
@@ -17,7 +17,7 @@ Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to 
 ## Plugin workflow
 
 - Startup phase
-    - `setup_beam_step_timer` inserts the `BeamStepTimer` resource (62.5 ms repeating).
+    - `setup_beam_step_timer` inserts the `BeamStepTimer` resource (repeating, period `config.timing.beam_step_secs`, default 0.0625 s).
 - Update phase
     - Spawn Beam:
         - Reacts to `BeamFired` message
@@ -52,7 +52,7 @@ Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to 
 
 ### Setup Beam Step Timer
 
-Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Timer` with a 62.5 ms period — that gates how frequently each beam advances by one tile.
+Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Timer` whose period is `config.timing.beam_step_secs` (default 0.0625 s) — that gates how frequently each beam advances by one tile.
 
 ### Spawn Beam
 

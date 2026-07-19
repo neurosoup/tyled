@@ -94,6 +94,7 @@ fn initialize_map_info(
             &TilemapSize,
             &TilemapType,
             &TilemapAnchor,
+            &TiledMapReference,
         ),
         With<TiledTilemap>,
     >,
@@ -105,8 +106,15 @@ fn initialize_map_info(
         let Ok(z_offset) = current_level_query.get(map_created_message.origin) else {
             continue;
         };
-        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor)) =
-            tilemap_query.iter().find(|(name, ..)| name.0 == "ground")
+        // The "ground" tileset is shared by the level and HUD maps, so both spawn a
+        // tilemap named "ground". Restrict the metadata lookup to the current level
+        // map, otherwise the HUD map's geometry can be picked and every tile is
+        // placed in HUD-space coordinates.
+        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor, _)) = tilemap_query
+            .iter()
+            .find(|(name, .., map_ref)| {
+                name.0 == "ground" && map_ref.0 == map_created_message.origin
+            })
         else {
             panic!("Ground tilemap not found");
         };
@@ -119,8 +127,6 @@ fn initialize_map_info(
             .iter()
             .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
             .collect();
-
-        info!("map_size: {:?}", *map_size);
 
         *map_info = MapInfo {
             ground_entities,
@@ -188,10 +194,13 @@ fn initialize_hp_bars(
     }
 }
 
+const PLAYER_SPRITE_SCALE: f32 = 1.25;
+
 fn initialize_players(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
+    config: Res<GameConfig>,
     current_level_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     mut players_query: Query<(Entity, &Player, &mut Transform), With<Character>>,
     children_query: Query<&Children>,
@@ -221,15 +230,17 @@ fn initialize_players(
                     TranslateEffectTarget,
                     DamageEffectTarget,
                     Health {
-                        current: 100.0,
-                        max: 100.0,
+                        current: config.player.starting_health,
+                        max: config.player.starting_health,
                     },
-                    BeamCharges::new((map_info.ground_entities.len() as u32) / 2),
+                    BeamCharges::new(
+                        (map_info.ground_entities.len() as u32) / config.player.beam_charges_divisor,
+                    ),
                     ClaimedTileCount::default(),
                     AbilityList(loadouts.for_player(player.player_id)),
                 ));
 
-                transform.scale = Vec3::new(1.25, 1.25, 1.0);
+                transform.scale = Vec3::new(PLAYER_SPRITE_SCALE, PLAYER_SPRITE_SCALE, 1.0);
 
                 if let Ok(children) = children_query.get(entity) {
                     if let Some(&first_child) = children.first() {
