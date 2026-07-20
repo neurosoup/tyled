@@ -11,7 +11,7 @@
 (
     timing: (
         move_repeat_delay_ms: 160, // [live] hold time before auto-walk starts (tap-vs-hold threshold)
-        move_repeat_rate_ms: 75,   // [live] ms between held-walk steps; lower = faster walking
+        move_repeat_rate_ms: 100,   // [live] ms between held-walk steps; lower = faster walking
         beam_step_secs: 0.0625,   // [live] seconds between beam steps; lower = faster beams
         turn_step_ms: 100,        // [live] ms per in-place turn step
     ),

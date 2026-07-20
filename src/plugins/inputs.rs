@@ -156,10 +156,17 @@ fn handle_characters_input(
             // into the cruise with no idle gap: the first move out of rest spans the longer
             // delay, later steps run at the shorter repeat rate. Slides are linear; the only
             // easing is the ease-out on stop, applied on release via MovementSettle.
-            let interval = if move_repeat.moving {
+            let base_ms = if move_repeat.moving {
                 config.timing.move_repeat_rate_ms
             } else {
                 config.timing.move_repeat_delay_ms
+            };
+            // A cardinal step covers less ground than a diagonal, so shorten its interval by
+            // 1/√2 to match the diagonal's apparent (world) speed.
+            let interval = if axis.x == 0.0 || axis.y == 0.0 {
+                (base_ms as f32 * std::f32::consts::FRAC_1_SQRT_2).round() as u64
+            } else {
+                base_ms
             };
             *movement_slide = MovementSlide { duration_ms: interval };
             move_repeat.held_axis = axis;
