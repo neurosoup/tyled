@@ -137,12 +137,6 @@ impl LookDirection {
             _ => None,
         }
     }
-
-    pub fn look_at(&mut self, vec: Vec2) {
-        if let Some(new_direction) = self.would_look_at(vec) {
-            self.direction = Some(new_direction);
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

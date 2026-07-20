@@ -17,6 +17,7 @@ pub(crate) fn plugin(app: &mut App) {
         (
             apply_knockback.before(apply_translate_effect),
             apply_translate_effect,
+            apply_movement_settle,
             apply_wave_effect,
             apply_bounce_effect,
             apply_death_effect,
@@ -27,9 +28,14 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-pub fn create_movement_tween(start: Vec3, end: Vec3, duration_ms: u64) -> Tween {
+pub fn create_movement_tween(
+    start: Vec3,
+    end: Vec3,
+    duration_ms: u64,
+    ease: EaseFunction,
+) -> Tween {
     Tween::new(
-        EaseFunction::QuadraticOut,
+        ease,
         Duration::from_millis(duration_ms),
         TransformPositionLens { start, end },
     )
@@ -108,7 +114,8 @@ fn apply_knockback(
                 TweenAnim::new(create_movement_tween(
                     start,
                     destination,
-                    config.effects.movement_tween_ms,
+                    config.effects.knockback_tween_ms,
+                    EaseFunction::QuadraticOut,
                 )),
                 IsKnockedBack,
             ));
@@ -121,21 +128,41 @@ fn apply_translate_effect(
     mut commands: Commands,
     config: Res<GameConfig>,
     mut moving_objects: Query<
-        (Entity, &Transform, &GridCoords),
+        (Entity, &Transform, &GridCoords, Option<&MovementSlide>),
         (Changed<GridCoords>, With<TranslateEffectTarget>, Without<KnockbackEffect>),
     >,
     map_info: Res<MapInfo>,
 ) {
-    for (entity, transform, grid_coords) in &mut moving_objects {
+    for (entity, transform, grid_coords, movement_slide) in &mut moving_objects {
         let destination = grid_coords.to_translation(&map_info);
+        let duration_ms = movement_slide.map_or(config.timing.move_repeat_rate_ms, |s| s.duration_ms);
 
         commands
             .entity(entity)
             .insert(TweenAnim::new(create_movement_tween(
                 transform.translation,
                 destination,
-                config.effects.movement_tween_ms,
+                duration_ms,
+                EaseFunction::Linear,
             )));
+    }
+}
+
+fn apply_movement_settle(
+    mut commands: Commands,
+    config: Res<GameConfig>,
+    query: Query<(Entity, &Transform, &GridCoords), Added<MovementSettle>>,
+    map_info: Res<MapInfo>,
+) {
+    for (entity, transform, grid_coords) in &query {
+        let destination = grid_coords.to_translation(&map_info);
+        commands.entity(entity).insert(TweenAnim::new(create_movement_tween(
+            transform.translation,
+            destination,
+            config.timing.move_repeat_rate_ms,
+            EaseFunction::QuadraticOut,
+        )));
+        commands.entity(entity).remove::<MovementSettle>();
     }
 }
 

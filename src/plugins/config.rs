@@ -25,8 +25,12 @@ pub struct GameConfig {
 
 #[derive(Reflect, Clone, Deserialize)]
 pub struct TimingConfig {
-    /// Seconds between input/movement repeats. Lower = characters step faster.
-    pub input_tick_secs: f32,
+    /// Milliseconds a direction must be held before the character starts auto-walking.
+    pub move_repeat_delay_ms: u64,
+    /// Milliseconds between steps while a direction is held (walk cadence and speed).
+    pub move_repeat_rate_ms: u64,
+    /// Milliseconds a diagonal must be held before it counts, filtering key-roll transients.
+    pub diagonal_debounce_ms: u64,
     /// Seconds between beam step ticks. Lower = beams travel faster.
     pub beam_step_secs: f32,
     /// Milliseconds per step of the in-place turn animation.
@@ -104,8 +108,8 @@ pub struct AnimationConfig {
 
 #[derive(Reflect, Clone, Deserialize)]
 pub struct EffectsConfig {
-    /// Milliseconds for the movement slide tween. Lower = snappier steps.
-    pub movement_tween_ms: u64,
+    /// Milliseconds for the knockback slide tween.
+    pub knockback_tween_ms: u64,
     /// Milliseconds for the damage colour-flash tween.
     pub damage_flash_ms: u64,
 }
