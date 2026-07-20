@@ -29,8 +29,6 @@ pub struct TimingConfig {
     pub move_repeat_delay_ms: u64,
     /// Milliseconds between steps while a direction is held (walk cadence and speed).
     pub move_repeat_rate_ms: u64,
-    /// Milliseconds a diagonal must be held before it counts, filtering key-roll transients.
-    pub diagonal_debounce_ms: u64,
     /// Seconds between beam step ticks. Lower = beams travel faster.
     pub beam_step_secs: f32,
     /// Milliseconds per step of the in-place turn animation.

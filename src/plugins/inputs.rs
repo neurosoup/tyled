@@ -109,20 +109,7 @@ fn handle_characters_input(
             continue;
         }
 
-        let new_press = axis != move_repeat.held_axis;
-
-        // A diagonal seen only in passing while rolling between two cardinals must not
-        // commit a diagonal step. Defer a fresh diagonal until it has been held for the
-        // debounce window; if it collapses to a cardinal first, that cardinal is handled
-        // fresh next frame and the diagonal never commits.
-        if new_press && axis.x != 0.0 && axis.y != 0.0 {
-            move_repeat.held_axis = axis;
-            move_repeat.timer = Timer::new(
-                Duration::from_millis(config.timing.diagonal_debounce_ms),
-                TimerMode::Once,
-            );
-            continue;
-        }
+        let from_rest = move_repeat.held_axis == Vec2::ZERO;
 
         // On a detected facing change (while unlocked), commit the new facing immediately.
         if let Some(desired) = look_direction.would_look_at(axis) {
@@ -138,9 +125,9 @@ fn handle_characters_input(
             }
         }
 
-        // A fresh press or a change of direction steps once immediately (no lag);
-        // holding the same direction repeats only after the delay, then at the rate.
-        let should_step = if new_press {
+        // Stepping out of rest is immediate (no lag); once moving, every step — including a
+        // change of direction — waits for the delay, then repeats at the rate.
+        let should_step = if from_rest {
             true
         } else {
             move_repeat.timer.tick(time.delta());
@@ -156,16 +143,13 @@ fn handle_characters_input(
 
             // The slide lasts until the next step is due, so the first tile glides straight
             // into the cruise with no idle gap: the first move out of rest spans the longer
-            // delay, later steps run at the shorter repeat rate. Scaled by the step's length
-            // (1 for a cardinal, √2 for a diagonal) so a diagonal covers its longer distance
-            // in proportionally more time — equal world speed. Slides are linear; the only
+            // delay, later steps run at the shorter repeat rate. Slides are linear; the only
             // easing is the ease-out on stop, applied on release via MovementSettle.
-            let base_ms = if move_repeat.moving {
+            let interval = if move_repeat.moving {
                 config.timing.move_repeat_rate_ms
             } else {
                 config.timing.move_repeat_delay_ms
             };
-            let interval = (base_ms as f32 * axis.length()).round() as u64;
             *movement_slide = MovementSlide { duration_ms: interval };
             move_repeat.held_axis = axis;
             move_repeat.moving = true;
