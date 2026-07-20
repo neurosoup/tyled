@@ -122,6 +122,17 @@ fn handle_characters_input(
                 commands
                     .entity(entity)
                     .insert(IsTurning::new(from, desired, config.timing.turn_step_ms));
+                // Turning out of rest turns in place without stepping: hold the step back so a
+                // quick release just turns, while continuing to hold starts walking after the
+                // delay. While already moving, fall through so mid-run turns keep moving.
+                if from_rest {
+                    move_repeat.held_axis = axis;
+                    move_repeat.timer = Timer::new(
+                        Duration::from_millis(config.timing.move_repeat_delay_ms),
+                        TimerMode::Once,
+                    );
+                    continue;
+                }
             }
         }
 
