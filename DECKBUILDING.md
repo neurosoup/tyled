@@ -56,17 +56,18 @@ not replace them — beams at 62.5ms/step are the analog of "playing a hand."
 There is no pre-match Straight-vs-Backfill choice.
 
 - **Straight Shot is a universal baseline** — every player always has it, like
-  Balatro's "you always get to play a hand." Fired from unclaimed ground: stops
-  at the first blocked tile, claims the last unclaimed tile before it. Fired
-  from a tile the player already owns with nothing new to claim ahead: fizzles
-  silently, charge spent for nothing.
-- **Backfill Shot is the first draftable ability**, not a starting pick. It adds
-  a fallback on top of Straight: when Straight would otherwise fizzle (fired
-  from the player's own claimed territory), the beam instead pierces through
-  claimed/forbidden tiles and resolves on the first unclaimed tile it finds —
-  despawning silently if none exists before the map edge. This is close to
-  today's auto-selected "inverted mode," reframed as something earned via the
-  draft rather than always-on.
+  Balatro's "you always get to play a hand." It can only be fired from
+  unclaimed ground: it stops at the first blocked tile and claims the last
+  unclaimed tile before it. Firing from a claimed tile — any owner, yours or an
+  enemy's — does nothing: no beam is spawned and no charge is spent, unless the
+  player has drafted Backfill.
+- **Backfill Shot is the first draftable ability**, not a starting pick. It lifts
+  the claimed-origin block: fired from a claimed tile, the beam instead pierces
+  through claimed/forbidden tiles and resolves on the first unclaimed tile it
+  finds — despawning silently if none exists before the map edge (this miss still
+  costs a charge, since the beam did fire). This is close to today's
+  auto-selected "inverted mode," reframed as something earned via the draft
+  rather than always-on.
 
 **Substrate implication**: internally, beam resolution becomes an *ordered
 list* of behavior entries tried in priority order, not a single `bool`. Every
@@ -126,6 +127,28 @@ charge-level/width parameter determined by hold duration — a real change to
 the `inputs` plugin, not just an additive message. The existing
 `BeamCharges`-exhaustion gate extends naturally: holding force-releases
 (fires whatever's accrued so far) if the charge pool drains mid-hold.
+
+**Fire-precondition gate — revisit its home during this rework.** Today all
+fire preconditions (`BeamCharges` exhaustion *and* the claimed-origin block:
+no beam / no charge when firing from a claimed tile without Backfill) are
+evaluated in the `inputs` plugin *before* `BeamFired` is emitted, so
+**`BeamFired` means a committed shot** — every consumer (`spawn_beam`,
+`spend_charge_on_fire`, and any future `on_fire` ability trigger, §1) can
+trust it without re-checking. Keep that invariant. The claimed-origin decision
+is centralized in `resolve_fire` (beam plugin), called from both `inputs` (as
+the gate — discards the behavior) and `spawn_beam` (for the concrete
+`BeamBehavior`), since `BeamFired` carries no behavior payload. An alternative
+was considered and deferred: gating *after* emission (in the beam plugin's
+`spawn_beam` + `spend_charge_on_fire`) to keep game rules out of `inputs`. It
+was rejected because it makes `BeamFired` mean "attempted, not committed" —
+forcing every consumer, including future `on_fire` resolvers, to re-apply the
+gate — and duplicates the predicate across two beam systems. The *clean* way to
+move the rule out of `inputs`, if wanted, is to split the message: `inputs`
+emits a raw `ShootPressed` intent, and a beam-plugin system adjudicates
+charges + claimed-origin and emits the authoritative `BeamFired`. Since this
+rework already reshapes `BeamFired` (press → release + hold params), that is
+the moment to make this split if the input/beam boundary is worth restoring —
+not before.
 
 **Getting hit cancels the hold.** If the charging player is hit by an enemy
 beam (`on_body_hit`) while mid-hold on Full Draw or Wide Shot, the hold is
@@ -548,6 +571,11 @@ side (which would hide its contribution and contaminate the A-vs-B differential)
   2. **Charge spent on fire, not on resolve (§2:60-62)** — a fizzle now costs a
      charge ("charge spent for nothing"). Moved the decrement from `BeamResolved`
      (`decrement_beam_charges`) to `BeamFired` (`spend_charge_on_fire`).
+     **Superseded**: firing from a claimed tile without Backfill is now gated at
+     input (`resolve_fire` in `src/plugins/beam.rs`), so this fizzle-costs-a-charge
+     scenario no longer arises — no `BeamFired` is emitted, so nothing is spent.
+     Charge-on-fire remains the mechanism for beams that do fire, e.g. a Backfill
+     shot that finds no unclaimed tile before the map edge.
 - *abilities:* none (Straight-only baseline = empty list).
 - *balancing:* layer-1 mirror runnable. Updated `backlog/docs/doc-7 -
   006-Beam-plugin.md` and added `backlog/docs/doc-12 - 010-Abilities-plugin.md`.

@@ -3,16 +3,17 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-07-20 12:00'
 ---
 # Beam Plugin
 
-Contains systems responsible for spawning and stepping beam projectiles fired by players, and for spending the firing player's beam charges. Tile ownership is handled separately by the Claim plugin, which reacts to the `BeamResolved` messages this plugin emits. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction. Each beam carries a resolved execution mode, `Beam::behavior` (`BeamBehavior`). `spawn_beam` selects between two modes based on firing context and the player's drafted abilities:
+Contains systems responsible for spawning and stepping beam projectiles fired by players, and for spending the firing player's beam charges. Tile ownership is handled separately by the Claim plugin, which reacts to the `BeamResolved` messages this plugin emits. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction. Each beam carries a resolved execution mode, `Beam::behavior` (`BeamBehavior`). `spawn_beam` resolves the shot with `resolve_fire`, which yields one of three outcomes based on firing context and the player's drafted abilities:
 
-- **Straight** (the baseline): advances until it leaves the map bounds or the next tile is already claimed. Resolves at the last unclaimed position. Fired from the player's own claimed territory with nothing new to claim ahead, it backs up onto its already-claimed origin and despawns silently **without** emitting `BeamResolved` — a fizzle.
-- **Backfill** (a drafted ability): advances through claimed and forbidden tiles until the next tile would be unclaimed, resolving on that unclaimed tile; despawns silently if none is found before the edge. It is a **contextual fallback**, not a wholesale mode: `spawn_beam` selects it only when the beam is fired from already-claimed ground (where Straight would fizzle) **and** the firing player's `AbilityList` contains `AbilityDescriptor::Backfill` (see the Abilities plugin doc). Fired from unclaimed ground, or by a player without the ability, the beam is `Straight` regardless.
+- **No beam** — firing from an already-claimed tile is refused: `resolve_fire` returns nothing and `spawn_beam` skips the spawn. The Input plugin applies the same check before writing `BeamFired`, so a refused shot also spends no charge. The `Backfill` ability is the sole exception (below).
+- **Straight** (the baseline): the mode for any shot fired from unclaimed ground. It advances until it leaves the map bounds or the next tile is already claimed, resolving at the last unclaimed position (at minimum its own origin).
+- **Backfill** (a drafted ability): advances through claimed and forbidden tiles until the next tile would be unclaimed, resolving on that unclaimed tile; despawns silently if none is found before the edge. `spawn_beam` selects it only when the beam is fired from already-claimed ground **and** the firing player's `AbilityList` contains `AbilityDescriptor::Backfill` (see the Abilities plugin doc) — it is what lets a player fire from their own territory at all.
 
-Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to `BeamFired` and decrements the owner's `BeamCharges::current` once per shot (emitting `ChargeSpent`), so even a fizzle costs a charge. When a beam resolves, `BeamResolved` is emitted and the beam entity is despawned; the Claim plugin reads that message to update tile ownership and emit `TileClaimed`.
+Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to `BeamFired` and decrements the owner's `BeamCharges::current` once per shot (emitting `ChargeSpent`). Because a refused shot writes no `BeamFired`, it costs nothing; the only shot that spends a charge yet claims nothing is a `Backfill` that reaches the map edge without finding an unclaimed tile. When a beam resolves, `BeamResolved` is emitted and the beam entity is despawned; the Claim plugin reads that message to update tile ownership and emit `TileClaimed`.
 
 ## Plugin workflow
 
@@ -27,8 +28,8 @@ Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to 
                 - `AbilityList` on the firing player (to check for the `Backfill` descriptor)
                 - `MapInfo` resource and `ClaimedTile` components (to check whether the origin tile is already claimed)
             - Writes:
-                - Always spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,behavior}`
-                - `behavior` is `BeamBehavior::Backfill` when the origin tile is already claimed **and** the owner has drafted `Backfill`, otherwise `BeamBehavior::Straight`
+                - Calls `resolve_fire`; when it returns no behavior (origin already claimed and no `Backfill`), skips the message — no `Beam` is spawned
+                - Otherwise spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,behavior}`, where `behavior` is `BeamBehavior::Backfill` when the origin is claimed **and** the owner has drafted `Backfill`, otherwise `BeamBehavior::Straight`
                 - Also inserts `BounceEffect` unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire)
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
@@ -38,14 +39,14 @@ Charges are spent **on fire**, not on resolve: `spend_charge_on_fire` reacts to 
                 - `ClaimedTile` component on ground tile entities (for claimed-tile check)
             - Writes:
                 - Advances `GridCoords` of the beam if the next tile is valid and unclaimed
-                - Writes a `BeamResolved` message and despawns the beam when it must stop (Straight only emits `BeamResolved` if it lands on an unclaimed tile — a fizzle despawns silently)
+                - Writes a `BeamResolved` message and despawns the beam when it must stop (a `Straight` beam is only ever fired from unclaimed ground, so it always resolves on an unclaimed tile; a `Backfill` beam that finds no unclaimed tile before the edge despawns silently)
     - Spend Charge On Fire:
         - Reacts to `BeamFired` message
             - Reads:
                 - `BeamFired` message fields (`owner`)
                 - `BeamCharges` component on the firing player entity
             - Writes:
-                - Decrements `BeamCharges::current` on the firing player (saturating at zero), once per shot — so a fizzle also costs a charge
+                - Decrements `BeamCharges::current` on the firing player (saturating at zero), once per `BeamFired` — a shot refused at fire time writes no `BeamFired` and costs nothing, while a `Backfill` that claims nothing still costs its charge
                 - Emits a `ChargeSpent` message (`owner`, `amount`)
 
 ## Plugin Systems
@@ -56,7 +57,7 @@ Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Time
 
 ### Spawn Beam
 
-Reacts to `BeamFired` messages emitted by the input system. Spawns a new `Beam` entity carrying `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, behavior}`. The `behavior` is chosen contextually: the system checks whether the origin tile is already claimed (via `MapInfo` + `ClaimedTile`) and whether the firing player's `AbilityList` contains `AbilityDescriptor::Backfill`; only when **both** hold is `BeamBehavior::Backfill` selected, otherwise `BeamBehavior::Straight`. Additionally inserts `BounceEffect` on the spawned entity only when the owner has no existing beam traveling on the same lane — a horizontal beam suppresses `BounceEffect` if another of the owner's beams shares the same row (Y coordinate) and is also horizontal; a vertical beam suppresses it if another shares the same column (X coordinate) and is also vertical. This prevents overlapping visual effects when beams travel the same path. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
+Reacts to `BeamFired` messages emitted by the input system. The `behavior` is resolved by `resolve_fire`, which reads whether the origin tile is already claimed (via `MapInfo` + `ClaimedTile`) and whether the firing player's `AbilityList` contains `AbilityDescriptor::Backfill`: a claimed origin without `Backfill` returns no behavior and `spawn_beam` skips the spawn entirely; a claimed origin with `Backfill` gives `BeamBehavior::Backfill`; an unclaimed origin gives `BeamBehavior::Straight`. When a beam is spawned it carries `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, behavior}`. Additionally inserts `BounceEffect` on the spawned entity only when the owner has no existing beam traveling on the same lane — a horizontal beam suppresses `BounceEffect` if another of the owner's beams shares the same row (Y coordinate) and is also horizontal; a vertical beam suppresses it if another shares the same column (X coordinate) and is also vertical. This prevents overlapping visual effects when beams travel the same path. No sprite or transform is set up here — visual representation is handled by the effects and animations plugins reacting to the `BounceEffect` component.
 
 ### Beam Step
 
@@ -67,7 +68,7 @@ Runs every `BeamStepTimer` tick. For each `Beam` entity it computes the next gri
 2. **Already claimed** — if the `ClaimedTile` entity at the next position already has an owner, back up through forbidden areas; if the current position is unclaimed emit `BeamResolved` for it, then despawn.
 3. Otherwise — advance: `GridCoords` is overwritten with the next position (which triggers `apply_translate_effect` in the Effects plugin to tween the sprite).
 
-   A shot fired from the player's own claimed territory with nothing new to claim ahead backs up onto its already-claimed origin, emits no `BeamResolved`, and despawns — a silent fizzle (the charge is still spent, at fire time).
+   A `Straight` beam is only ever fired from unclaimed ground (firing from a claimed tile is refused unless the player has `Backfill`, which fires a `Backfill` beam instead), so its resolve position is always unclaimed and it always emits `BeamResolved`.
 
 **Backfill** (`BeamBehavior::Backfill` — selected contextually; see Spawn Beam above):
 1. **Out of bounds** — if the next position is neither on ground nor in forbidden areas, despawn silently (no `BeamResolved` emitted, no tile claimed).
@@ -76,7 +77,7 @@ Runs every `BeamStepTimer` tick. For each `Beam` entity it computes the next gri
 
 ### Spend Charge On Fire
 
-Reads `BeamFired` messages. For each message, decrements `BeamCharges::current` (saturating at zero) on the firing player entity identified by `message.owner`, and emits a `ChargeSpent` message. Spending on fire (rather than on resolve) means every committed shot — including a fizzle that claims nothing — costs exactly one charge. The resulting `Changed<BeamCharges>` detection drives the digit flip-counter animation in the Animations plugin.
+Reads `BeamFired` messages. For each message, decrements `BeamCharges::current` (saturating at zero) on the firing player entity identified by `message.owner`, and emits a `ChargeSpent` message. Spending on fire (rather than on resolve) means every committed shot costs exactly one charge. A shot refused before `BeamFired` is written (firing from a claimed tile without `Backfill`) costs nothing; the only shot that spends a charge without claiming a tile is a `Backfill` that reaches the map edge unclaimed. The resulting `Changed<BeamCharges>` detection drives the digit flip-counter animation in the Animations plugin.
 
 ## Components, Resources and Messages CRUD
 
@@ -147,7 +148,7 @@ beams_query ---> |reads| be_grid_coords
 ### Read behavior-selection inputs (spawn)
 
 Used in the following systems:
-- **spawn_beam**: to choose `BeamBehavior`, reads the firing player's `AbilityList` (for the `Backfill` descriptor), and `MapInfo.claimed_entities` + the `ClaimedTile.owner` at the origin (to test whether the origin tile is already claimed). Backfill is selected only when both the ability is present and the origin is claimed.
+- **spawn_beam**: to resolve the shot via `resolve_fire`, reads the firing player's `AbilityList` (for the `Backfill` descriptor) and `MapInfo.claimed_entities` + the `ClaimedTile.owner` at the origin (to test whether the origin tile is already claimed). A claimed origin without `Backfill` yields no beam; a claimed origin with `Backfill` yields `Backfill`; an unclaimed origin yields `Straight`.
 
 ```mermaid
 ---

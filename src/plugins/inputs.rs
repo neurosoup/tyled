@@ -52,6 +52,8 @@ fn handle_characters_input(
     mut commands: Commands,
     time: Res<Time>,
     config: Res<GameConfig>,
+    map_info: Res<MapInfo>,
+    claimed_query: Query<&ClaimedTile>,
     mut characters: Query<
         (
             Entity,
@@ -61,6 +63,7 @@ fn handle_characters_input(
             &mut MoveRepeat,
             &mut MovementSlide,
             Option<&BeamCharges>,
+            Option<&AbilityList>,
             Option<&IsTurning>,
         ),
         (With<Character>, Without<IsKnockedBack>),
@@ -76,6 +79,7 @@ fn handle_characters_input(
         mut move_repeat,
         mut movement_slide,
         beam_charges,
+        ability_list,
         turning,
     ) in &mut characters
     {
@@ -87,7 +91,11 @@ fn handle_characters_input(
 
         if action_state.just_pressed(&Action::Shoot) {
             let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
-            if has_charges {
+            let has_backfill = ability_list
+                .is_some_and(|list| list.0.contains(&AbilityDescriptor::Backfill));
+            if has_charges
+                && resolve_fire(*grid_coords, has_backfill, &map_info, &claimed_query).is_some()
+            {
                 beam_fired_writer.write(BeamFired {
                     owner: entity,
                     origin: *grid_coords,

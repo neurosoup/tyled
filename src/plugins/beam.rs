@@ -39,6 +39,31 @@ fn resync_beam_step_timer(config: Res<GameConfig>, timer: Option<ResMut<BeamStep
     }
 }
 
+pub(crate) fn is_position_claimed(
+    map_info: &MapInfo,
+    claimed_query: &Query<&ClaimedTile>,
+    coords: GridCoords,
+) -> bool {
+    map_info
+        .claimed_entities
+        .get(&coords)
+        .is_some_and(|e| claimed_query.get(*e).is_ok_and(|ct| ct.owner.is_some()))
+}
+
+/// The beam behavior for a shot, or `None` if firing is blocked.
+pub(crate) fn resolve_fire(
+    origin: GridCoords,
+    can_override_block: bool,
+    map_info: &MapInfo,
+    claimed_query: &Query<&ClaimedTile>,
+) -> Option<BeamBehavior> {
+    match (is_position_claimed(map_info, claimed_query, origin), can_override_block) {
+        (true, false) => None,
+        (true, true) => Some(BeamBehavior::Backfill),
+        (false, _) => Some(BeamBehavior::Straight),
+    }
+}
+
 /// System that shakes unclaimed tile entities in response to [`BeamFired`] messages.
 fn spawn_beam(
     mut commands: Commands,
@@ -61,21 +86,16 @@ fn spawn_beam(
             coords.x == beam_fired_message.origin.x && beam.direction.y != 0
         });
 
-        // Backfill is a contextual fallback, not a wholesale mode: it replaces
-        // Straight only when the beam is fired from already-claimed ground (where
-        // Straight would fizzle), and only if the firing player has drafted it.
-        // Fired from unclaimed ground it stays Straight regardless of loadout.
-        let origin_claimed = map_info
-            .claimed_entities
-            .get(&beam_fired_message.origin)
-            .is_some_and(|e| claimed_query.get(*e).is_ok_and(|ct| ct.owner.is_some()));
         let has_backfill = ability_query
             .get(beam_fired_message.owner)
             .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Backfill));
-        let behavior = if origin_claimed && has_backfill {
-            BeamBehavior::Backfill
-        } else {
-            BeamBehavior::Straight
+        let Some(behavior) = resolve_fire(
+            beam_fired_message.origin,
+            has_backfill,
+            &map_info,
+            &claimed_query,
+        ) else {
+            continue;
         };
 
         let mut entity_commands = commands.spawn((
@@ -222,10 +242,10 @@ pub(crate) fn beam_step(
     }
 }
 
-// Spend one charge per committed shot at fire time (not on resolve), so a shot
-// that fizzles — Straight fired from owned ground with nothing to claim ahead —
-// still costs a charge. Each `BeamFired` spawns exactly one
-// beam, so this is exactly one charge per shot.
+// Spend one charge per committed shot at fire time (not on resolve). A shot
+// that finds nothing to claim can still cost a charge — e.g. a Backfill beam
+// that reaches the map edge without finding an unclaimed tile. Each
+// `BeamFired` spawns exactly one beam, so this is exactly one charge per shot.
 fn spend_charge_on_fire(
     mut beam_fired_reader: MessageReader<BeamFired>,
     mut beam_charges: Query<&mut BeamCharges>,

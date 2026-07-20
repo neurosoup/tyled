@@ -3,7 +3,7 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-07-20 12:00'
 ---
 # Input Plugin
 
@@ -18,7 +18,7 @@ Contains systems related to player input handling. This plugin registers the `In
 - Update phase
     - Handle Characters Input ticks the timer and, for each character:
         - Handles `Action::Lock` (toggles look-direction lock)
-        - Handles `Action::Shoot` (writes a `BeamFired` message only if the player's `BeamCharges` is not exhausted) — allowed even mid-turn
+        - Handles `Action::Shoot` (writes a `BeamFired` message only if the player has a charge **and** the shot is not blocked — firing from an already-claimed tile is refused unless the player has the `Backfill` ability, in which case no message is written, so no beam spawns and no charge is spent) — allowed even mid-turn
         - On a `Action::Move` axis that implies a new facing (while unlocked), inserts an `IsTurning` state and skips movement this frame; a fresh facing change mid-turn restarts the turn toward the new target
         - While an `IsTurning` state is present but the facing has not changed, movement stays suppressed
         - When no turn is active and the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
@@ -36,7 +36,7 @@ Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that 
 
 ### Handle Characters Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only if the character's `BeamCharges::current > 0`; both stay active during a turn. For movement it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) inserts an `IsTurning` state — starting or restarting the turn immediately, bypassing the throttle — and skips movement that frame. If a turn is already in progress toward the same target, movement stays suppressed. Otherwise, when the timer is finished, it updates `LookDirection` and emits an `EntityMoved` message with the new target `GridCoords`. Locked characters never turn (direction is frozen) and keep strafing along the pressed axis.
+Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only when the character has a charge (`BeamCharges::current > 0`) **and** `resolve_fire` (Beam plugin) permits the shot: firing from an already-claimed tile is refused unless the player's `AbilityList` contains `Backfill`, and a refused shot writes no message (no beam, no charge). Both stay active during a turn. For movement it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) inserts an `IsTurning` state — starting or restarting the turn immediately, bypassing the throttle — and skips movement that frame. If a turn is already in progress toward the same target, movement stays suppressed. Otherwise, when the timer is finished, it updates `LookDirection` and emits an `EntityMoved` message with the new target `GridCoords`. Locked characters never turn (direction is frozen) and keep strafing along the pressed axis.
 
 ### Tick Turning
 
@@ -146,7 +146,7 @@ attach_players_actions ---> |inserts component| pe_input_map
 ### Query Character entities for input handling
 
 Used in the following systems:
-- **handle_characters_input**: reads action state and grid coords, mutably updates look direction, and reads the optional `IsTurning` state for all `Character` entities (excluding those with `IsKnockedBack`)
+- **handle_characters_input**: reads action state, grid coords, and the optional `AbilityList` and `IsTurning` state, mutably updates look direction, for all `Character` entities (excluding those with `IsKnockedBack`); it also reads `MapInfo` + `ClaimedTile` to gate firing (see the separate section below)
 
 ```mermaid
 ---
@@ -174,6 +174,7 @@ pe_grid_coords>"`**GridCoords**`"] --> |belongs to| character_entity
 pe_look_direction>"`**LookDirection**`"] --> |belongs to| character_entity
 pe_character>"`**Character**`"] --> |belongs to| character_entity
 pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| character_entity
+pe_ability_list>"`**AbilityList**`"] --> |belongs to| character_entity
 pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
 pe_is_knocked_back>"`**IsKnockedBack**`"] --> |belongs to| character_entity
 
@@ -182,9 +183,43 @@ players_query ---> |reads| pe_action_state
 players_query ---> |reads| pe_grid_coords
 players_query ---> |writes| pe_look_direction
 players_query ---> |"reads (optional)"| pe_beam_charges
+players_query ---> |"reads (optional)"| pe_ability_list
 players_query ---> |"reads (optional)"| pe_is_turning
 players_query -..-> |filter With| pe_character
 players_query -..-> |filter Without| pe_is_knocked_back
+```
+
+### Read fire-gate inputs (MapInfo + ClaimedTile)
+
+Used in the following systems:
+- **handle_characters_input**: to decide whether a Shoot press may fire, reads `MapInfo.claimed_entities` + the `ClaimedTile.owner` at the character's origin (via `resolve_fire`, Beam plugin) — a shot from an already-claimed tile is refused unless the player has `Backfill`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+handle_characters_input["`**handle_characters_input**`"]
+
+update -.-> handle_characters_input
+
+claimed_query{{"Query#60;#38;ClaimedTile#62;"}}:::query
+handle_characters_input ---> claimed_query
+
+tile_entity@{ shape: st-rect, label: "Origin tile" }
+te_claimed>"`**ClaimedTile**`"] --> |belongs to| tile_entity
+claimed_query ---> |reads `owner`| te_claimed
+
+world@{ shape: st-rect, label: "World" }
+map_info_res@{ shape: doc, label: "MapInfo" }
+map_info_res --> |belongs to| world
+handle_characters_input ---> |reads `claimed_entities`| map_info_res
 ```
 
 ### Write EntityMoved messages
@@ -215,7 +250,7 @@ handle_characters_input ---> |writes| entity_moved_message
 ### Write BeamFired messages
 
 Used in the following systems:
-- **handle_characters_input**: emits a `BeamFired` message when `Action::Shoot` is just pressed
+- **handle_characters_input**: emits a `BeamFired` message when `Action::Shoot` is just pressed, the player has a charge, and the shot is not blocked (see the fire-gate reads above)
 
 
 ```mermaid
