@@ -2,3 +2,5 @@
 /Cargo.lock
 assets/tyled.tiled-session
 tiled_types_export.json
+play_trace.jsonl
+play_trace.*.jsonl

@@ -548,6 +548,15 @@ balancing it rides on B's kit alone (in the scaffold, optionally `{Overpen}` or
 `{Overpen, Backfill}`), measured via layers 2 and 4, never smuggled onto the A
 side (which would hide its contribution and contaminate the A-vs-B differential).
 
+**Substrate now shipped**: a heuristic bot (`src/plugins/bot.rs`) and a
+play-telemetry sink (`src/plugins/telemetry.rs`) exist and play correctly,
+giving every layer above a way to generate self-play games and log
+actions/decisions/outcomes to `play_trace.jsonl` for analysis, instead of only
+manual human-run matches. See `backlog/docs/doc-20 - 018-Bot-plugin.md` and
+`backlog/docs/doc-21 - 019-Telemetry-plugin.md` for the present-state
+mechanics; this section's four layers are the protocol that substrate is
+meant to serve.
+
 ### Foundation
 
 **Stage F1 — behavior-list substrate** *(no new content)* — **IMPLEMENTED**.

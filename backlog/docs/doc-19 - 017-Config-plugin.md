@@ -3,7 +3,7 @@ id: doc-19
 title: '[017] Config plugin'
 type: other
 created_date: '2026-07-19 12:00'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-07-21 12:00'
 ---
 # Config Plugin
 
@@ -22,13 +22,27 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
 
 ## Concepts
 
-- `GameConfig` (`src/plugins/config.rs`) — a `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` struct grouping the knobs by domain: `timing`, `damage`, `round`, `camera`, `player`, `animation`, `effects`. Each field carries a one-line doc; the `.ron` mirrors them and tags each with when an edit takes effect (`[live]`, `[next-round]`, `[restart]`). Deriving `Reflect` also surfaces it in the dev inspector.
+- `GameConfig` (`src/plugins/config.rs`) — a `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` struct grouping the knobs by domain: `timing`, `damage`, `round`, `camera`, `player`, `animation`, `effects`, `telemetry`, `controllers`, `bot`. Each field carries a one-line doc; the `.ron` mirrors them and tags each with when an edit takes effect (`[live]`, `[next-round]`, `[restart]`). Deriving `Reflect` also surfaces it in the dev inspector.
+
+- `controllers` (`ControllersConfig`) — which seats are bot-driven, read by the Input plugin's `attach_players_actions` when a `Player` entity is first spawned:
+    - `player1_bot` `[next-round]` — whether P1 is driven by the bot instead of keyboard input.
+    - `player2_bot` `[next-round]` — whether P2 is driven by the bot instead of keyboard input.
+
+- `bot` (`BotConfig`) — tunables read every beat by the Bot plugin's `bot_think` (see the Bot plugin doc):
+    - `fire_cooldown_ms` `[live]` — milliseconds the bot waits between shots.
+    - `aggression` `[live]` — how strongly the bot favors a shot that also passes through the opponent, or a reposition target closer to the opponent, over the nearest available claim.
+    - `think_interval_ms` `[live]` — milliseconds between bot decisions; paces movement/aim/fire choices.
+    - `hostile_cost` `[live]` — Dijkstra cost to enter an enemy-owned tile while pathfinding; higher prefers safer routes.
+
+- `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
+    - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.
+    - `history` `[restart]` — total trace files kept (current + rotated backups), applied only when the sink is (re)opened at `Startup`.
 
 - `assets/game_config.ron` — the authoritative, commented tuning file. A `#[test]` (`embedded_config_parses`) asserts it deserializes into `GameConfig`, so a malformed edit fails the build rather than the player. The test asserts no specific values, so retuning never breaks it.
 
 - **Hot-reload (dev only)** — a small custom `AssetLoader` (`GameConfigLoader`) deserializes the `.ron` into a `GameConfig` asset. `load_config_asset` loads the handle at `Startup`; `apply_config_reload` mirrors each `AssetEvent::Modified`/`LoadedWithDependencies` back into the `GameConfig` resource. `Res<GameConfig>` change-detection then propagates the new values.
 
-- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations). The three tick timers (`InputTimer`, `DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, animation frame timings) apply on the next round or next spawn.
+- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, animation frame timings, and which players are bots) apply on the next round or next spawn.
 
 ## Plugin workflow
 

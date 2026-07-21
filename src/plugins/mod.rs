@@ -1,6 +1,7 @@
 pub(super) mod abilities;
 pub(super) mod animations;
 pub(super) mod beam;
+pub(super) mod bot;
 pub(super) mod camera;
 pub(super) mod claim;
 pub(super) mod config;
@@ -15,11 +16,13 @@ pub(super) mod inputs;
 pub(super) mod maps;
 pub(super) mod messages;
 pub(super) mod round;
+pub(super) mod telemetry;
 pub(super) mod text;
 
 pub use abilities::*;
 pub use animations::*;
 pub use beam::*;
+pub use bot::*;
 pub use camera::*;
 pub use claim::*;
 pub use config::*;
@@ -34,4 +37,5 @@ pub use inputs::*;
 pub use maps::*;
 pub use messages::*;
 pub use round::*;
+pub use telemetry::*;
 pub use text::*;

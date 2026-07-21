@@ -208,3 +208,56 @@ impl IsTurning {
         }
     }
 }
+
+#[cfg(test)]
+mod synthetic_input {
+    use super::Action;
+    use bevy::MinimalPlugins;
+    use bevy::input::InputPlugin;
+    use bevy::prelude::*;
+    use leafwing_input_manager::prelude::*;
+
+    #[derive(Resource, Default)]
+    struct Observed(Vec<bool>);
+
+    fn press_shoot_once(mut states: Query<&mut ActionState<Action>>, mut done: Local<bool>) {
+        if !*done {
+            for mut state in &mut states {
+                state.press(&Action::Shoot);
+            }
+            *done = true;
+        }
+    }
+
+    fn observe_just_pressed(states: Query<&ActionState<Action>>, mut observed: ResMut<Observed>) {
+        for state in &states {
+            observed.0.push(state.just_pressed(&Action::Shoot));
+        }
+    }
+
+    /// The bot drives a bare `ActionState<Action>` with no `InputMap`; firing relies on
+    /// leafwing still ticking such a component so one `press` reads as `just_pressed` for
+    /// exactly one frame, then clears. `[true, false, false]` confirms that edge — if a
+    /// leafwing upgrade breaks it, the bot's `Shoot` silently stops working.
+    #[test]
+    fn bare_action_state_just_pressed_edges() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(InputPlugin);
+        app.add_plugins(InputManagerPlugin::<Action>::default());
+        app.init_resource::<Observed>();
+        app.world_mut().spawn(ActionState::<Action>::default());
+        app.add_systems(Update, (press_shoot_once, observe_just_pressed).chain());
+
+        app.update();
+        app.update();
+        app.update();
+
+        let observed = &app.world().resource::<Observed>().0;
+        assert_eq!(
+            observed,
+            &vec![true, false, false],
+            "bare ActionState just_pressed edges were {observed:?}"
+        );
+    }
+}

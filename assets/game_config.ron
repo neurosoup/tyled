@@ -22,7 +22,7 @@
         tick_secs: 0.5,           // [live] seconds between standing-damage ticks
     ),
     round: (
-        round_duration_secs: 180,  // [next-round] round length in seconds
+        round_duration_secs: 120,  // [next-round] round length in seconds
         intro_count: 3,            // [next-round] intro numbers before "GO!" (1/sec, so intro = this many secs)
         go_linger_ms: 500,         // [next-round] ms the "GO!" banner scales up
         go_end_scale: 24.0,        // [next-round] scale "GO!" rushes to
@@ -52,5 +52,19 @@
     effects: (
         knockback_tween_ms: 200,   // [live] ms for the knockback slide tween
         damage_flash_ms: 150,      // [live] ms for the damage colour-flash tween
+    ),
+    telemetry: (
+        enabled: true,             // [live] write play-telemetry records to play_trace.jsonl
+        history: 3,                // [restart] total trace files kept (current + rotated backups)
+    ),
+    controllers: (
+        player1_bot: false,        // [next-round] P1 driven by the bot instead of keyboard input
+        player2_bot: true,        // [next-round] P2 driven by the bot instead of keyboard input
+    ),
+    bot: (
+        fire_cooldown_ms: 400,     // [live] ms the bot waits between shots
+        aggression: 0.5,           // [live] preference for a shot through the opponent over the nearest claim
+        think_interval_ms: 150,    // [live] ms between bot decisions; paces movement/aim/fire
+        hostile_cost: 2,          // [live] Dijkstra cost to enter an enemy tile; higher = safer routing
     ),
 )

@@ -3,82 +3,45 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-07-20 12:00'
+updated_date: '2026-07-21 12:00'
 ---
 # Input Plugin
 
-Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, sets up an input throttle timer resource, attaches input maps to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions. A facing change while the direction is unlocked starts a transient `IsTurning` state that rotates the character in place through an intermediate 3/4 pose before movement in the new direction resumes.
+Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, attaches input maps and a per-character `MoveRepeat` auto-repeat state to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions. A facing change while the direction is unlocked commits the new `LookDirection` immediately and starts a transient `IsTurning` state that rotates the character in place through an intermediate 3/4 pose alongside movement in the new direction. `handle_characters_input` is `pub(crate)`: a bot-controlled player carries no `InputMap`, so instead of a human's key presses it is the Bot plugin's `bot_think` that synthesizes the `ActionState<Action>` this system reads, ordered `.before` it so the synthesized state is in place the same frame (see the Bot plugin doc).
 
 ## Plugin workflow
 
-- Startup phase
-    - Setup Input Timer creates the `InputTimer` repeating resource (throttle period `config.timing.input_tick_secs`, default 0.075 s).
 - PreUpdate phase
-    - Attach Players Actions reacts to newly added `Player` + `Character` entities (without `InputMap`) and inserts the appropriate `InputMap<Action>`.
-- Update phase
-    - Handle Characters Input ticks the timer and, for each character:
+    - Attach Players Actions reacts to newly added `Player` + `Character` entities (without `InputMap`) and branches on `config.controllers.is_bot(player.player_id)`: a bot seat gets a bare `ActionState<Action>` plus the `Bot` marker and **no** `InputMap`; a human seat gets the appropriate `InputMap<Action>` as before. Both branches also get `MoveRepeat` and `MovementSlide`.
+- Update phase (gated on `RoundPhase::Playing`)
+    - Handle Characters Input, for each character:
         - Handles `Action::Lock` (toggles look-direction lock)
         - Handles `Action::Shoot` (writes a `BeamFired` message only if the player has a charge **and** the shot is not blocked — firing from an already-claimed tile is refused unless the player has the `Backfill` ability, in which case no message is written, so no beam spawns and no charge is spent) — allowed even mid-turn
-        - On a `Action::Move` axis that implies a new facing (while unlocked), inserts an `IsTurning` state and skips movement this frame; a fresh facing change mid-turn restarts the turn toward the new target
-        - While an `IsTurning` state is present but the facing has not changed, movement stays suppressed
-        - When no turn is active and the timer finishes, reads `Action::Move` axis and writes an `EntityMoved` message
-    - Tick Turning advances each `IsTurning` timer through its segments and, only once the target facing is reached, commits `LookDirection` to the target and removes `IsTurning`; `LookDirection` is left untouched mid-turn so it keeps the original heading
+        - On release (`Action::Move` axis zero), eases a moving character to rest via `MovementSettle` and clears `MoveRepeat`'s held axis, so the next press steps immediately
+        - On a `Action::Move` axis that implies a new facing (while unlocked), commits the new `LookDirection` immediately and inserts an `IsTurning` state; turning out of rest holds the step back (a quick tap just turns in place, holding continues into movement after the repeat delay), while a mid-run turn falls through to keep stepping the same frame
+        - Otherwise, steps immediately if the character was at rest; while already moving, steps once `MoveRepeat`'s timer finishes — the first repeat spans `move_repeat_delay_ms`, later ones `move_repeat_rate_ms`, shortened by `1/√2` for a cardinal (non-diagonal) step to match the diagonal's apparent speed — writing an `EntityMoved` message and re-sizing `MovementSlide` to that interval
+    - Tick Turning advances each `IsTurning` timer through its segments, updating `IsTurning.from` as each segment elapses, and removes `IsTurning` once the segment queue is empty; it never touches `LookDirection`, which was already committed to the new facing the instant the turn began
 
 ## Plugin Systems
 
-### Setup Input Timer
-
-Inserts the `InputTimer` resource, a repeating `Timer` whose period is `config.timing.input_tick_secs` (default 0.075 s) that acts as a throttle on movement inputs.
-
 ### Attach Players Actions
 
-Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that do not yet have an `InputMap<Action>` and inserts the appropriate `InputMap<Action>` derived from the player's data.
+Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that do not yet have an `InputMap<Action>`. For each, checks `config.controllers.is_bot(player.player_id)`: if the seat is bot-driven, inserts a bare `ActionState::<Action>::default()` plus the `Bot` marker — deliberately **no** `InputMap`, since the Bot plugin's `bot_think` drives the `ActionState` directly instead of translating device input into one; otherwise inserts the human `InputMap<Action>` derived from the player's data as before. Both branches also insert `MoveRepeat::default()` and a `MovementSlide` sized from `config.timing.move_repeat_rate_ms`.
 
 ### Handle Characters Input
 
-Runs in `Update`. Ticks the `InputTimer` and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only when the character has a charge (`BeamCharges::current > 0`) **and** `resolve_fire` (Beam plugin) permits the shot: firing from an already-claimed tile is refused unless the player's `AbilityList` contains `Backfill`, and a refused shot writes no message (no beam, no charge). Both stay active during a turn. For movement it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) inserts an `IsTurning` state — starting or restarting the turn immediately, bypassing the throttle — and skips movement that frame. If a turn is already in progress toward the same target, movement stays suppressed. Otherwise, when the timer is finished, it updates `LookDirection` and emits an `EntityMoved` message with the new target `GridCoords`. Locked characters never turn (direction is frozen) and keep strafing along the pressed axis.
+Runs in `Update`, gated on `RoundPhase::Playing`, and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only when the character has a charge (`BeamCharges::current > 0`) **and** `resolve_fire` (Beam plugin) permits the shot: firing from an already-claimed tile is refused unless the player's `AbilityList` contains `Backfill`, and a refused shot writes no message (no beam, no charge). Both stay active during a turn. Reads the `Action::Move` axis: on release (axis zero), eases a moving character to rest via `MovementSettle` and resets the per-character `MoveRepeat` state, so the next press steps immediately. Otherwise it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) commits the new `LookDirection` immediately and inserts an `IsTurning` state — turning out of rest holds the step back (a quick tap just turns in place, holding continues into movement after the repeat delay), while a mid-run turn falls through to keep stepping the same frame. Stepping is governed by `MoveRepeat`: the first step out of rest is immediate; every later step waits for `MoveRepeat`'s timer, spanning `config.timing.move_repeat_delay_ms` for the first repeat and `config.timing.move_repeat_rate_ms` after, shortened by `1/√2` for a cardinal (non-diagonal) step to match the diagonal's apparent speed. Each step emits an `EntityMoved` message with the new target `GridCoords` and re-sizes `MovementSlide` to that interval. Locked characters never turn (direction is frozen) and keep stepping along the pressed axis.
 
 ### Tick Turning
 
-Runs in `Update` (gated on `RoundPhase::Playing`). Ticks each character's `IsTurning` timer; when a segment elapses it pops the next cardinal waypoint and advances the turn's internal `from` (which the 3/4 pose depends on), then either resets the timer for the next quarter or, once the final target is reached, commits `LookDirection` to the target and removes `IsTurning`. `LookDirection` is deliberately **not** changed mid-turn: it holds the character's original heading for the whole turn, so a shot fired mid-turn fires along the direction the player was facing before the turn began. A 90° turn is one segment; a 180° turn is two, routed through a fixed middle cardinal.
+Runs in `Update` (gated on `RoundPhase::Playing`). Ticks each character's `IsTurning` timer; when a segment elapses it pops the next cardinal waypoint off `remaining` and advances `IsTurning.from` (which the 3/4 pose depends on) to that waypoint, then either resets the timer for the next segment or, once `remaining` is empty, removes `IsTurning`. It never writes `LookDirection`: `handle_characters_input` already commits `LookDirection.direction` to the new facing the instant the turn starts, so a shot fired mid-turn fires along the already-committed new facing, not the pre-turn heading. A 90° turn is one segment; a 180° turn is two, routed through a fixed middle cardinal.
 
 ## Components, Resources and Messages CRUD
-
-### Read InputTimer resource
-
-Used in the following systems:
-- **handle_characters_input**: ticks and checks the throttle timer each frame
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-startup(("`Startup`")):::system-group
-update(("`Update`")):::system-group
-setup_input_timer["`**setup_input_timer**`"]
-handle_characters_input["`**handle_characters_input**`"]
-
-startup -.-> setup_input_timer
-update -.-> handle_characters_input
-
-world@{ shape: st-rect, label: "World" }
-input_timer_res@{ shape: doc, label: "InputTimer" }
-
-input_timer_res --> |belongs to| world
-
-setup_input_timer ---> |inserts resource| input_timer_res
-handle_characters_input ---> |reads & ticks| input_timer_res
-```
 
 ### Query Player entities for action attachment
 
 Used in the following systems:
-- **attach_players_actions**: detects `Player` + `Character` entities that were just added and do not yet carry an `InputMap<Action>`
+- **attach_players_actions**: detects `Player` + `Character` entities that were just added and do not yet carry an `InputMap<Action>` (this holds for a bot seat too — it never gains one), then reads `config.controllers.is_bot(player.player_id)` to decide which branch (bot or human) attaches below
 
 ```mermaid
 ---
@@ -113,12 +76,18 @@ players_query ---> |reads| pe_player
 players_query -..-> |filter Added| pe_player
 players_query -..-> |filter Without| pe_input_map
 players_query -..-> |filter With| pe_character
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+config_res --> |belongs to| world
+
+attach_players_actions ---> |reads `controllers.is_bot`| config_res
 ```
 
-### Write commands — attach InputMap
+### Write commands — attach InputMap or bot ActionState
 
 Used in the following systems:
-- **attach_players_actions**: inserts `InputMap<Action>` on each newly added `Player` entity
+- **attach_players_actions**: for each newly added `Player`, branches on `config.controllers.is_bot(player.player_id)` — a bot seat gets a bare `ActionState<Action>` plus the `Bot` marker and **no** `InputMap`; a human seat gets `InputMap<Action>` as before. Both branches also get `MoveRepeat` and `MovementSlide`.
 
 ```mermaid
 ---
@@ -135,18 +104,34 @@ attach_players_actions["`**attach_players_actions**`"]
 preupdate -.-> attach_players_actions
 
 player_entity@{ shape: st-rect, label: "Player" }
+bot_player_entity@{ shape: st-rect, label: "Player (bot seat)" }
 
 pe_input_map>"`**InputMap#60;Action#62;**`"]
+pe_action_state>"`**ActionState#60;Action#62;**`"]
+pe_bot>"`**Bot**`"]
+pe_move_repeat>"`**MoveRepeat**`"]
+pe_slide>"`**MovementSlide**`"]
 
 pe_input_map --> |inserted on| player_entity
+pe_move_repeat --> |inserted on| player_entity
+pe_slide --> |inserted on| player_entity
 
-attach_players_actions ---> |inserts component| pe_input_map
+pe_action_state --> |inserted on| bot_player_entity
+pe_bot --> |inserted on| bot_player_entity
+pe_move_repeat --> |inserted on| bot_player_entity
+pe_slide --> |inserted on| bot_player_entity
+
+attach_players_actions ---> |"inserts component (human)"| pe_input_map
+attach_players_actions ---> |"inserts component (bot)"| pe_action_state
+attach_players_actions ---> |"inserts component (bot)"| pe_bot
+attach_players_actions ---> |inserts component| pe_move_repeat
+attach_players_actions ---> |inserts component| pe_slide
 ```
 
 ### Query Character entities for input handling
 
 Used in the following systems:
-- **handle_characters_input**: reads action state, grid coords, and the optional `AbilityList` and `IsTurning` state, mutably updates look direction, for all `Character` entities (excluding those with `IsKnockedBack`); it also reads `MapInfo` + `ClaimedTile` to gate firing (see the separate section below)
+- **handle_characters_input**: reads action state, grid coords, and the optional `AbilityList` and `IsTurning` state; mutably updates look direction, `MoveRepeat`, and `MovementSlide`, for all `Character` entities (excluding those with `IsKnockedBack`); it also reads `MapInfo` + `ClaimedTile` to gate firing (see the separate section below)
 
 ```mermaid
 ---
@@ -176,12 +161,16 @@ pe_character>"`**Character**`"] --> |belongs to| character_entity
 pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| character_entity
 pe_ability_list>"`**AbilityList**`"] --> |belongs to| character_entity
 pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
+pe_move_repeat>"`**MoveRepeat**`"] --> |belongs to| character_entity
+pe_slide>"`**MovementSlide**`"] --> |belongs to| character_entity
 pe_is_knocked_back>"`**IsKnockedBack**`"] --> |belongs to| character_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_action_state
 players_query ---> |reads| pe_grid_coords
 players_query ---> |writes| pe_look_direction
+players_query ---> |writes| pe_move_repeat
+players_query ---> |writes| pe_slide
 players_query ---> |"reads (optional)"| pe_beam_charges
 players_query ---> |"reads (optional)"| pe_ability_list
 players_query ---> |"reads (optional)"| pe_is_turning
@@ -225,7 +214,7 @@ handle_characters_input ---> |reads `claimed_entities`| map_info_res
 ### Write EntityMoved messages
 
 Used in the following systems:
-- **handle_characters_input**: emits an `EntityMoved` message when the movement axis is non-zero, no turn is in progress, and the input timer has finished
+- **handle_characters_input**: emits an `EntityMoved` message whenever a step is due for the pressed `Action::Move` axis — immediately when stepping out of rest, otherwise once `MoveRepeat`'s timer finishes; a mid-run turn does not suppress this, so a turn can start and a step can fire the same frame
 
 
 ```mermaid
@@ -303,7 +292,7 @@ handle_characters_input ---> |inserts component| pe_is_turning
 ### Query turning characters
 
 Used in the following systems:
-- **tick_turning**: advances each `IsTurning` timer and, when the turn completes, commits `LookDirection` to the target facing and removes `IsTurning` (`LookDirection` is left unchanged mid-turn)
+- **tick_turning**: advances each `IsTurning` timer, writes `IsTurning.from` as each segment elapses, and removes `IsTurning` once the segment queue is empty; it never touches `LookDirection`, which `handle_characters_input` already committed to the new facing when the turn began
 
 ```mermaid
 ---
@@ -326,11 +315,9 @@ tick_turning ---> turners_query
 character_entity@{ shape: st-rect, label: "Character" }
 
 pe_entity>"`**Entity**`"] --> |belongs to| character_entity
-pe_look_direction>"`**LookDirection**`"] --> |belongs to| character_entity
 pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
 
 turners_query ---> |reads| pe_entity
-turners_query ---> |writes| pe_look_direction
 turners_query ---> |writes| pe_is_turning
 
 tick_turning ---> |removes component| pe_is_turning

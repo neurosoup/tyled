@@ -21,6 +21,9 @@ pub struct GameConfig {
     pub player: PlayerConfig,
     pub animation: AnimationConfig,
     pub effects: EffectsConfig,
+    pub telemetry: TelemetryConfig,
+    pub controllers: ControllersConfig,
+    pub bot: BotConfig,
 }
 
 #[derive(Reflect, Clone, Deserialize)]
@@ -110,6 +113,44 @@ pub struct EffectsConfig {
     pub knockback_tween_ms: u64,
     /// Milliseconds for the damage colour-flash tween.
     pub damage_flash_ms: u64,
+}
+
+#[derive(Reflect, Clone, Deserialize)]
+pub struct TelemetryConfig {
+    /// Whether play-telemetry records are written to `play_trace.jsonl`.
+    pub enabled: bool,
+    /// Total trace files kept (current + rotated backups).
+    pub history: u32,
+}
+
+#[derive(Reflect, Clone, Deserialize)]
+pub struct ControllersConfig {
+    /// Whether player 1 (P1) is driven by the bot instead of keyboard input.
+    pub player1_bot: bool,
+    /// Whether player 2 (P2) is driven by the bot instead of keyboard input.
+    pub player2_bot: bool,
+}
+
+impl ControllersConfig {
+    /// Whether the given `player_id` (0 = P1, 1 = P2) is bot-controlled.
+    pub fn is_bot(&self, player_id: u8) -> bool {
+        match player_id {
+            0 => self.player1_bot,
+            _ => self.player2_bot,
+        }
+    }
+}
+
+#[derive(Reflect, Clone, Deserialize)]
+pub struct BotConfig {
+    /// Milliseconds the bot waits between shots.
+    pub fire_cooldown_ms: u64,
+    /// How strongly the bot favors a shot that also passes through the opponent over the nearest available claim.
+    pub aggression: f32,
+    /// Milliseconds between bot decisions; paces movement/aim/fire choices.
+    pub think_interval_ms: u64,
+    /// Dijkstra cost to enter an enemy-owned tile while pathfinding. Higher = more strongly prefers safe routes.
+    pub hostile_cost: u32,
 }
 
 impl GameConfig {

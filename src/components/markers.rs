@@ -25,3 +25,6 @@ pub struct IsDead;
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Character;
+
+#[derive(Component, Default)]
+pub struct Bot;

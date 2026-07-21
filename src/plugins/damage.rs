@@ -84,7 +84,7 @@ fn apply_beam_damage(
 }
 
 /// Returns true when `position` holds a claimed tile owned by someone other than `character`.
-fn is_hostile_tile(
+pub(crate) fn is_hostile_tile(
     map_info: &MapInfo,
     claimed_tiles: &Query<&ClaimedTile>,
     position: GridCoords,

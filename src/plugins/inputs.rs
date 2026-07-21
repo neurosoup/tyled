@@ -26,7 +26,7 @@ pub(crate) fn plugin(app: &mut App) {
 
 /// Per-character auto-repeat state driving the tap-vs-hold movement behaviour.
 #[derive(Component, Default)]
-struct MoveRepeat {
+pub(crate) struct MoveRepeat {
     timer: Timer,
     held_axis: Vec2,
     moving: bool,
@@ -38,17 +38,27 @@ fn attach_players_actions(
     players: Query<(Entity, &Player), (Added<Player>, Without<InputMap<Action>>, With<Character>)>,
 ) {
     for (entity, player) in &players {
-        commands.entity(entity).insert((
-            Action::default_input_map(&player),
-            MoveRepeat::default(),
-            MovementSlide {
-                duration_ms: config.timing.move_repeat_rate_ms,
-            },
-        ));
+        let slide = MovementSlide {
+            duration_ms: config.timing.move_repeat_rate_ms,
+        };
+        if config.controllers.is_bot(player.player_id) {
+            commands.entity(entity).insert((
+                ActionState::<Action>::default(),
+                Bot,
+                MoveRepeat::default(),
+                slide,
+            ));
+        } else {
+            commands.entity(entity).insert((
+                Action::default_input_map(&player),
+                MoveRepeat::default(),
+                slide,
+            ));
+        }
     }
 }
 
-fn handle_characters_input(
+pub(crate) fn handle_characters_input(
     mut commands: Commands,
     time: Res<Time>,
     config: Res<GameConfig>,
