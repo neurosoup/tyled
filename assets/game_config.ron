@@ -58,13 +58,15 @@
         history: 3,                // [restart] total trace files kept (current + rotated backups)
     ),
     controllers: (
-        player1_bot: false,        // [next-round] P1 driven by the bot instead of keyboard input
+        player1_bot: true,        // [next-round] P1 driven by the bot instead of keyboard input
         player2_bot: true,        // [next-round] P2 driven by the bot instead of keyboard input
     ),
     bot: (
         fire_cooldown_ms: 400,     // [live] ms the bot waits between shots
         aggression: 0.5,           // [live] preference for a shot through the opponent over the nearest claim
-        think_interval_ms: 150,    // [live] ms between bot decisions; paces movement/aim/fire
-        hostile_cost: 2,          // [live] Dijkstra cost to enter an enemy tile; higher = safer routing
+        think_interval_ms: 120,    // [live] ms between bot decisions; paces movement/aim/fire
+        hostile_cost: 30,          // [live] Dijkstra cost to enter an enemy tile; higher = safer routing
+        player1_strike: false,   // [live] P1 uses the striking behaviour: hunt the opponent and strike, ignoring territory
+        player2_strike: false,   // [live] P2 uses the striking behaviour: hunt the opponent and strike, ignoring territory
     ),
 )

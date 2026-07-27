@@ -33,6 +33,7 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
     - `aggression` `[live]` — how strongly the bot favors a shot that also passes through the opponent, or a reposition target closer to the opponent, over the nearest available claim.
     - `think_interval_ms` `[live]` — milliseconds between bot decisions; paces movement/aim/fire choices.
     - `hostile_cost` `[live]` — Dijkstra cost to enter an enemy-owned tile while pathfinding; higher prefers safer routes.
+    - `player1_strike` / `player2_strike` `[live]` — whether that seat's bot uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory) instead of the default territory play.
 
 - `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
     - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.

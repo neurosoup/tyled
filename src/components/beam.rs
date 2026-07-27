@@ -14,5 +14,5 @@ pub struct Beam {
 pub enum BeamBehavior {
     #[default]
     Straight,
-    Backfill,
+    Lance,
 }

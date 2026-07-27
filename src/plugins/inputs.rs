@@ -101,10 +101,10 @@ pub(crate) fn handle_characters_input(
 
         if action_state.just_pressed(&Action::Shoot) {
             let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
-            let has_backfill = ability_list
-                .is_some_and(|list| list.0.contains(&AbilityDescriptor::Backfill));
+            let has_lance = ability_list
+                .is_some_and(|list| list.0.contains(&AbilityDescriptor::Lance));
             if has_charges
-                && resolve_fire(*grid_coords, has_backfill, &map_info, &claimed_query).is_some()
+                && resolve_fire(*grid_coords, has_lance, &map_info, &claimed_query).is_some()
             {
                 beam_fired_writer.write(BeamFired {
                     owner: entity,

@@ -59,7 +59,7 @@ pub(crate) fn resolve_fire(
 ) -> Option<BeamBehavior> {
     match (is_position_claimed(map_info, claimed_query, origin), can_override_block) {
         (true, false) => None,
-        (true, true) => Some(BeamBehavior::Backfill),
+        (true, true) => Some(BeamBehavior::Lance),
         (false, _) => Some(BeamBehavior::Straight),
     }
 }
@@ -86,12 +86,12 @@ fn spawn_beam(
             coords.x == beam_fired_message.origin.x && beam.direction.y != 0
         });
 
-        let has_backfill = ability_query
+        let has_lance = ability_query
             .get(beam_fired_message.owner)
-            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Backfill));
+            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Lance));
         let Some(behavior) = resolve_fire(
             beam_fired_message.origin,
-            has_backfill,
+            has_lance,
             &map_info,
             &claimed_query,
         ) else {
@@ -136,11 +136,11 @@ pub(crate) fn beam_step(
 
         match beam.behavior {
             // +----------------------------+
-            // | Backfill                   |
+            // | Lance                   |
             // | resolve on the first       |
             // | unclaimed tile ahead.      |
             // +----------------------------+
-            BeamBehavior::Backfill => {
+            BeamBehavior::Lance => {
                 if !(map_info.on_ground(next_position)
                     || map_info.on_forbidden_areas(next_position))
                 {
@@ -243,7 +243,7 @@ pub(crate) fn beam_step(
 }
 
 // Spend one charge per committed shot at fire time (not on resolve). A shot
-// that finds nothing to claim can still cost a charge — e.g. a Backfill beam
+// that finds nothing to claim can still cost a charge — e.g. a Lance beam
 // that reaches the map edge without finding an unclaimed tile. Each
 // `BeamFired` spawns exactly one beam, so this is exactly one charge per shot.
 fn spend_charge_on_fire(

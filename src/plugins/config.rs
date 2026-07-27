@@ -151,6 +151,20 @@ pub struct BotConfig {
     pub think_interval_ms: u64,
     /// Dijkstra cost to enter an enemy-owned tile while pathfinding. Higher = more strongly prefers safe routes.
     pub hostile_cost: u32,
+    /// Whether player 1 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
+    pub player1_strike: bool,
+    /// Whether player 2 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
+    pub player2_strike: bool,
+}
+
+impl BotConfig {
+    /// Whether the given `player_id` (0 = P1, 1 = P2) uses the striking behaviour.
+    pub fn strike_for(&self, player_id: u8) -> bool {
+        match player_id {
+            0 => self.player1_strike,
+            _ => self.player2_strike,
+        }
+    }
 }
 
 impl GameConfig {

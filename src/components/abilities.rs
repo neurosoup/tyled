@@ -10,14 +10,14 @@ pub struct AbilityList(pub Vec<AbilityDescriptor>);
 /// hot-reloaded via `file_watcher`, and persisted across sessions.
 #[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub enum AbilityDescriptor {
-    Backfill,
+    Lance,
 }
 
 /// Hardcoded per-player starting loadouts (Stage F2 — no draft UI yet).
 ///
 /// The single place to assign or swap P1/P2 kits between runs, the substrate
 /// the balancing testing protocol rides on: an empty list is Straight-only
-/// (the layer-1 control), a `Backfill` entry reproduces today's contextual
+/// (the layer-1 control), a `Lance` entry reproduces today's contextual
 /// inverted mode. Read by `initialize_players` when attaching each player's
 /// [`AbilityList`].
 #[derive(Resource, Clone)]
