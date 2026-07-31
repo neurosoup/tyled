@@ -605,12 +605,17 @@ meant to serve.
      inverted check, now gated on the descriptor. With Lance hardcoded on both
      players the game is observationally identical to pre-F1; empty list =
      Straight-only.
-  2. **`on_resolve`/`on_claim` resolver deferred to Slice 1** — Lance is
-     spawn-side behavior selection with no claim-side hook, so a resolver built
-     now would dispatch to nothing (§6's god-match warning). The first real
-     consumers are Slice 1's Overpenetration (`on_resolve`) + Tithe (`on_claim`);
-     the resolver ships there, in the claim plugin, per §7's "machinery attached
-     to the stage that needs it."
+  2. **`on_resolve` resolver deferred to Slice 1; `on_claim` deferred further**
+     — Lance is spawn-side behavior selection with no claim-side hook, so a
+     resolver built now would dispatch to nothing (§6's god-match warning).
+     Slice 1's real consumer is Overpenetration (`on_resolve`); that resolver
+     ships there, in the claim plugin, per §7's "machinery attached to the
+     stage that needs it." `on_claim` waits for a slice whose kit actually
+     needs it (e.g. Splitter/Ricochet/Chain Reaction) — Tithe alone doesn't
+     earn it: its synergy partners (Splitter, general Straight expansion)
+     aren't in scope yet, so drafting it in Slice 1 would only exercise the new
+     hook in a vacuum, and Solar Panels' passive regen already gives A its
+     flood-economy identity without it.
 - *abilities:* Lance (#2) as the first descriptor — today's "inverted"
   behavior reframed as an appended fallback entry — hardcoded on **both** players
   (plumbing proof; reproduces today's contextual inverted mode; *not* an
@@ -658,10 +663,13 @@ Each slice avoids the long-press input rework (A and D both), so they stay cheap
 
 **Slice 1 — A vs B** (first playable matchup).
 - *architecture (§6):* `on_charge_regen` tick (Solar Panels); `on_resolve`
-  enemy-owned-tile flip resolver (Overpenetration).
-- *abilities:* A = Solar Panels (#9) + Tithe (#11); B = Overpenetration (#3)
-  scaffold (± Lance). A's "payoff" is baseline Straight-expansion flooding —
-  no capstone yet, and it dodges the Full Draw long-press rework.
+  enemy-owned-tile flip resolver (Overpenetration). No `on_claim` hook this
+  slice (see Stage F2 decision #2) — Tithe (#11) is deferred to a later slice
+  that gives it real synergy partners, rather than justified alone.
+- *abilities:* A = Solar Panels (#9); B = Overpenetration (#3) scaffold
+  (± Lance). A's "payoff" is baseline Straight-expansion flooding, funded by
+  Solar Panels' passive regen — no capstone yet, and it dodges the Full Draw
+  long-press rework.
 - *balancing:* layers 2–4. Flood-rate vs. flip-rate — the B-beats-A leg *in
   spirit*.
 
