@@ -625,7 +625,7 @@ meant to serve.
   `doc-3` (maps).
 
 **Stage F3a — round loop + reset + win condition** *(the round/win half; the
-draft-UI half is Stage F3b)*.
+draft-UI half is Stage F3b)* — **IMPLEMENTED**.
 - *architecture (§6):* round segmentation implemented as the project's **first
   Bevy `States` machine**, `RoundPhase { Loading, Starting, Playing, Outcome }`
   — `Loading` waits for the map, `Starting` runs the "3 · 2 · 1 · GO!" intro
