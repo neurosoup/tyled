@@ -69,4 +69,8 @@
         player1_strike: false,   // [live] P1 uses the striking behaviour: hunt the opponent and strike, ignoring territory
         player2_strike: false,   // [live] P2 uses the striking behaviour: hunt the opponent and strike, ignoring territory
     ),
+    economy: (
+        solar_panels_tick_secs: 5.0,       // [live] seconds between Solar Panels regen ticks
+        solar_panels_tiles_per_charge: 10, // [live] owned tiles required per regenerated charge
+    ),
 )

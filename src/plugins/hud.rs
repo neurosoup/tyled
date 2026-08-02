@@ -140,19 +140,11 @@ fn animate_claimed_tiles(
     children_query: Query<&Children>,
     mut sprite_animations: Query<&mut SpritesheetAnimation>,
     digit_animations: If<Res<DigitAnimations>>,
-    map_info: Res<MapInfo>,
 ) {
-    let total = map_info.ground_entities.len() as u32;
-    if total == 0 {
-        return;
-    }
-
     for (player, count) in &players {
-        // Owned-tile count as a rounded percentage of the whole board (0..=100).
-        let percent = (count.current * 100 + total / 2) / total;
         animate_digits_for_player(
             player.player_id,
-            percent,
+            count.current,
             &mut digits,
             &children_query,
             &mut sprite_animations,

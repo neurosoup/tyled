@@ -9,13 +9,19 @@ use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Startup, setup_beam_step_timer);
+    app.add_systems(Startup, (setup_beam_step_timer, setup_solar_panels_timer));
     app.add_systems(
         Update,
-        (spawn_beam, beam_step, spend_charge_on_fire).run_if(in_state(RoundPhase::Playing)),
+        (
+            spawn_beam,
+            beam_step,
+            spend_charge_on_fire,
+            regen_charges_from_solar_panels,
+        )
+            .run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]
-    app.add_systems(Update, resync_beam_step_timer);
+    app.add_systems(Update, (resync_beam_step_timer, resync_solar_panels_timer));
 }
 
 #[derive(Resource)]
@@ -36,6 +42,54 @@ fn resync_beam_step_timer(config: Res<GameConfig>, timer: Option<ResMut<BeamStep
         timer.0.set_duration(std::time::Duration::from_secs_f32(
             config.timing.beam_step_secs,
         ));
+    }
+}
+
+#[derive(Resource)]
+pub struct SolarPanelsTimer(Timer);
+
+fn setup_solar_panels_timer(mut commands: Commands, config: Res<GameConfig>) {
+    commands.insert_resource(SolarPanelsTimer(Timer::from_seconds(
+        config.economy.solar_panels_tick_secs,
+        TimerMode::Repeating,
+    )));
+}
+
+#[cfg(feature = "dev")]
+fn resync_solar_panels_timer(config: Res<GameConfig>, timer: Option<ResMut<SolarPanelsTimer>>) {
+    if config.is_changed()
+        && let Some(mut timer) = timer
+    {
+        timer.0.set_duration(std::time::Duration::from_secs_f32(
+            config.economy.solar_panels_tick_secs,
+        ));
+    }
+}
+
+fn regen_charges_from_solar_panels(
+    time: Res<Time>,
+    config: Res<GameConfig>,
+    mut solar_panels_timer: ResMut<SolarPanelsTimer>,
+    mut players: Query<(Entity, &AbilityList, &ClaimedTileCount, &mut BeamCharges)>,
+    mut charge_regen_writer: MessageWriter<ChargeRegen>,
+) {
+    solar_panels_timer.0.tick(time.delta());
+    if !solar_panels_timer.0.is_finished() {
+        return;
+    }
+    for (entity, abilities, tile_count, mut charges) in &mut players {
+        if !abilities.0.contains(&AbilityDescriptor::SolarPanels) {
+            continue;
+        }
+        let gained = tile_count.current / config.economy.solar_panels_tiles_per_charge;
+        if gained == 0 {
+            continue;
+        }
+        charges.current = (charges.current + gained).min(charges.max);
+        charge_regen_writer.write(ChargeRegen {
+            owner: entity,
+            amount: gained,
+        });
     }
 }
 
@@ -118,10 +172,34 @@ fn spawn_beam(
     }
 }
 
+/// Whether `position` is claimed by an entity other than `owner` and `owner`'s
+/// `AbilityList` contains [`AbilityDescriptor::Overpenetration`] — i.e. the beam should
+/// punch through this enemy tile instead of stopping short of it.
+fn overpenetrates_enemy_tile(
+    map_info: &MapInfo,
+    claimed_query: &Query<&ClaimedTile>,
+    ability_query: &Query<&AbilityList>,
+    owner: Entity,
+    position: GridCoords,
+) -> bool {
+    let is_enemy_tile = map_info
+        .claimed_entities
+        .get(&position)
+        .and_then(|entity| claimed_query.get(*entity).ok())
+        .and_then(|claimed_tile| claimed_tile.owner)
+        .is_some_and(|tile_owner| tile_owner != owner);
+
+    is_enemy_tile
+        && ability_query
+            .get(owner)
+            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Overpenetration))
+}
+
 pub(crate) fn beam_step(
     mut commands: Commands,
     mut beams_query: Query<(Entity, &Beam, &mut GridCoords)>,
     claimed_query: Query<&ClaimedTile>,
+    ability_query: Query<&AbilityList>,
     time: Res<Time>,
     mut beam_step_timer: ResMut<BeamStepTimer>,
     map_info: Res<MapInfo>,
@@ -209,6 +287,23 @@ pub(crate) fn beam_step(
                             false
                         }
                     });
+
+                if is_next_already_claimed
+                    && overpenetrates_enemy_tile(
+                        &map_info,
+                        &claimed_query,
+                        &ability_query,
+                        beam.owner,
+                        next_position,
+                    )
+                {
+                    beam_resolved_writer.write(BeamResolved {
+                        position: next_position,
+                        owner: beam.owner,
+                    });
+                    commands.entity(beam_entity).despawn();
+                    continue;
+                }
 
                 if is_next_already_claimed {
                     // Move back to the last unclaimed position in case it's a forbidden area

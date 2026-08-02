@@ -50,9 +50,7 @@ pub struct ChargeSpent {
     pub amount: u32,
 }
 
-// Fired when a player regains beam charges. No emitter exists yet — the first
-// regen source is Solar Panels (Slice 1). Declared now as part of the substrate.
-#[allow(dead_code)] // emitted + read starting Slice 1 (Solar Panels)
+// Fired when a player regains beam charges.
 #[derive(Message, Debug)]
 pub struct ChargeRegen {
     pub owner: Entity,

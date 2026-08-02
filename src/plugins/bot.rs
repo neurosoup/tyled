@@ -113,21 +113,35 @@ fn bot_think(
         let coords = *coords;
         let opponent = all.iter().find(|(e, _)| *e != entity).map(|(_, c)| *c);
         let has_lance = abilities.is_some_and(|list| list.0.contains(&AbilityDescriptor::Lance));
+        let has_overpen =
+            abilities.is_some_and(|list| list.0.contains(&AbilityDescriptor::Overpenetration));
         let has_charges = charges.map_or(true, |c| !c.is_empty());
         let behavior = resolve_fire(coords, has_lance, &map_info, &claimed_query);
+
+        // Reach, but an exposed enemy frontier tile counts as reach 1 when the bot has
+        // Overpenetration — a flip is at least as good as an ordinary reach-1 claim.
+        let effective_reach = |dir: GridCoords| -> u32 {
+            let n = reach(&map_info, &claimed_query, coords, dir);
+            if n == 0 && has_overpen && overpen_target(&map_info, &claimed_query, coords, dir, entity)
+            {
+                1
+            } else {
+                n
+            }
+        };
 
         let best_fire: Option<(GridCoords, u32)> = match behavior {
             Some(BeamBehavior::Straight) => {
                 // Commit to the current facing until its line is exhausted, then rotate to
                 // the longest remaining reach. Avoids swivelling between equal-reach directions.
                 let facing = look.to_grid_coords();
-                let facing_reach = reach(&map_info, &claimed_query, coords, facing);
+                let facing_reach = effective_reach(facing);
                 if facing_reach >= 1 {
                     Some((facing, facing_reach))
                 } else {
                     CARDINALS
                         .into_iter()
-                        .map(|dir| (dir, reach(&map_info, &claimed_query, coords, dir)))
+                        .map(|dir| (dir, effective_reach(dir)))
                         .filter(|(_, n)| *n >= 1)
                         .max_by_key(|(_, n)| *n)
                 }
@@ -430,6 +444,24 @@ fn reach(
         pos = pos + dir;
     }
     count
+}
+
+/// Whether the immediate next tile in `dir` from `from` is claimed by an entity other than
+/// `bot` — an exposed enemy frontier tile an Overpenetration beam can flip.
+fn overpen_target(
+    map_info: &MapInfo,
+    claimed_query: &Query<&ClaimedTile>,
+    from: GridCoords,
+    dir: GridCoords,
+    bot: Entity,
+) -> bool {
+    let pos = from + dir;
+    map_info
+        .claimed_entities
+        .get(&pos)
+        .and_then(|entity| claimed_query.get(*entity).ok())
+        .and_then(|claimed_tile| claimed_tile.owner)
+        .is_some_and(|owner| owner != bot)
 }
 
 /// Landing tile of a Lance shot from `from` in `dir`: pierces claimed/forbidden tiles and
