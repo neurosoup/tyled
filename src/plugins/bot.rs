@@ -338,44 +338,93 @@ fn bot_think(
             brain.shooting = false;
 
             let reachable = dijkstra_first_steps(&map_info, &claimed_query, entity, coords, hostile_cost);
-            // Any reachable unclaimed tile is a valid target: on arrival the bot can always
-            // claim it (a runway shot, or firing into a blocked neighbour to claim the tile
-            // itself), so it never strands on an unclaimable one.
-            let unclaimed = |t: GridCoords| {
-                t != coords
-                    && reachable.contains_key(&t)
-                    && !is_position_claimed(&map_info, &claimed_query, t)
-            };
-            let target = brain
-                .target
-                .filter(|t| unclaimed(*t))
-                .or_else(|| {
-                    reachable
-                        .iter()
-                        .filter(|(t, _)| !is_position_claimed(&map_info, &claimed_query, **t))
-                        .min_by(|(a, (a_cost, _)), (b, (b_cost, _))| {
-                            reposition_score(**a, *a_cost, opponent, aggression)
-                                .total_cmp(&reposition_score(**b, *b_cost, opponent, aggression))
-                                .then_with(|| manhattan(coords, **a).cmp(&manhattan(coords, **b)))
-                        })
-                        .map(|(t, _)| *t)
-                })
-                // Board fully claimed: pressure the opponent rather than freeze.
-                .or_else(|| opponent.filter(|foe| reachable.contains_key(foe)));
-            brain.target = target;
 
-            match target.and_then(|t| reachable.get(&t).map(|(cost, step)| (t, *cost, *step))) {
-                Some((t, cost, step)) => {
-                    let behaviour = if aggression >= 0.5 { "aggress" } else { "reposition" };
-                    let unit = Vec2::new(step.x as f32, step.y as f32);
-                    (
-                        unit,
-                        behaviour,
-                        format!("heading toward {t:?}, cost {cost}"),
-                        false,
-                    )
+            if !has_charges {
+                // No charges and nothing to fire: hunting for a claim/flip target is moot, so
+                // the only useful goal is minimizing damage until charges return (if ever).
+                if !is_hostile_tile(&map_info, &claimed_query, coords, entity) {
+                    brain.target = None;
+                    (Vec2::ZERO, "hold", "no charges; holding safe ground".to_string(), false)
+                } else {
+                    let retreat = reachable
+                        .iter()
+                        .filter(|(t, _)| !is_hostile_tile(&map_info, &claimed_query, **t, entity))
+                        .min_by_key(|(_, (cost, _))| *cost)
+                        .map(|(t, (cost, step))| (*t, *cost, *step));
+                    brain.target = retreat.map(|(t, _, _)| t);
+                    match retreat {
+                        Some((t, cost, step)) => (
+                            Vec2::new(step.x as f32, step.y as f32),
+                            "retreat",
+                            format!("no charges; retreating to {t:?}, cost {cost}"),
+                            false,
+                        ),
+                        None => (
+                            Vec2::ZERO,
+                            "idle",
+                            "no charges; no safe retreat found".to_string(),
+                            false,
+                        ),
+                    }
                 }
-                None => (Vec2::ZERO, "idle", "no reachable target".to_string(), false),
+            } else {
+                // A valid target is any reachable unclaimed tile (on arrival the bot can always
+                // claim it), or, with Overpenetration, a reachable enemy-claimed tile it can flip.
+                let valid_target = |t: GridCoords| {
+                    t != coords
+                        && reachable.contains_key(&t)
+                        && (!is_position_claimed(&map_info, &claimed_query, t)
+                            || (has_overpen && is_hostile_tile(&map_info, &claimed_query, t, entity)))
+                        && !all.iter().any(|(other, pos)| *other != entity && *pos == t)
+                };
+                let overpen_bonus = config.bot.overpen_bonus;
+                let target = brain
+                    .target
+                    .filter(|t| valid_target(*t))
+                    .or_else(|| {
+                        reachable
+                            .iter()
+                            .filter(|(t, _)| valid_target(**t))
+                            .min_by(|(a, (a_cost, _)), (b, (b_cost, _))| {
+                                let a_flip =
+                                    has_overpen && is_hostile_tile(&map_info, &claimed_query, **a, entity);
+                                let b_flip =
+                                    has_overpen && is_hostile_tile(&map_info, &claimed_query, **b, entity);
+                                reposition_score(**a, *a_cost, opponent, aggression, overpen_bonus, a_flip)
+                                    .total_cmp(&reposition_score(
+                                        **b, *b_cost, opponent, aggression, overpen_bonus, b_flip,
+                                    ))
+                                    .then_with(|| manhattan(coords, **a).cmp(&manhattan(coords, **b)))
+                            })
+                            .map(|(t, _)| *t)
+                    })
+                    // Board fully claimed: pressure the opponent rather than freeze — target a
+                    // tile adjacent to them, not their exact square (which would just bounce off
+                    // them via the collision system instead of ever arriving).
+                    .or_else(|| {
+                        opponent.and_then(|foe| {
+                            CARDINALS
+                                .into_iter()
+                                .map(|dir| foe + dir)
+                                .filter(|adjacent| reachable.contains_key(adjacent))
+                                .min_by_key(|adjacent| reachable[adjacent].0)
+                        })
+                    });
+                brain.target = target;
+
+                match target.and_then(|t| reachable.get(&t).map(|(cost, step)| (t, *cost, *step))) {
+                    Some((t, cost, step)) => {
+                        let behaviour = if aggression >= 0.5 { "aggress" } else { "reposition" };
+                        let unit = Vec2::new(step.x as f32, step.y as f32);
+                        (
+                            unit,
+                            behaviour,
+                            format!("heading toward {t:?}, cost {cost}"),
+                            false,
+                        )
+                    }
+                    None => (Vec2::ZERO, "idle", "no reachable target".to_string(), false),
+                }
             }
         };
 
@@ -416,12 +465,22 @@ fn fires_toward_opponent(from: GridCoords, dir: GridCoords, opponent: Option<Gri
     })
 }
 
-fn reposition_score(target: GridCoords, cost: u32, opponent: Option<GridCoords>, aggression: f32) -> f32 {
+fn reposition_score(
+    target: GridCoords,
+    cost: u32,
+    opponent: Option<GridCoords>,
+    aggression: f32,
+    overpen_bonus: f32,
+    is_flip_target: bool,
+) -> f32 {
     let mut score = cost as f32;
     if aggression >= 0.5
         && let Some(foe) = opponent
     {
         score -= aggression * 10.0 / (1.0 + manhattan(target, foe) as f32);
+    }
+    if is_flip_target {
+        score -= overpen_bonus;
     }
     score
 }

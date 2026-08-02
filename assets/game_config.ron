@@ -67,6 +67,7 @@
         aggression: 0.5,           // [live] preference for a shot through the opponent over the nearest claim
         think_interval_ms: 120,    // [live] ms between bot decisions; paces movement/aim/fire
         hostile_cost: 30,          // [live] Dijkstra cost to enter an enemy tile; higher = safer routing
+        overpen_bonus: 8.0,        // [live] how eager the bot is to go flip an enemy tile via Overpenetration; higher = travels further out of its way for one, 0 = only takes convenient flips
         player1_strike: false,   // [live] P1 uses the striking behaviour: hunt the opponent and strike, ignoring territory
         player2_strike: false,   // [live] P2 uses the striking behaviour: hunt the opponent and strike, ignoring territory
     ),
