@@ -372,9 +372,15 @@ Three conditions, resolved by priority:
    reached faster; add it once the race feels good.
 3. **Timeout** — a mandatory backstop so no round can stall forever; on expiry
    resolve by **tile count, then HP** (then seat/coin-flip if still tied).
+4. **Charge exhaustion** — a backstop distinct from timeout: ends the round the
+   instant both players have spent their last charge and no beam is still in
+   flight, without waiting out the timer. Not a third vector — it's the same
+   "nobody can act further" case as timeout arriving early, and resolves
+   identically: tile count, then HP, then seat.
 
-Shipping only #1 + #3 (kill + most-tiles-at-timeout) already covers both vectors;
-#2 is a satisfying explicit finish line layered on later. **Balance crux**: the
+Shipping #1 + #3 + #4 (kill, most-tiles-at-timeout, and the charge-exhaustion
+backstop) already covers both vectors; #2 is a satisfying explicit finish line
+layered on later. **Balance crux**: the
 two vectors must be roughly *comparably fast*, or whichever resolves quicker
 dominates and the other archetype (§4) is dead on arrival — tuned via N, timer
 length, damage rates, and board size (see the board-size thread in §8). This
@@ -526,21 +532,62 @@ control free: Straight is always entry 0 and drafted abilities are the descripto
 list on top, so **"Straight-only" = empty descriptor list.** Every stage's
 *balancing* line below refers to these layers:
 
+**Vocabulary for the Mode notes below**: an ability is **decision-free** if its
+payoff is invariant to the aiming/targeting judgment a player makes every shot
+regardless of loadout (Solar Panels — a timer × owned-tile-count tick, no
+interaction with where/when anyone shoots); it's **decision-bearing** if the
+payoff depends on that judgment (Overpenetration — only pays off if you aim at
+an enemy-owned tile instead of an unclaimed one; `src/plugins/bot.rs`'s
+`overpen_target`/`effective_reach` exist specifically to teach the bot this).
+This is orthogonal to "passive" (§2/§3's sense: no separate activation
+input) — Overpenetration is passive *and* decision-bearing at once. A bot's
+heuristic is one plausible policy for a decision-bearing ability, not proven
+skilled play, so bot-vs-bot data for one is a **power floor**, not a ceiling.
+
 1. **Straight mirror (both empty) → seat calibration.** Tyled has P1/P2 spawn +
    input asymmetry; the pure-baseline game's length and seat advantage are the
-   *delta reference* for everything downstream. **Run it with both win vectors
-   live (kill + most-tiles-at-timeout, §5), not kill-only** — a kill-only
-   baseline rewards beam-spam and plays flat, hiding the territory vector the
-   downstream archetypes are built on, so calibrating against it would
-   misattribute the tile vector's contribution to the abilities layered on top.
+   *delta reference* for everything downstream. **Run it with all round-ending
+   conditions live (kill, most-tiles-at-timeout, charge exhaustion — §5), not
+   kill-only** — a kill-only baseline rewards beam-spam and plays flat, hiding
+   the territory vector the downstream archetypes are built on, so calibrating
+   against it would misattribute the tile vector's contribution to the
+   abilities layered on top. Report the **distribution of ending reason**
+   (`kill`/`timeout`/`charge_exhaustion`), not just win rate — which condition
+   is actually resolving most games changes what the calibration means.
+   **Mode: bot-vs-bot, preferred over human data.** Both seats run the
+   identical decision-free heuristic, so there's no kit judgment for skill to
+   contaminate — this isolates the spawn/input seat bias more cleanly than
+   human variance would.
 2. **Kit vs. Straight-only → absolute power** ("does this kit earn its slots?").
    Each archetype kit vs. the empty baseline — e.g. a B ability like Lance is
    exercised here as part of B: `{Overpen, Lance}` vs. `{}`.
+   **Mode: bot-vs-bot is trustworthy for decision-free abilities** (Solar
+   Panels). **For decision-bearing abilities (Overpenetration and beyond),
+   bot-vs-bot gives only a power floor** — supplement with solo human-vs-bot
+   as a cheap, continuous sanity check that the bot's heuristic isn't leaving
+   obvious value on the table before trusting the number.
 3. **Kit vs. kit → the RPS matchup legs.** Full kits both sides; the *relative*
-   matchup, not absolute power.
+   matchup, not absolute power. Report the ending-reason distribution here too
+   (same reasoning as layer 1) — a matchup that resolves mostly by charge
+   exhaustion rather than tiles-at-timeout is telling a different story than
+   the "flood-rate vs. flip-rate" framing assumes.
+   **Mode: the most exposed layer — bot-vs-bot alone can't separate "kit A
+   beats kit B" from "the bot exploits kit A's decisions better than kit B's."**
+   Solo human-vs-bot doesn't fix this either — it only tests one human against
+   the *other* kit's fixed bot policy, shifting the same confound onto one
+   side instead of removing it. Treat any bot-only or solo-vs-bot result here
+   as provisional; require at least one seat-swapped **human-vs-human** pass
+   before writing an RPS-leg conclusion into this document as settled —
+   mandatory once a kit graduates past its current scaffold (e.g. B once
+   Contested Ground + Breach lands).
 4. **Ablation → attribute power within a kit.** Kit with one ability removed vs.
    the same opponent, diffed — isolates Lance in B, Solar Panels vs. Tithe in
    A, Splitter vs. Ricochet in D.
+   **Mode: bot-vs-bot is the most robust of the "real" layers** — it diffs the
+   same fixed policy with and without one ability, so a bot-heuristic weakness
+   mostly cancels out in the diff. A human spot-check is worth it for
+   decision-bearing abilities, but this is the last layer to worry about, not
+   the first.
 
 **Seat-swap every configuration** (run both P1↔P2), differenced against the
 layer-1 calibration. **Lance is a B ability, never neutral scenery** — for
@@ -550,12 +597,19 @@ side (which would hide its contribution and contaminate the A-vs-B differential)
 
 **Substrate now shipped**: a heuristic bot (`src/plugins/bot.rs`) and a
 play-telemetry sink (`src/plugins/telemetry.rs`) exist and play correctly,
-giving every layer above a way to generate self-play games and log
-actions/decisions/outcomes to `play_trace.jsonl` for analysis, instead of only
-manual human-run matches. See `backlog/docs/doc-20 - 018-Bot-plugin.md` and
-`backlog/docs/doc-21 - 019-Telemetry-plugin.md` for the present-state
-mechanics; this section's four layers are the protocol that substrate is
-meant to serve.
+instead of only manual human-run matches. See `backlog/docs/doc-20 -
+018-Bot-plugin.md` and `backlog/docs/doc-21 - 019-Telemetry-plugin.md` for the
+present-state mechanics; this section's four layers are the protocol that
+substrate is meant to serve. Concretely: batch N bot-vs-bot rounds per
+configuration per seat (telemetry already tags each player's `controller` as
+bot or human, so bot-vs-bot is first-class, not a workaround), then aggregate
+from `play_trace.jsonl`'s `OutcomeRecord` — win rate, the ending-reason
+distribution (layers 1/3 above), tile count, HP, charges spent.
+
+**Round-knob numbers this protocol produces are provisional, not final** — see
+§8's "over-fitting the round knobs" thread. Don't lock timer/N/damage-rate
+values off Slice 1/2 data alone; the kill vector has no draftable acceleration
+yet, so numbers tuned now risk double-correcting once later HP abilities land.
 
 ### Foundation
 
