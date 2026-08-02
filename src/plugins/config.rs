@@ -47,6 +47,8 @@ pub struct DamageConfig {
     pub on_enter: f32,
     /// Damage from a beam passing through a character.
     pub beam_contact: f32,
+    /// Damage dealt to the losing side of a player-vs-player collision.
+    pub collision: f32,
     /// Seconds between standing-damage ticks. Lower = damage stacks faster.
     pub tick_secs: f32,
 }

@@ -130,6 +130,16 @@ impl GridCoords {
         self.to_translation_with_z_index(map_info, 0)
     }
 
+    pub fn to_world_pos(self, map_info: &MapInfo) -> Vec2 {
+        TilePos::from(self).center_in_world(
+            &map_info.map_size,
+            &map_info.grid_size,
+            &map_info.tile_size,
+            &map_info.map_type,
+            &map_info.map_anchor,
+        )
+    }
+
     pub fn to_tile_pos(self, map_info: &MapInfo) -> Option<TilePos> {
         TilePos::from_i32_pair(self.x, self.y, &map_info.map_size)
     }

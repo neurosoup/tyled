@@ -19,6 +19,7 @@
         standing: 1.0,            // [live] damage per tick on a hostile tile
         on_enter: 5.0,            // [live] damage on moving onto a hostile tile
         beam_contact: 1.0,        // [live] damage from a beam passing through you
+        collision: 5.0,           // [live] damage to the losing side of a player-vs-player collision
         tick_secs: 0.5,           // [live] seconds between standing-damage ticks
     ),
     round: (

@@ -10,6 +10,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<ChargeSpent>();
     app.add_message::<ChargeRegen>();
     app.add_message::<DamageableDied>();
+    app.add_message::<CharacterCollision>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -60,4 +61,11 @@ pub struct ChargeRegen {
 #[derive(Message)]
 pub struct DamageableDied {
     pub entity: Entity,
+}
+
+// Fired when a player-vs-player collision resolves with a clear losing
+// side (the side with the smaller/zero step distance).
+#[derive(Message)]
+pub struct CharacterCollision {
+    pub loser: Entity,
 }

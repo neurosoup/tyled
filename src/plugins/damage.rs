@@ -16,6 +16,7 @@ pub(crate) fn plugin(app: &mut App) {
         (
             (apply_owned_tile_entry_damage, apply_owned_tile_damage).chain(),
             apply_beam_damage,
+            apply_collision_damage,
         )
             .run_if(in_state(RoundPhase::Playing)),
     );
@@ -79,6 +80,27 @@ fn apply_beam_damage(
                     direction: beam.direction,
                 });
             }
+        }
+    }
+}
+
+fn apply_collision_damage(
+    mut collision_reader: MessageReader<CharacterCollision>,
+    mut damageable_died_writer: MessageWriter<DamageableDied>,
+    config: Res<GameConfig>,
+    mut characters_query: Query<&mut Health, With<Character>>,
+) {
+    for collision in collision_reader.read() {
+        if let Ok(mut health) = characters_query.get_mut(collision.loser) {
+            if health.current <= 0.0 {
+                continue;
+            }
+            deal_damage(
+                collision.loser,
+                &mut health,
+                config.damage.collision,
+                &mut damageable_died_writer,
+            );
         }
     }
 }
