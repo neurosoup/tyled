@@ -154,8 +154,8 @@ pub struct BotConfig {
     pub think_interval_ms: u64,
     /// Dijkstra cost to enter an enemy-owned tile while pathfinding. Higher = more strongly prefers safe routes.
     pub hostile_cost: u32,
-    /// How eager the bot is to go flip an enemy-claimed tile via Overpenetration instead of just claiming the nearest free tile. Higher = it'll travel further out of its way for a flip. 0 = it only bothers when a flip is already about as convenient as an ordinary claim.
-    pub overpen_bonus: f32,
+    /// Maximum Dijkstra cost worth paying to reach a tile from which Overpenetration can flip an enemy tile. Above this, chasing isn't worth it and the bot falls back to ordinary territory claiming instead. Roughly comparable to `hostile_cost` — a low value means it only chases flips reachable without crossing hostile ground at all; a high value lets it tunnel deep through enemy territory to get there.
+    pub chase_cost_threshold: u32,
     /// Whether player 1 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
     pub player1_strike: bool,
     /// Whether player 2 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
