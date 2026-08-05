@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-08-05 12:00'
 ---
 # Maps Plugin
 
@@ -11,7 +11,7 @@ Contains systems related to map loading and entity-related initializations. This
 
 ## Plugin workflow
 
-- Startup phase
+- `OnEnter(AppState::InRound)` (see the Menu plugin doc — this fires once the main menu's matchup selection is confirmed, not unconditionally at launch)
     - `load_maps` spawns two `TiledMap` entities: one for `level1.tmx` (tagged `CurrentLevel`) and one for `hud.tmx` (tagged `HudMap`).
     - The `TiledPlugin` later emits `TiledEvent<MapCreated>` for each loaded map.
 - Update phase (chained)
@@ -37,7 +37,7 @@ Contains systems related to map loading and entity-related initializations. This
 
 ### Load Maps
 
-Spawns two `TiledMap` entities at startup:
+Runs on `OnEnter(AppState::InRound)` — once the main menu's matchup selection is confirmed (see the Menu plugin doc), not unconditionally at `Startup`. Spawns two `TiledMap` entities:
 - `level1.tmx` — the current game level, tagged with the `CurrentLevel` marker component.
 - `hud.tmx` — the heads-up display overlay map, tagged with the `HudMap` marker component.
 

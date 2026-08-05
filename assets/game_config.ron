@@ -8,6 +8,8 @@
 //   [live]       applies immediately on save
 //   [next-round] applies when the round next resets (or the next entity spawn)
 //   [restart]    only read once at startup; needs a re-run to take effect
+//   [menu]       applies once at launch, then overwritten by the main-menu
+//                matchup selection
 (
     timing: (
         move_repeat_delay_ms: 160, // [live] hold time before auto-walk starts (tap-vs-hold threshold)
@@ -59,8 +61,8 @@
         history: 3,                // [restart] total trace files kept (current + rotated backups)
     ),
     controllers: (
-        player1_bot: true,        // [next-round] P1 driven by the bot instead of keyboard input
-        player2_bot: true,        // [next-round] P2 driven by the bot instead of keyboard input
+        player1_bot: false,       // [menu] overridden by the main-menu matchup selection at launch
+        player2_bot: false,       // [menu] overridden by the main-menu matchup selection at launch
     ),
     bot: (
         fire_cooldown_ms: 400,     // [live] ms the bot waits between shots

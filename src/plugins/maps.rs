@@ -15,7 +15,7 @@ pub(crate) fn plugin(app: &mut App) {
 
     app.init_resource::<MapInfo>();
 
-    app.add_systems(Startup, load_maps);
+    app.add_systems(OnEnter(AppState::InRound), load_maps);
     app.add_systems(
         Update,
         (

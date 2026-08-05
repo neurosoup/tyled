@@ -3,7 +3,7 @@ id: doc-19
 title: '[017] Config plugin'
 type: other
 created_date: '2026-07-19 12:00'
-updated_date: '2026-07-21 12:00'
+updated_date: '2026-08-05 12:00'
 ---
 # Config Plugin
 
@@ -22,11 +22,11 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
 
 ## Concepts
 
-- `GameConfig` (`src/plugins/config.rs`) — a `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` struct grouping the knobs by domain: `timing`, `damage`, `round`, `camera`, `player`, `animation`, `effects`, `telemetry`, `controllers`, `bot`. Each field carries a one-line doc; the `.ron` mirrors them and tags each with when an edit takes effect (`[live]`, `[next-round]`, `[restart]`). Deriving `Reflect` also surfaces it in the dev inspector.
+- `GameConfig` (`src/plugins/config.rs`) — a `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` struct grouping the knobs by domain: `timing`, `damage`, `round`, `camera`, `player`, `animation`, `effects`, `telemetry`, `controllers`, `bot`. Each field carries a one-line doc; the `.ron` mirrors them and tags each with when an edit takes effect (`[live]`, `[next-round]`, `[restart]`, `[menu]`). Deriving `Reflect` also surfaces it in the dev inspector.
 
 - `controllers` (`ControllersConfig`) — which seats are bot-driven, read by the Input plugin's `attach_players_actions` when a `Player` entity is first spawned:
-    - `player1_bot` `[next-round]` — whether P1 is driven by the bot instead of keyboard input.
-    - `player2_bot` `[next-round]` — whether P2 is driven by the bot instead of keyboard input.
+    - `player1_bot` `[menu]` — whether P1 is driven by the bot instead of keyboard input. This `.ron` default is overwritten at launch by whatever matchup the player picks in the main menu (see the Menu plugin doc), before any map — and thus any `Player` entity — is spawned.
+    - `player2_bot` `[menu]` — whether P2 is driven by the bot instead of keyboard input; same main-menu override as `player1_bot`.
 
 - `bot` (`BotConfig`) — tunables read every beat by the Bot plugin's `bot_think` (see the Bot plugin doc):
     - `fire_cooldown_ms` `[live]` — milliseconds the bot waits between shots.
@@ -43,7 +43,7 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
 
 - **Hot-reload (dev only)** — a small custom `AssetLoader` (`GameConfigLoader`) deserializes the `.ron` into a `GameConfig` asset. `load_config_asset` loads the handle at `Startup`; `apply_config_reload` mirrors each `AssetEvent::Modified`/`LoadedWithDependencies` back into the `GameConfig` resource. `Res<GameConfig>` change-detection then propagates the new values.
 
-- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, animation frame timings, and which players are bots) apply on the next round or next spawn.
+- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, animation frame timings) apply on the next round or next spawn. `controllers.player1_bot`/`player2_bot` are a special case (`[menu]`): the `.ron` value seeds `GameConfig` at launch, but is immediately overwritten once the player confirms a matchup in the main menu (see the Menu plugin doc) — before any map or `Player` entity exists — so its `.ron` default only matters for the brief window before that first confirmation.
 
 ## Plugin workflow
 

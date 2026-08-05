@@ -25,6 +25,7 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::telemetry::plugin);
         app.add_plugins(plugins::camera::plugin);
         app.add_plugins(plugins::text::plugin);
+        app.add_plugins(plugins::menu::plugin);
         app.add_plugins(plugins::inputs::plugin);
         app.add_plugins(plugins::bot::plugin);
         app.add_plugins(plugins::effects::plugin);
