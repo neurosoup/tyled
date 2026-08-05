@@ -38,7 +38,7 @@ Menu rows are rendered with the Text plugin's `spawn_label` onto the overlay cam
 
 ### Ensure Menu Spawned
 
-Runs every frame while `in_state(AppState::MainMenu)`, but only does anything once. Takes `FontAtlas` as `Option` and returns early until the Text plugin's `Startup` system has loaded it — deliberately not an `OnEnter(AppState::MainMenu)` system, since that schedule fires before `Startup` completes and `FontAtlas` wouldn't exist yet. Once available, if no `MenuLabel` entities exist it spawns one label per `MENU_ENTRIES` row via `spawn_label`, stacked vertically at y-offsets `+24.0, 0.0, -24.0`, onto `RenderLayers::layer(OVERLAY_RENDER_LAYER)`. The currently-selected row is prefixed with `"!"`, every other row with a leading space, so the text stays aligned either way (the font atlas has no dedicated cursor glyph).
+Runs every frame while `in_state(AppState::MainMenu)`, but only does anything once. Takes `FontAtlas` as `Option` and returns early until the Text plugin's `Startup` system has loaded it — deliberately not an `OnEnter(AppState::MainMenu)` system, since that schedule fires before `Startup` completes and `FontAtlas` wouldn't exist yet. Once available, if no `MenuLabel` entities exist it spawns one label per `MENU_ENTRIES` row via `spawn_label`, stacked vertically at y-offsets `+24.0, 0.0, -24.0`, onto `RenderLayers::layer(OVERLAY_RENDER_LAYER)`. The currently-selected row is prefixed with the font atlas's selector glyph (`>`), every other row with a leading space, so the text stays aligned either way.
 
 ### Update Selection
 

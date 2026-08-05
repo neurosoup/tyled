@@ -18,7 +18,9 @@ pub const FONT_ROWS: u32 = 3;
 /// Per-cell pixel size in the atlas.
 pub const FONT_CELL: UVec2 = UVec2::splat(16);
 /// Horizontal advance between adjacent glyph origins, in atlas pixel units.
-pub const FONT_ADVANCE: f32 = 16.0;
+/// Every glyph's drawn pixels fall within local x 2-13 of its 16px cell, so
+/// 12 is the tightest advance that never overlaps two adjacent glyphs.
+pub const FONT_ADVANCE: f32 = 12.0;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_font_atlas);
@@ -46,7 +48,8 @@ fn setup_font_atlas(
 
 /// Maps a character to its cell index in `assets/font.png`. The atlas is a
 /// 16×3 grid laid out as: row 0 = `A`–`P` (0–15), row 1 = `Q`–`Z` (16–25) then
-/// 6 blank cells, row 2 = `0`–`9` (32–41), `!` `?` `.` `:` (42–45), 2 blanks.
+/// 6 blank cells, row 2 = `0`–`9` (32–41), `!` `?` `.` `:` (42–45), a selector
+/// glyph `>` (46), 1 blank.
 /// Returns `None` for spaces and any unmapped character (including `¢`, absent
 /// from the current atlas) — those advance the cursor but draw no sprite.
 /// Lookup is case-insensitive; the atlas is uppercase-only.
@@ -58,6 +61,7 @@ pub fn glyph_index(c: char) -> Option<usize> {
         '?' => Some(43),
         '.' => Some(44),
         ':' => Some(45),
+        '>' => Some(46),
         _ => None,
     }
 }

@@ -64,12 +64,12 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-/// Spawns one label per menu row, prefixing the selected row with `"!"` and
-/// every other row with a leading space so alignment stays identical either
-/// way (the font atlas has no dedicated cursor glyph).
+/// Spawns one label per menu row, prefixing the selected row with the font
+/// atlas's selector glyph (`>`) and every other row with a leading space so
+/// alignment stays identical either way.
 fn spawn_rows(commands: &mut Commands, font: &FontAtlas, selection: &MenuSelection) {
     for (i, (_, text)) in MENU_ENTRIES.iter().enumerate() {
-        let prefix = if i == selection.0 { "!" } else { " " };
+        let prefix = if i == selection.0 { ">" } else { " " };
         let label = spawn_label(
             commands,
             font,

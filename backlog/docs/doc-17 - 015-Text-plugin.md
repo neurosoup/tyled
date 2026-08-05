@@ -11,13 +11,13 @@ A small bitmap-font text-rendering service. It loads the shared font atlas (`ass
 
 It is not tied to any camera: the caller passes the `RenderLayers` the glyphs should render on, so the same helper serves the overlay layer, a HUD layer, or the world.
 
-It is registered after the Camera plugin in `AppPlugin`. Registration order relative to consumers doesn't matter: a consumer only needs `FontAtlas` to exist, which it does from `Startup` (all `Startup` systems complete before any `Update` or state transition).
+It is registered after the Camera plugin in `AppPlugin`. Registration order relative to consumers doesn't matter, but consumers must read `FontAtlas` as `Option<Res<FontAtlas>>` and wait for it rather than assuming it exists in an `OnEnter` system for a state's default variant — that schedule can fire before `Startup` completes, so `FontAtlas` isn't guaranteed to exist there yet (see the Menu plugin doc's `ensure_menu_spawned` for the pattern).
 
 ## Concepts
 
 - `FontAtlas` (`src/plugins/text.rs`) — a **resource** holding the font's image handle and its `TextureAtlasLayout` handle. `assets/font.png` is a `FONT_COLS`×`FONT_ROWS` (16×3) grid of `FONT_CELL` (16×16) cells; the layout is built once with `TextureAtlasLayout::from_grid` at `Startup`.
 
-- `glyph_index(char) -> Option<usize>` — maps a character to its atlas cell: `A`–`Z` → 0–25, `0`–`9` → 32–41, `! ? . :` → 42–45. Returns `None` for spaces and any unmapped character (including `¢`, absent from the current atlas), which advance the cursor but draw no sprite. Case-insensitive; the atlas is uppercase-only.
+- `glyph_index(char) -> Option<usize>` — maps a character to its atlas cell: `A`–`Z` → 0–25, `0`–`9` → 32–41, `! ? . :` → 42–45, a selector glyph `>` → 46. Returns `None` for spaces and any unmapped character (including `¢`, absent from the current atlas), which advance the cursor but draw no sprite. Case-insensitive; the atlas is uppercase-only.
 
 - `spawn_label(commands, &FontAtlas, text, transform, render_layers) -> Entity` — spawns a parent entity plus one child glyph `Sprite` (via `Sprite::from_atlas_image`) per mapped character, offset on x by `FONT_ADVANCE` and horizontally centred around the parent's transform. **Each glyph child carries the passed `render_layers` directly** — render layers do not propagate parent→child in this project without `Propagate`, so a layer set only on the parent would leave the glyphs on the default layer. Despawning the returned parent recursively removes its glyph children.
 
