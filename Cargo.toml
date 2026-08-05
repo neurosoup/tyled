@@ -10,11 +10,11 @@ dev = ["bevy/dynamic_linking", "bevy/file_watcher", "dep:bevy-inspector-egui", "
 [dependencies]
 bevy = { version = "0.19.0", default-features = false, features = ["2d"] }
 bevy-inspector-egui = { version = "0.37.0", optional = true }
-# BLOCKED: no Bevy 0.19 release yet (latest 0.12.0 targets bevy 0.18 + bevy_ecs_tilemap 0.18).
-# Bump to the first 0.19-compatible version at flip time. See MIGRATION_0.19.md.
-bevy_ecs_tiled = { version = "0.11.2", features = ["user_properties"] }
-# BLOCKED: no Bevy 0.19 release yet (0.4.1 targets bevy 0.18.1). Bump at flip time.
-bevy_smooth_pixel_camera = "0.4.1"
+bevy_ecs_tiled = { version = "0.13", features = ["user_properties"] }
+# Pinned to a commit on the crate's main branch until a crates.io release targets
+# Bevy 0.19 (fix merged in doonv/bevy_smooth_pixel_camera#16). Swap to a version pin
+# once one ships.
+bevy_smooth_pixel_camera = { git = "https://github.com/doonv/bevy_smooth_pixel_camera", rev = "01c14805676a9542e0b8386f5e98ba9925223177" }
 bevy_spritesheet_animation = "7.0"
 bevy_tweening = "0.16"
 leafwing-input-manager = { version = "0.21", features = ["timing"] }
