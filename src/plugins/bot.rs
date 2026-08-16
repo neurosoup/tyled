@@ -113,24 +113,24 @@ fn bot_think(
         let coords = *coords;
         let opponent = all.iter().find(|(e, _)| *e != entity).map(|(_, c)| *c);
         let has_lance = abilities.is_some_and(|list| list.0.contains(&AbilityDescriptor::Lance));
-        let has_overpen =
-            abilities.is_some_and(|list| list.0.contains(&AbilityDescriptor::Overpenetration));
+        let has_border_grinder =
+            abilities.is_some_and(|list| list.0.contains(&AbilityDescriptor::BorderGrinder));
         let has_charges = charges.map_or(true, |c| !c.is_empty());
         let behavior = resolve_fire(coords, has_lance, &map_info, &claimed_query);
 
-        // Whether firing in `dir` right now would trigger an Overpenetration flip: the
+        // Whether firing in `dir` right now would trigger a Border Grinder flip: the
         // immediate neighbor is completely blocked (no ordinary reach) and specifically
         // enemy-claimed.
-        let is_overpen_flip = |dir: GridCoords| -> bool {
-            has_overpen
+        let is_border_grinder_flip = |dir: GridCoords| -> bool {
+            has_border_grinder
                 && reach(&map_info, &claimed_query, coords, dir) == 0
-                && overpen_target(&map_info, &claimed_query, coords, dir, entity)
+                && border_grinder_target(&map_info, &claimed_query, coords, dir, entity)
         };
 
         // Reach, but an exposed enemy frontier tile counts as reach 1 when the bot has
-        // Overpenetration — a flip is at least as good as an ordinary reach-1 claim.
+        // Border Grinder — a flip is at least as good as an ordinary reach-1 claim.
         let effective_reach = |dir: GridCoords| -> u32 {
-            if is_overpen_flip(dir) {
+            if is_border_grinder_flip(dir) {
                 1
             } else {
                 reach(&map_info, &claimed_query, coords, dir)
@@ -142,10 +142,10 @@ fn bot_think(
                 let facing = look.to_grid_coords();
                 // An available flip always outranks an ordinary claim, however large — commit
                 // to the current facing if it's already a flip, else take any flip direction.
-                let flip_fire = is_overpen_flip(facing).then(|| (facing, 1)).or_else(|| {
+                let flip_fire = is_border_grinder_flip(facing).then(|| (facing, 1)).or_else(|| {
                     CARDINALS
                         .into_iter()
-                        .find(|&dir| is_overpen_flip(dir))
+                        .find(|&dir| is_border_grinder_flip(dir))
                         .map(|dir| (dir, 1))
                 });
                 flip_fire.or_else(|| {
@@ -202,17 +202,17 @@ fn bot_think(
 
         let strike_mode = config.bot.strike_for(player.player_id);
 
-        // With Overpenetration, prefer chasing down a reachable enemy-claimed tile to flip over
+        // With Border Grinder, prefer chasing down a reachable enemy-claimed tile to flip over
         // merely claiming unclaimed ground — checked ahead of the ordinary fire-from-here branch
         // below, since a Lance-equipped bot's `can_fire` is almost always true (Lance fires from
         // any tile), so without this the bot would just keep claiming territory and never go
         // flip anything. Skipped whenever a flip is available from right here — the origin must
-        // itself be unclaimed too (Overpenetration only ever triggers on a Straight-behavior
+        // itself be unclaimed too (Border Grinder only ever triggers on a Straight-behavior
         // beam, which only fires from unclaimed ground; a Lance shot from claimed ground, even
         // one next to a hostile tile, never triggers it).
         let current_position_has_flip = !is_position_claimed(&map_info, &claimed_query, coords)
-            && CARDINALS.into_iter().any(is_overpen_flip);
-        let chase_target = (has_overpen && !current_position_has_flip)
+            && CARDINALS.into_iter().any(is_border_grinder_flip);
+        let chase_target = (has_border_grinder && !current_position_has_flip)
             .then(|| {
                 let reachable =
                     dijkstra_first_steps(&map_info, &claimed_query, entity, coords, hostile_cost);
@@ -220,7 +220,7 @@ fn bot_think(
                 // tile is enough to flip it (the existing `effective_reach` reach-0 trick fires
                 // once we're there), and walking onto the enemy tile directly would just mean
                 // stepping tile-by-tile through hostile ground taking chip damage the whole way.
-                // Must be genuinely unclaimed, Lance or not: Overpenetration's flip check only
+                // Must be genuinely unclaimed, Lance or not: Border Grinder's flip check only
                 // ever runs on a Straight-behavior beam (`beam.rs`), which only fires from
                 // unclaimed ground — a Lance shot from claimed ground never triggers it at all.
                 let is_firing_position = |t: GridCoords| {
@@ -351,8 +351,8 @@ fn bot_think(
             brain.target = Some(t);
             (
                 Vec2::new(step.x as f32, step.y as f32),
-                "overpen_chase",
-                format!("heading to {t:?} to line up an Overpenetration flip, cost {cost}"),
+                "border_grinder_chase",
+                format!("heading to {t:?} to line up a Border Grinder flip, cost {cost}"),
                 false,
             )
         } else if can_fire {
@@ -551,8 +551,8 @@ fn reach(
 }
 
 /// Whether the immediate next tile in `dir` from `from` is claimed by an entity other than
-/// `bot` — an exposed enemy frontier tile an Overpenetration beam can flip.
-fn overpen_target(
+/// `bot` — an exposed enemy frontier tile a Border Grinder beam can flip.
+fn border_grinder_target(
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
     from: GridCoords,

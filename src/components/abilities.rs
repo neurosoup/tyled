@@ -9,7 +9,7 @@ pub struct AbilityList(pub Vec<AbilityDescriptor>);
 #[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub enum AbilityDescriptor {
     Lance,
-    Overpenetration,
+    BorderGrinder,
     SolarPanels,
 }
 

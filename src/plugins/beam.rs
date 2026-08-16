@@ -173,9 +173,9 @@ fn spawn_beam(
 }
 
 /// Whether `position` is claimed by an entity other than `owner` and `owner`'s
-/// `AbilityList` contains [`AbilityDescriptor::Overpenetration`] — i.e. the beam should
+/// `AbilityList` contains [`AbilityDescriptor::BorderGrinder`] — i.e. the beam should
 /// punch through this enemy tile instead of stopping short of it.
-fn overpenetrates_enemy_tile(
+fn border_grinder_flips_tile(
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
     ability_query: &Query<&AbilityList>,
@@ -192,7 +192,7 @@ fn overpenetrates_enemy_tile(
     is_enemy_tile
         && ability_query
             .get(owner)
-            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::Overpenetration))
+            .is_ok_and(|list| list.0.contains(&AbilityDescriptor::BorderGrinder))
 }
 
 pub(crate) fn beam_step(
@@ -289,7 +289,7 @@ pub(crate) fn beam_step(
                     });
 
                 if is_next_already_claimed
-                    && overpenetrates_enemy_tile(
+                    && border_grinder_flips_tile(
                         &map_info,
                         &claimed_query,
                         &ability_query,
