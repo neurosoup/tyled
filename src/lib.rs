@@ -34,6 +34,7 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::hud::plugin);
         app.add_plugins(plugins::beam::plugin);
         app.add_plugins(plugins::claim::plugin);
+        app.add_plugins(plugins::charge::plugin);
         app.add_plugins(plugins::damage::plugin);
         #[cfg(feature = "dev")]
         app.add_plugins(plugins::debug::plugin);

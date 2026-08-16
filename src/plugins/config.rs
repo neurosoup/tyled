@@ -24,7 +24,7 @@ pub struct GameConfig {
     pub telemetry: TelemetryConfig,
     pub controllers: ControllersConfig,
     pub bot: BotConfig,
-    pub economy: EconomyConfig,
+    pub charge: ChargeConfig,
 }
 
 #[derive(Reflect, Clone, Deserialize)]
@@ -173,7 +173,7 @@ impl BotConfig {
 }
 
 #[derive(Reflect, Clone, Deserialize)]
-pub struct EconomyConfig {
+pub struct ChargeConfig {
     /// Seconds between Solar Panels regen ticks.
     pub solar_panels_tick_secs: f32,
     /// Owned tiles required per regenerated charge.
