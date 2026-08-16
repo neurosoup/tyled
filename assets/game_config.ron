@@ -61,8 +61,8 @@
         history: 3,                // [restart] total trace files kept (current + rotated backups)
     ),
     controllers: (
-        player1_bot: false,       // [menu] overridden by the main-menu matchup selection at launch
-        player2_bot: false,       // [menu] overridden by the main-menu matchup selection at launch
+        player1_bot: true,       // [menu] overridden by the main-menu matchup selection at launch
+        player2_bot: true,       // [menu] overridden by the main-menu matchup selection at launch
     ),
     bot: (
         fire_cooldown_ms: 400,     // [live] ms the bot waits between shots

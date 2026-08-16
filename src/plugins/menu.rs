@@ -26,6 +26,8 @@ pub enum MatchupChoice {
     PlayerVsPlayer,
     PlayerVsBot,
     BotVsPlayer,
+    #[cfg(feature = "dev")]
+    BotVsBot,
 }
 
 impl MatchupChoice {
@@ -35,14 +37,25 @@ impl MatchupChoice {
             MatchupChoice::PlayerVsPlayer => (false, false),
             MatchupChoice::PlayerVsBot => (false, true),
             MatchupChoice::BotVsPlayer => (true, false),
+            #[cfg(feature = "dev")]
+            MatchupChoice::BotVsBot => (true, true),
         }
     }
 }
 
+#[cfg(not(feature = "dev"))]
 const MENU_ENTRIES: [(MatchupChoice, &str); 3] = [
     (MatchupChoice::PlayerVsPlayer, "1P VS 2P"),
     (MatchupChoice::PlayerVsBot, "1P VS BOT"),
     (MatchupChoice::BotVsPlayer, "BOT VS 2P"),
+];
+
+#[cfg(feature = "dev")]
+const MENU_ENTRIES: [(MatchupChoice, &str); 4] = [
+    (MatchupChoice::PlayerVsPlayer, "1P VS 2P"),
+    (MatchupChoice::PlayerVsBot, "1P VS BOT"),
+    (MatchupChoice::BotVsPlayer, "BOT VS 2P"),
+    (MatchupChoice::BotVsBot, "BOT VS BOT"),
 ];
 
 /// Index of the currently-highlighted menu row.
