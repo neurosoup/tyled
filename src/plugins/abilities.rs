@@ -12,5 +12,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.insert_resource(PlayerLoadouts {
         player1: vec![AbilityDescriptor::SolarPanels],
         player2: vec![AbilityDescriptor::BorderGrinder],
+        // player1: vec![],
+        // player2: vec![],
     });
 }

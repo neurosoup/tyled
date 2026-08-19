@@ -11,6 +11,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
+use rand::Rng;
 
 use crate::plugins::beam::{is_position_claimed, resolve_fire};
 use crate::plugins::damage::is_hostile_tile;
@@ -86,6 +87,7 @@ fn bot_think(
     let now = time.elapsed_secs();
     let cooldown_secs = config.bot.fire_cooldown_ms as f32 / 1000.0;
     let beat_secs = config.bot.think_interval_ms as f32 / 1000.0;
+    let jitter_ms = config.bot.think_interval_jitter_ms as i64;
     let hostile_cost = config.bot.hostile_cost;
     let aggression = config.bot.aggression;
     let all: Vec<(Entity, GridCoords)> = positions.iter().map(|(e, c)| (e, *c)).collect();
@@ -108,7 +110,12 @@ fn bot_think(
             brain.shooting = false;
             continue;
         }
-        brain.next_beat_secs = now + beat_secs;
+        let jitter_secs = if jitter_ms > 0 {
+            rand::rng().random_range(-jitter_ms..=jitter_ms) as f32 / 1000.0
+        } else {
+            0.0
+        };
+        brain.next_beat_secs = now + (beat_secs + jitter_secs).max(0.0);
 
         let coords = *coords;
         let opponent = all.iter().find(|(e, _)| *e != entity).map(|(_, c)| *c);

@@ -68,6 +68,7 @@
         fire_cooldown_ms: 400,     // [live] ms the bot waits between shots
         aggression: 0.5,           // [live] preference for a shot through the opponent over the nearest claim
         think_interval_ms: 120,    // [live] ms between bot decisions; paces movement/aim/fire
+        think_interval_jitter_ms: 50, // [live] +/- random jitter on each decision beat, so bot-vs-bot rounds don't tick in lockstep
         hostile_cost: 40,          // [live] Dijkstra cost to enter an enemy tile; higher = safer routing
         chase_cost_threshold: 50, // [live] max cost worth paying to reach a Border Grinder flip; above this, falls back to ordinary territory claiming
         player1_strike: false,   // [live] P1 uses the striking behaviour: hunt the opponent and strike, ignoring territory

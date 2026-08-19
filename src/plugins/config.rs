@@ -152,6 +152,8 @@ pub struct BotConfig {
     pub aggression: f32,
     /// Milliseconds between bot decisions; paces movement/aim/fire choices.
     pub think_interval_ms: u64,
+    /// Milliseconds of random jitter (+/-) applied to each decision beat, so bot-vs-bot rounds don't tick in lockstep.
+    pub think_interval_jitter_ms: u64,
     /// Dijkstra cost to enter an enemy-owned tile while pathfinding. Higher = more strongly prefers safe routes.
     pub hostile_cost: u32,
     /// Maximum Dijkstra cost worth paying to reach a tile from which Border Grinder can flip an enemy tile. Above this, chasing isn't worth it and the bot falls back to ordinary territory claiming instead. Roughly comparable to `hostile_cost` — a low value means it only chases flips reachable without crossing hostile ground at all; a high value lets it tunnel deep through enemy territory to get there.
