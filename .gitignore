@@ -4,3 +4,9 @@ assets/tyled.tiled-session
 tiled_types_export.json
 play_trace.jsonl
 play_trace.*.jsonl
+.cs/local/
+.cs/archives/
+.cs/.narrative-reminder-cooldown
+.claude/settings.local.json
+CLAUDE.local.md
+.obsidian/
