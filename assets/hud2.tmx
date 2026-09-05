@@ -1,23 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="8" nextobjectid="50">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="48" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="11" nextobjectid="454">
  <tileset firstgid="1" source="hud.tsx"/>
  <tileset firstgid="241" source="ground.tsx"/>
- <layer id="1" name="HPContainer" width="48" height="4">
+ <tileset firstgid="385" source="hud-bars.tsx"/>
+ <layer id="1" name="HPContainer" width="48" height="4" locked="1">
   <data encoding="csv">
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,124,125,125,126,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,164,165,165,166,204,205,205,206,164,165,165,166,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,204,205,205,206,290,291,291,294,204,205,205,206,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,124,125,125,125,125,125,125,125,125,125,125,126,124,125,125,126,124,125,125,125,125,125,125,125,125,125,125,126,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,204,205,205,205,205,205,205,205,205,205,205,206,204,205,205,206,204,205,205,205,205,205,205,205,205,205,205,206,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,124,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,126,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,204,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,205,206,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
  <objectgroup id="2" name="HPBar">
-  <object id="1" gid="4" x="343" y="32" width="1" height="16">
-   <properties>
-    <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
-    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
-   </properties>
-  </object>
-  <object id="2" gid="4" x="425" y="32" width="1" height="16">
+  <object id="364" gid="386" x="584" y="62" width="16" height="32"/>
+  <object id="368" gid="387" x="584" y="30" width="16" height="32">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
     <property name="Player" type="class" propertytype="tyled::components::player::Player">
@@ -27,9 +23,89 @@
     </property>
    </properties>
   </object>
+  <object id="445" gid="391" x="568" y="30" width="16" height="32"/>
+  <object id="446" gid="385" x="168" y="62" width="16" height="32"/>
+  <object id="448" gid="387" x="168" y="30" width="16" height="32">
+   <properties>
+    <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="449" gid="391" x="184" y="30" width="16" height="32"/>
+  <object id="452" gid="389" x="184" y="61" width="16" height="32"/>
+  <object id="453" gid="390" x="568" y="62" width="16" height="32"/>
  </objectgroup>
- <objectgroup id="3" name="Numbers">
-  <object id="6" gid="120" x="309" y="57" width="8" height="8">
+ <objectgroup id="10" name="Digital-effect" locked="1">
+  <object id="366" gid="393" x="584" y="64" width="16" height="32"/>
+  <object id="367" gid="393" x="568" y="64" width="16" height="32"/>
+  <object id="372" gid="393" x="552" y="64" width="16" height="32"/>
+  <object id="373" gid="393" x="536" y="64" width="16" height="32"/>
+  <object id="374" gid="393" x="552" y="64" width="16" height="32"/>
+  <object id="375" gid="393" x="536" y="64" width="16" height="32"/>
+  <object id="376" gid="393" x="520" y="64" width="16" height="32"/>
+  <object id="377" gid="393" x="504" y="64" width="16" height="32"/>
+  <object id="378" gid="393" x="488" y="64" width="16" height="32"/>
+  <object id="379" gid="393" x="472" y="64" width="16" height="32"/>
+  <object id="380" gid="393" x="456" y="64" width="16" height="32"/>
+  <object id="381" gid="393" x="440" y="64" width="16" height="32"/>
+  <object id="382" gid="393" x="456" y="64" width="16" height="32"/>
+  <object id="383" gid="393" x="440" y="64" width="16" height="32"/>
+  <object id="384" gid="393" x="424" y="64" width="16" height="32"/>
+  <object id="385" gid="393" x="408" y="64" width="16" height="32"/>
+  <object id="386" gid="393" x="392" y="64" width="16" height="32"/>
+  <object id="387" gid="393" x="376" y="64" width="16" height="32"/>
+  <object id="388" gid="393" x="360" y="64" width="16" height="32"/>
+  <object id="389" gid="393" x="344" y="64" width="16" height="32"/>
+  <object id="390" gid="393" x="360" y="64" width="16" height="32"/>
+  <object id="391" gid="393" x="344" y="64" width="16" height="32"/>
+  <object id="392" gid="393" x="328" y="64" width="16" height="32"/>
+  <object id="393" gid="393" x="312" y="64" width="16" height="32"/>
+  <object id="394" gid="393" x="296" y="64" width="16" height="32"/>
+  <object id="395" gid="393" x="280" y="64" width="16" height="32"/>
+  <object id="396" gid="393" x="264" y="64" width="16" height="32"/>
+  <object id="397" gid="393" x="248" y="64" width="16" height="32"/>
+  <object id="398" gid="393" x="264" y="64" width="16" height="32"/>
+  <object id="399" gid="393" x="248" y="64" width="16" height="32"/>
+  <object id="400" gid="393" x="232" y="64" width="16" height="32"/>
+  <object id="401" gid="393" x="216" y="64" width="16" height="32"/>
+  <object id="402" gid="393" x="200" y="64" width="16" height="32"/>
+  <object id="403" gid="393" x="184" y="64" width="16" height="32"/>
+  <object id="404" gid="393" x="200" y="64" width="16" height="32"/>
+  <object id="405" gid="393" x="184" y="64" width="16" height="32"/>
+  <object id="406" gid="393" x="168" y="64" width="16" height="32"/>
+  <object id="408" gid="393" x="584" y="32" width="16" height="32"/>
+  <object id="409" gid="393" x="568" y="32" width="16" height="32"/>
+  <object id="410" gid="393" x="552" y="32" width="16" height="32"/>
+  <object id="411" gid="393" x="536" y="32" width="16" height="32"/>
+  <object id="412" gid="393" x="552" y="32" width="16" height="32"/>
+  <object id="413" gid="393" x="536" y="32" width="16" height="32"/>
+  <object id="414" gid="393" x="520" y="32" width="16" height="32"/>
+  <object id="415" gid="393" x="504" y="32" width="16" height="32"/>
+  <object id="416" gid="393" x="488" y="32" width="16" height="32"/>
+  <object id="417" gid="393" x="472" y="32" width="16" height="32"/>
+  <object id="418" gid="393" x="456" y="32" width="16" height="32"/>
+  <object id="419" gid="393" x="440" y="32" width="16" height="32"/>
+  <object id="420" gid="393" x="456" y="32" width="16" height="32"/>
+  <object id="421" gid="393" x="440" y="32" width="16" height="32"/>
+  <object id="422" gid="393" x="424" y="32" width="16" height="32"/>
+  <object id="430" gid="393" x="328" y="32" width="16" height="32"/>
+  <object id="431" gid="393" x="312" y="32" width="16" height="32"/>
+  <object id="432" gid="393" x="296" y="32" width="16" height="32"/>
+  <object id="433" gid="393" x="280" y="32" width="16" height="32"/>
+  <object id="434" gid="393" x="264" y="32" width="16" height="32"/>
+  <object id="435" gid="393" x="248" y="32" width="16" height="32"/>
+  <object id="436" gid="393" x="264" y="32" width="16" height="32"/>
+  <object id="437" gid="393" x="248" y="32" width="16" height="32"/>
+  <object id="438" gid="393" x="232" y="32" width="16" height="32"/>
+  <object id="439" gid="393" x="216" y="32" width="16" height="32"/>
+  <object id="440" gid="393" x="200" y="32" width="16" height="32"/>
+  <object id="441" gid="393" x="184" y="32" width="16" height="32"/>
+  <object id="442" gid="393" x="200" y="32" width="16" height="32"/>
+  <object id="443" gid="393" x="184" y="32" width="16" height="32"/>
+  <object id="444" gid="393" x="168" y="32" width="16" height="32"/>
+ </objectgroup>
+ <objectgroup id="3" name="Numbers" locked="1">
+  <object id="6" gid="120" x="310" y="109.5" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -41,7 +117,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="7" gid="120" x="315" y="57" width="8" height="8">
+  <object id="7" gid="120" x="316" y="109.5" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -53,7 +129,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="8" gid="120" x="321" y="57" width="8" height="8">
+  <object id="8" gid="120" x="322" y="109.5" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -64,7 +140,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="13" gid="120" x="363.5" y="42" width="16" height="16">
+  <object id="13" gid="120" x="363.5" y="26" width="16" height="16">
    <properties>
     <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -75,7 +151,7 @@
     </property>
    </properties>
   </object>
-  <object id="14" gid="120" x="376.5" y="42" width="16" height="16">
+  <object id="14" gid="120" x="376.5" y="26" width="16" height="16">
    <properties>
     <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -86,7 +162,7 @@
     </property>
    </properties>
   </object>
-  <object id="15" gid="120" x="389.5" y="42" width="16" height="16">
+  <object id="15" gid="120" x="389.5" y="26" width="16" height="16">
    <properties>
     <property name="CountdownDigit" type="class" propertytype="tyled::components::countdown::CountdownDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -96,8 +172,8 @@
     </property>
    </properties>
   </object>
-  <object id="18" gid="42" x="326" y="61" width="16" height="16"/>
-  <object id="19" gid="120" x="446" y="57" width="8" height="8">
+  <object id="18" gid="42" x="329" y="114" width="16" height="16"/>
+  <object id="19" gid="120" x="449.5" y="111" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -113,7 +189,7 @@
     </property>
    </properties>
   </object>
-  <object id="20" gid="120" x="452" y="57" width="8" height="8">
+  <object id="20" gid="120" x="455.5" y="111" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -129,7 +205,7 @@
     </property>
    </properties>
   </object>
-  <object id="21" gid="120" x="458" y="57" width="8" height="8">
+  <object id="21" gid="120" x="461.5" y="111" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -144,8 +220,8 @@
     </property>
    </properties>
   </object>
-  <object id="23" gid="41" x="427" y="61" width="16" height="16"/>
-  <object id="27" gid="120" x="309" y="44" width="8" height="8">
+  <object id="23" gid="41" x="430" y="114" width="16" height="16"/>
+  <object id="27" gid="120" x="312" y="97" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -157,7 +233,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="28" gid="120" x="315" y="44" width="8" height="8">
+  <object id="28" gid="120" x="318" y="97" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -169,7 +245,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="29" gid="120" x="321" y="44" width="8" height="8">
+  <object id="29" gid="120" x="324" y="97" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -180,7 +256,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="35" gid="120" x="446" y="43" width="8" height="8">
+  <object id="35" gid="120" x="449" y="96" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -196,7 +272,7 @@
     </property>
    </properties>
   </object>
-  <object id="36" gid="120" x="452" y="43" width="8" height="8">
+  <object id="36" gid="120" x="455" y="96" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -212,7 +288,7 @@
     </property>
    </properties>
   </object>
-  <object id="37" gid="120" x="458" y="43" width="8" height="8">
+  <object id="37" gid="120" x="461" y="96" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -227,9 +303,9 @@
     </property>
    </properties>
   </object>
-  <object id="42" gid="44" x="326" y="47" width="16" height="16"/>
-  <object id="43" gid="44" x="427" y="47" width="16" height="16"/>
-  <object id="46" gid="120" x="303" y="57" width="8" height="8">
+  <object id="42" gid="44" x="329" y="100" width="16" height="16"/>
+  <object id="43" gid="44" x="430" y="100" width="16" height="16"/>
+  <object id="46" gid="120" x="304" y="109.5" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -241,7 +317,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="47" gid="120" x="440" y="57" width="8" height="8">
+  <object id="47" gid="120" x="443.5" y="111" width="8" height="8">
    <properties>
     <property name="ClaimedTilesDigit" type="class" propertytype="tyled::components::claim::ClaimedTilesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -257,7 +333,7 @@
     </property>
    </properties>
   </object>
-  <object id="48" gid="120" x="303" y="44" width="8" height="8">
+  <object id="48" gid="120" x="306" y="97" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -269,7 +345,7 @@
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="49" gid="120" x="440" y="43" width="8" height="8">
+  <object id="49" gid="120" x="443" y="96" width="8" height="8">
    <properties>
     <property name="BeamChargesDigit" type="class" propertytype="tyled::components::beam_charges::BeamChargesDigit"/>
     <property name="Digit" type="class" propertytype="tyled::components::digit::Digit">
@@ -286,4 +362,12 @@
    </properties>
   </object>
  </objectgroup>
+ <layer id="9" name="BarMiddle" width="48" height="4" locked="1">
+  <data encoding="csv">
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,128,129,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+</data>
+ </layer>
 </map>
