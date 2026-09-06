@@ -13,6 +13,19 @@ pub struct Ground;
 #[reflect(Component, Default)]
 pub struct HPBar;
 
+// Show the amount of damage taken
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct DamageBar;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct TerritoryBar;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+pub struct ChargesBar;
+
 #[derive(Component, Default)]
 pub struct CurrentLevel;
 

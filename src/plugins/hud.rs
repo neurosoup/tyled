@@ -1,14 +1,20 @@
 /*
  Plugin for all HUD animations (rendered on the HUD camera / render layer 1).
 
- Owns the HP-bar animation (`animate_hp`) and the generic numeric-counter
- machinery: rolling-odometer digit sprites via `DigitAnimations` /
- `initialize_digit_animations`, plus one `animate_*` system per counter. Each
- counter's *value* is maintained by its own domain plugin (beam charges by the
- beam plugin, claimed-tile count by the claim plugin); this plugin only reads
- those values and drives the HUD sprites.
+ Owns the HP-bar animation (`animate_hp`) and its slow-trailing "damage echo"
+ counterpart (`animate_damage_bar`), which additionally holds off for a beat
+ after each hit (`DamageEchoDelay`, armed by `arm_damage_echo_delay` and
+ ticked down by `tick_damage_echo_delay`) before it starts catching up, plus
+ the generic numeric-counter machinery: rolling-odometer digit sprites via
+ `DigitAnimations` / `initialize_digit_animations`, plus one `animate_*`
+ system per counter. Each counter's *value* is maintained by its own domain
+ plugin (beam charges by the beam plugin, claimed-tile count by the claim
+ plugin); this plugin only reads those values and drives the HUD sprites.
 */
+use std::time::Duration;
+
 use crate::prelude::*;
+use bevy::ecs::query::QueryFilter;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 use bevy_spritesheet_animation::prelude::*;
@@ -18,6 +24,9 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             animate_hp,
+            animate_damage_bar,
+            arm_damage_echo_delay,
+            tick_damage_echo_delay,
             animate_beam_charges,
             animate_claimed_tiles,
             animate_countdown,
@@ -26,21 +35,95 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-fn animate_hp(
-    players: Query<(&Health, &Player), With<DamageEffectTarget>>,
-    mut hp_bars: Query<(&Player, &mut Transform), With<HPBar>>,
+/// Marks a `DamageBar` as holding off before it resumes catching up to its
+/// target ratio; removed once the delay elapses.
+#[derive(Component)]
+struct DamageEchoDelay(Timer);
+
+/// Arms (or restarts) `DamageEchoDelay` on every `DamageBar` matching a
+/// player whose `Health` just changed.
+fn arm_damage_echo_delay(
+    mut commands: Commands,
+    players: Query<&Player, (With<DamageEffectTarget>, Changed<Health>)>,
+    damage_bars: Query<(Entity, &Player), With<DamageBar>>,
+    config: Res<GameConfig>,
 ) {
-    for (health, player) in &players {
-        for (hp_bar_player, mut transform) in &mut hp_bars {
-            if hp_bar_player.player_id == player.player_id {
+    for player in &players {
+        for (bar_entity, bar_player) in &damage_bars {
+            if bar_player.player_id == player.player_id {
+                commands.entity(bar_entity).insert(DamageEchoDelay(
+                    Timer::new(
+                        Duration::from_millis(config.animation.damage_bar_delay_ms),
+                        TimerMode::Once,
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn tick_damage_echo_delay(
+    mut commands: Commands,
+    mut delays: Query<(Entity, &mut DamageEchoDelay)>,
+    time: Res<Time>,
+) {
+    for (entity, mut delay) in &mut delays {
+        if delay.0.tick(time.delta()).is_finished() {
+            commands.entity(entity).remove::<DamageEchoDelay>();
+        }
+    }
+}
+
+/// Nudges every bar matching `F` for the matching player's `scale.x` toward
+/// `health.ratio()` at `decay_rate`, snapping to `0.0` once it's close enough.
+fn animate_bar_toward<F: QueryFilter>(
+    players: &Query<(&Health, &Player), With<DamageEffectTarget>>,
+    bars: &mut Query<(&Player, &mut Transform), F>,
+    decay_rate: f32,
+    delta_secs: f32,
+) {
+    for (health, player) in players {
+        for (bar_player, mut transform) in &mut *bars {
+            if bar_player.player_id == player.player_id {
                 let ratio = health.ratio();
-                transform.scale.x = transform.scale.x.lerp(ratio, 0.05);
+                transform
+                    .scale
+                    .x
+                    .smooth_nudge(&ratio, decay_rate, delta_secs);
                 if transform.scale.x <= 0.001 {
                     transform.scale.x = 0.0;
                 }
             }
         }
     }
+}
+
+fn animate_hp(
+    players: Query<(&Health, &Player), With<DamageEffectTarget>>,
+    mut hp_bars: Query<(&Player, &mut Transform), With<HPBar>>,
+    config: Res<GameConfig>,
+    time: Res<Time>,
+) {
+    animate_bar_toward(
+        &players,
+        &mut hp_bars,
+        config.animation.hp_bar_decay_rate,
+        time.delta_secs(),
+    );
+}
+
+fn animate_damage_bar(
+    players: Query<(&Health, &Player), With<DamageEffectTarget>>,
+    mut damage_bars: Query<(&Player, &mut Transform), (With<DamageBar>, Without<DamageEchoDelay>)>,
+    config: Res<GameConfig>,
+    time: Res<Time>,
+) {
+    animate_bar_toward(
+        &players,
+        &mut damage_bars,
+        config.animation.damage_bar_decay_rate,
+        time.delta_secs(),
+    );
 }
 
 // handles[from][to] — valid for all from != to in 0..10

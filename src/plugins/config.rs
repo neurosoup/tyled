@@ -108,6 +108,12 @@ pub struct AnimationConfig {
     pub digit_roll_frame_ms: u32,
     /// Max cascade delay (seconds) for the tile-unclaim revert, scaled by distance.
     pub unclaim_cascade_secs: f32,
+    /// How fast the HP bar snaps to its target ratio. Higher = snappier.
+    pub hp_bar_decay_rate: f32,
+    /// How fast the damage-echo bar catches up to the HP bar. Higher = snappier.
+    pub damage_bar_decay_rate: f32,
+    /// Milliseconds the damage-echo bar holds still after a hit before catching up.
+    pub damage_bar_delay_ms: u64,
 }
 
 #[derive(Reflect, Clone, Deserialize)]

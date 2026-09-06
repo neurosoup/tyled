@@ -51,6 +51,9 @@
         tile_flip_frame_ms: 30,    // [restart] ms per claimed-tile flip frame
         digit_roll_frame_ms: 150,  // [restart] ms per HUD digit roll frame
         unclaim_cascade_secs: 2.5, // [live] max unclaim-cascade delay, scaled by distance
+        hp_bar_decay_rate: 20.0,   // [live] HP bar snap speed; higher = snappier
+        damage_bar_decay_rate: 0.6, // [live] damage-echo bar catch-up speed; higher = snappier
+        damage_bar_delay_ms: 1000,  // [live] ms the damage-echo bar holds still before catching up
     ),
     effects: (
         knockback_tween_ms: 200,   // [live] ms for the knockback slide tween

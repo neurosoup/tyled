@@ -146,11 +146,14 @@ fn initialize_hp_bars(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     hud_map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
-    hp_bars_query: Query<(Entity, &Player, &Transform, Option<&Children>), With<HPBar>>,
+    bars_query: Query<
+        (Entity, &Player, &Transform, Option<&Children>),
+        Or<(With<HPBar>, With<DamageBar>)>,
+    >,
     mut sprite_query: Query<&mut Sprite>,
 ) {
     // Full bar size in the HUD map: hud-bars tileset tiles are 16x32, stretched to
-    // a 176px-wide bar.
+    // a 176px-wide bar. Applies to both HP and damage bars.
     let hp_container_width = 176.0;
     let hp_container_height = 32.0;
 
@@ -160,7 +163,7 @@ fn initialize_hp_bars(
             continue;
         };
 
-        for (entity, player, transform, children) in &hp_bars_query {
+        for (entity, player, transform, children) in &bars_query {
             if let Some(grid_coords) =
                 GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {

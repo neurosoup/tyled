@@ -12,7 +12,16 @@
 </data>
  </layer>
  <objectgroup id="2" name="HPBar">
-  <object id="364" gid="386" x="584" y="62" width="16" height="32"/>
+  <object id="364" gid="386" x="584" y="62" width="16" height="32">
+   <properties>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+    <property name="TerritoryBar" type="class" propertytype="tyled::components::markers::TerritoryBar"/>
+   </properties>
+  </object>
   <object id="368" gid="387" x="584" y="30" width="16" height="32">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
@@ -23,17 +32,50 @@
     </property>
    </properties>
   </object>
-  <object id="445" gid="391" x="568" y="30" width="16" height="32"/>
-  <object id="446" gid="385" x="168" y="62" width="16" height="32"/>
+  <object id="445" gid="391" x="584" y="30" width="16" height="32">
+   <properties>
+    <property name="DamageBar" type="class" propertytype="tyled::components::markers::DamageBar"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+   </properties>
+  </object>
+  <object id="446" gid="385" x="168" y="62" width="16" height="32">
+   <properties>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+    <property name="TerritoryBar" type="class" propertytype="tyled::components::markers::TerritoryBar"/>
+   </properties>
+  </object>
   <object id="448" gid="387" x="168" y="30" width="16" height="32">
    <properties>
     <property name="HPBar" type="class" propertytype="tyled::components::markers::HPBar"/>
     <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
    </properties>
   </object>
-  <object id="449" gid="391" x="184" y="30" width="16" height="32"/>
-  <object id="452" gid="389" x="184" y="61" width="16" height="32"/>
-  <object id="453" gid="390" x="568" y="62" width="16" height="32"/>
+  <object id="449" gid="391" x="168" y="30" width="16" height="32">
+   <properties>
+    <property name="DamageBar" type="class" propertytype="tyled::components::markers::DamageBar"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="452" gid="389" x="184" y="61" width="16" height="32">
+   <properties>
+    <property name="ChargesBar" type="class" propertytype="tyled::components::markers::ChargesBar"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player"/>
+   </properties>
+  </object>
+  <object id="453" gid="390" x="568" y="62" width="16" height="32">
+   <properties>
+    <property name="ChargesBar" type="class" propertytype="tyled::components::markers::ChargesBar"/>
+    <property name="Player" type="class" propertytype="tyled::components::player::Player">
+     <properties>
+      <property name="player_id" type="int" value="1"/>
+     </properties>
+    </property>
+   </properties>
+  </object>
  </objectgroup>
  <objectgroup id="10" name="Digital-effect" locked="1">
   <object id="366" gid="393" x="584" y="64" width="16" height="32"/>
