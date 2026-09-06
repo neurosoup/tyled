@@ -3,24 +3,47 @@ id: doc-14
 title: '[012] HUD plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-09-06 12:00'
 ---
 # HUD Plugin
 
-Owns all HUD animations rendered on the HUD camera (render layer 1): the HP-bar fill (`animate_hp`) and the numeric counters rendered as rolling-odometer digit sprites. For the counters it holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin, the round countdown by the Round plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites, lerping the HP bar's `Transform` toward the current health ratio and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
+Owns all HUD animations rendered on the HUD camera (render layer 1): the HP bar (`animate_hp`), its slower-trailing "damage echo" counterpart (`animate_damage_bar`), and the numeric counters rendered as rolling-odometer digit sprites. The damage-echo bar additionally holds still for a beat after each hit before it resumes catching up to the HP bar, via the `DamageEchoDelay` component (armed by `arm_damage_echo_delay`, ticked down by `tick_damage_echo_delay`). For the counters this plugin holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin, the round countdown by the Round plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites: nudging each bar's `Transform::scale.x` toward the current health ratio via `smooth_nudge`, and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
 
 It is registered immediately after the Animations plugin in `AppPlugin`.
 
 ## Plugin workflow
 
-- Update phase
+- Update phase (all systems below run unordered in the same `Update` tuple — no `.chain()`; the animation systems only write `Transform` while the delay systems only insert/tick/remove `DamageEchoDelay` via `Commands`, so their writes never race)
     - Animate HP:
         - Runs every frame
             - Reads:
                 - All `Player`-marked `DamageEffectTarget` entities with their `Health` and `Player` components
                 - All `HPBar` entities with their `Player` and `Transform` components
+                - `GameConfig` (`config.animation.hp_bar_decay_rate`) and `Time`
             - Writes:
-                - Lerps `Transform::scale.x` on each matching `HPBar` entity toward `Health::ratio()` for the corresponding player (snapping to `0.0` once it drops below `0.001`)
+                - Delegates to the shared `animate_bar_toward` helper, which nudges `Transform::scale.x` on each matching `HPBar` entity toward `Health::ratio()` for the corresponding player via `smooth_nudge` at `hp_bar_decay_rate`, snapping to `0.0` once it drops below `0.001`
+    - Animate Damage Bar:
+        - Runs every frame
+            - Reads:
+                - All `Player`-marked `DamageEffectTarget` entities with their `Health` and `Player` components
+                - All `DamageBar` entities *not* currently carrying `DamageEchoDelay` (`(With<DamageBar>, Without<DamageEchoDelay>)`), with their `Player` and `Transform` components
+                - `GameConfig` (`config.animation.damage_bar_decay_rate`) and `Time`
+            - Writes:
+                - Delegates to the shared `animate_bar_toward` helper, identically to Animate HP but at `damage_bar_decay_rate` — a `DamageBar` currently holding `DamageEchoDelay` is excluded by the query filter and does not move at all this frame
+    - Arm Damage Echo Delay:
+        - Reacts to `Changed<Health>` on `DamageEffectTarget`-marked player entities (this also fires on the initial `Health` insertion at round start, not only on subsequent damage)
+            - Reads:
+                - `Player` on each changed player entity
+                - `Player` on every `DamageBar` entity
+                - `GameConfig` (`config.animation.damage_bar_delay_ms`)
+            - Writes:
+                - For every `DamageBar` whose `Player::player_id` matches a changed player, inserts (or restarts, if already present) a `DamageEchoDelay(Timer)` in `TimerMode::Once` for `damage_bar_delay_ms`
+    - Tick Damage Echo Delay:
+        - Runs every frame
+            - Reads:
+                - `Time`
+            - Writes:
+                - Ticks every entity's `DamageEchoDelay` timer down by `Time::delta()`; once a timer finishes, removes `DamageEchoDelay` from that entity, letting Animate Damage Bar resume moving it next frame
     - Initialize Digit Animations:
         - Reacts to `TiledEvent<ObjectCreated>` message
             - Reads:
@@ -66,33 +89,49 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
 
 ## Plugin Systems
 
+### Animate Bar Toward (shared helper)
+
+`animate_bar_toward<F: QueryFilter>` is a private, generic helper (not a system) that backs both bar animations. Given the players query, a mutable bar query filtered by `F`, a decay rate, and the frame's `delta_secs`, it iterates all players and, for each, all bars in the `F`-filtered query, matching them by `Player::player_id`. For each match it nudges the bar's `Transform::scale.x` toward the player's `Health::ratio()` via `f32::smooth_nudge(&ratio, decay_rate, delta_secs)`, snapping to `0.0` once the value drops to `0.001` or below. `Animate HP` and `Animate Damage Bar` each call this helper with their own bar-entity filter and decay rate; only the query filter and rate differ between them.
+
 ### Animate HP
 
-Runs every frame. Queries all player entities that carry `DamageEffectTarget`, reading their `Health` and `Player` components. For each player, it finds the matching `HPBar` entity by `player_id` and lerps the bar's `Transform::scale.x` toward `Health::ratio()` (a value in `[0.0, 1.0]`, snapped to `0.0` once it drops below `0.001`), giving the bar a smooth animated transition rather than an instant snap.
+Runs every frame. A thin wrapper: queries all player entities that carry `DamageEffectTarget` (reading `Health` and `Player`) and all `HPBar` entities (reading `Player`, writing `Transform`), and delegates to `animate_bar_toward` with `With<HPBar>` and `config.animation.hp_bar_decay_rate`.
+
+### Animate Damage Bar
+
+Runs every frame. Same shape as `Animate HP`, but its bar query is filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` and it delegates to `animate_bar_toward` with `config.animation.damage_bar_decay_rate`. The `Without<DamageEchoDelay>` filter means a `DamageBar` currently holding that component is excluded from the match entirely and does not move this frame — this is how the damage-echo bar holds still after a hit.
+
+### Arm Damage Echo Delay
+
+Reacts to `Changed<Health>` on player entities carrying `DamageEffectTarget` (reading only their `Player`, not `Health`; the filter is `(With<DamageEffectTarget>, Changed<Health>)`, which also fires the first time `Health` is inserted at round start). For each such player, it finds every `DamageBar` entity whose `Player::player_id` matches and inserts a `DamageEchoDelay(Timer::new(Duration::from_millis(config.animation.damage_bar_delay_ms), TimerMode::Once))` on it via `Commands` — inserting again on an entity that already carries the component restarts the timer from zero.
+
+### Tick Damage Echo Delay
+
+Runs every frame. Ticks every entity's `DamageEchoDelay` timer by `Time::delta()`; when a timer finishes, removes `DamageEchoDelay` from that entity via `Commands`. Once removed, `Animate Damage Bar`'s `Without<DamageEchoDelay>` filter matches that bar again the next time it runs.
 
 ### Initialize Digit Animations
 
 Reacts to the `TiledEvent<ObjectCreated>` message for entities carrying a `Digit` component. Reads a `Res<GameConfig>` so each transition frame plays for `config.animation.digit_roll_frame_ms` (default `100`). For each matching entity, walks the hierarchy to find the child sprite entity, reads its image handle to build a `Spritesheet`, then creates all 90 directional transition animation handles (every `from != to` combination in `0..10`) via a single `make_anim` closure. The special 9→0 and 0→9 wrap transitions use non-contiguous frame sequences (`add_cell(39, 2)` + `add_partial_row(2, 0..=3)` played forwards or backwards). All handles are stored in the `DigitAnimations` resource. A `SpritesheetAnimation` is inserted on the child sprite entity.
 
-### Drive Digit (shared helper)
+### Animate Digit (shared helper)
 
-`drive_digit` is a private helper (not a system) that drives one `Digit` entity to display the decimal place selected by its `Digit::position`. Given the entity, its `Digit`, and a target `value`, it computes the target as `(value / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. It is idempotent: when the digit already shows the target value, `from == to`, `DigitAnimations` returns no handle, and it is a no-op — so systems may call it every frame without spurious switches.
+`animate_digit` is a private helper (not a system) that drives one `Digit` entity to display the decimal place selected by its `Digit::position`. Given the entity, its `Digit`, and a target `value`, it computes the target as `(value / 10^digit.position) % 10`, looks up the from→to transition handle in `DigitAnimations`, walks the entity's children to find the `SpritesheetAnimation` and switches it to the new clip, and updates `Digit::value`. It is idempotent: when the digit already shows the target value, `from == to`, `DigitAnimations` returns no handle, and it is a no-op — so systems may call it every frame without spurious switches.
 
-### Drive Digit Counter (shared helper)
+### Animate Digits For Player (shared helper)
 
-`drive_digit_counter<M: Component>` is a private helper (not a system) that drives all `M`-marked, player-scoped digits. Given a `player_id`, a target `value`, and the digit query filtered by marker `M`, it iterates all `M`-marked entities whose `Player::player_id` matches and delegates each to `drive_digit`. The per-player `animate_*` systems own only their domain-specific value derivation and delegate the rest to this helper; the player-agnostic `animate_countdown` calls `drive_digit` directly.
+`animate_digits_for_player<M: Component>` is a private helper (not a system) that drives all `M`-marked, player-scoped digits. Given a `player_id`, a target `value`, and the digit query filtered by marker `M`, it iterates all `M`-marked entities whose `Player::player_id` matches and delegates each to `animate_digit`. The per-player `animate_*` systems own only their domain-specific value derivation and delegate the rest to this helper; the player-agnostic `animate_countdown` calls `animate_digit` directly.
 
 ### Animate Beam Charges
 
-Runs every frame, filtered by `Changed<BeamCharges>`. For each player entity whose `BeamCharges` component changed, calls `drive_digit_counter::<BeamChargesDigit>` with the target value `BeamCharges::current` to drive that player's digit sprites.
+Runs every frame, filtered by `Changed<BeamCharges>`. For each player entity whose `BeamCharges` component changed, calls `animate_digits_for_player::<BeamChargesDigit>` with the target value `BeamCharges::current` to drive that player's digit sprites.
 
 ### Animate Claimed Tiles
 
-Runs every frame, filtered by `Changed<ClaimedTileCount>`. Reads `MapInfo::ground_entities` to obtain the total number of ground tiles (returning early if that total is zero). For each player entity whose `ClaimedTileCount` changed, computes the owned-tile count as a rounded percentage of the whole board (`(count.current * 100 + total / 2) / total`, giving a value in `0..=100`), then calls `drive_digit_counter::<ClaimedTilesDigit>` with that percentage. It is the digit-display counterpart of `animate_beam_charges`, but renders each player's owned-tile count as a rounded percentage rather than a raw charge count.
+Runs every frame, filtered by `Changed<ClaimedTileCount>`. Reads `MapInfo::ground_entities` to obtain the total number of ground tiles (returning early if that total is zero). For each player entity whose `ClaimedTileCount` changed, computes the owned-tile count as a rounded percentage of the whole board (`(count.current * 100 + total / 2) / total`, giving a value in `0..=100`), then calls `animate_digits_for_player::<ClaimedTilesDigit>` with that percentage. It is the digit-display counterpart of `animate_beam_charges`, but renders each player's owned-tile count as a rounded percentage rather than a raw charge count.
 
 ### Animate Countdown
 
-Runs every frame. Reads the optional `Countdown` resource (returning early until it exists) and drives every `CountdownDigit`-marked digit to display `Countdown::remaining`. Unlike the per-player counters, the countdown is global, so this reads a resource rather than a per-`Player` value and calls `drive_digit` directly with no `Player` filter. It carries no change-detection gate: the `Countdown` resource is mutated every frame by the Round plugin's tick system (so it always reads as changed), and correctness instead comes from `drive_digit` being idempotent — the animation switches only on the second the value actually changes.
+Runs every frame. Reads the optional `Countdown` resource (returning early until it exists) and drives every `CountdownDigit`-marked digit to display `Countdown::remaining`. Unlike the per-player counters, the countdown is global, so this reads a resource rather than a per-`Player` value and calls `animate_digit` directly with no `Player` filter. It carries no change-detection gate: the `Countdown` resource is mutated every frame by the Round plugin's tick system (so it always reads as changed), and correctness instead comes from `animate_digit` being idempotent — the animation switches only on the second the value actually changes.
 
 ## Components, Resources and Messages CRUD
 

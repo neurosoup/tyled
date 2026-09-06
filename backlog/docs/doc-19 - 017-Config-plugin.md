@@ -3,7 +3,7 @@ id: doc-19
 title: '[017] Config plugin'
 type: other
 created_date: '2026-07-19 12:00'
-updated_date: '2026-08-05 12:00'
+updated_date: '2026-09-06 12:00'
 ---
 # Config Plugin
 
@@ -35,6 +35,15 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
     - `hostile_cost` `[live]` — Dijkstra cost to enter an enemy-owned tile while pathfinding; higher prefers safer routes.
     - `player1_strike` / `player2_strike` `[live]` — whether that seat's bot uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory) instead of the default territory play.
 
+- `animation` (`AnimationConfig`) — read by the Animations, Maps, and HUD plugins:
+    - `player_idle_frame_ms` `[restart]` — milliseconds per frame of the player idle animations.
+    - `tile_flip_frame_ms` `[restart]` — milliseconds per frame of the claimed-tile flip animations.
+    - `digit_roll_frame_ms` `[restart]` — milliseconds per frame of the HUD digit rolling-odometer animations.
+    - `unclaim_cascade_secs` `[live]` — max cascade delay (seconds) for the tile-unclaim revert, scaled by distance.
+    - `hp_bar_decay_rate` `[live]` — how fast the HP bar snaps to its target ratio, read every frame by the HUD plugin's `animate_hp`. Higher = snappier.
+    - `damage_bar_decay_rate` `[live]` — how fast the damage-echo bar catches up to the HP bar once it resumes, read every frame by the HUD plugin's `animate_damage_bar`. Higher = snappier.
+    - `damage_bar_delay_ms` `[live]` — milliseconds the damage-echo bar holds still after a hit before it starts catching up, read by the HUD plugin's `arm_damage_echo_delay` each time a player's `Health` changes.
+
 - `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
     - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.
     - `history` `[restart]` — total trace files kept (current + rotated backups), applied only when the sink is (re)opened at `Startup`.
@@ -43,7 +52,7 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
 
 - **Hot-reload (dev only)** — a small custom `AssetLoader` (`GameConfigLoader`) deserializes the `.ron` into a `GameConfig` asset. `load_config_asset` loads the handle at `Startup`; `apply_config_reload` mirrors each `AssetEvent::Modified`/`LoadedWithDependencies` back into the `GameConfig` resource. `Res<GameConfig>` change-detection then propagates the new values.
 
-- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, animation frame timings) apply on the next round or next spawn. `controllers.player1_bot`/`player2_bot` are a special case (`[menu]`): the `.ron` value seeds `GameConfig` at launch, but is immediately overwritten once the player confirms a matchup in the main menu (see the Menu plugin doc) — before any map or `Player` entity exists — so its `.ron` default only matters for the brief window before that first confirmation.
+- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). This also includes `animation.hp_bar_decay_rate`, `animation.damage_bar_decay_rate`, and `animation.damage_bar_delay_ms`, which the HUD plugin's `animate_hp`, `animate_damage_bar`, and `arm_damage_echo_delay` read fresh every frame/every hit — none of them are baked into a spawned component. The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, the frame-duration animation timings `player_idle_frame_ms`/`tile_flip_frame_ms`/`digit_roll_frame_ms`) apply on the next round or next spawn (or need a restart, per their individual tags above). `controllers.player1_bot`/`player2_bot` are a special case (`[menu]`): the `.ron` value seeds `GameConfig` at launch, but is immediately overwritten once the player confirms a matchup in the main menu (see the Menu plugin doc) — before any map or `Player` entity exists — so its `.ron` default only matters for the brief window before that first confirmation.
 
 ## Plugin workflow
 
