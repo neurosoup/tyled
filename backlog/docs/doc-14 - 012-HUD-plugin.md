@@ -637,3 +637,81 @@ damage_bars_query -..-> |filter Without| db_delay
 
 damage_bars_query_arm ---> |reads| db_player
 ```
+
+### DamageEchoDelay component lifecycle
+
+`DamageEchoDelay(Timer)` is a private component (declared in `hud.rs`) marking a `DamageBar` as holding still before it resumes catching up to its target ratio. Its full lifecycle:
+- **Inserted / restarted** by `arm_damage_echo_delay`, on every `DamageBar` belonging to a player whose `Health` just changed (`Changed<Health>`) — a fresh `Timer::new(Duration::from_millis(config.animation.damage_bar_delay_ms), TimerMode::Once)`. Inserting on an entity that already carries the component overwrites it, effectively restarting the countdown.
+- **Ticked** by `tick_damage_echo_delay`, every frame, by `Time::delta()`.
+- **Removed** by `tick_damage_echo_delay`, the frame its timer finishes.
+- **Consumed** by `animate_damage_bar` as a `Without<DamageEchoDelay>` query filter — while present, the owning `DamageBar` is excluded from the match and its `Transform` is not touched that frame; once removed, the bar is matched again and resumes moving toward the current health ratio.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+arm["`**arm_damage_echo_delay**`"]
+tick["`**tick_damage_echo_delay**`"]
+animate["`**animate_damage_bar**`"]
+
+update -.-> arm
+update -.-> tick
+update -.-> animate
+
+damage_bar_entity@{ shape: st-rect, label: "DamageBar Entity" }
+delay_component@{ shape: doc, label: "DamageEchoDelay" }
+
+arm ---> |"inserts/restarts (on Changed<Health>)"| delay_component
+tick ---> |ticks Timer, removes when finished| delay_component
+delay_component --> |attached to| damage_bar_entity
+animate -..-> |"filter Without<> — skips while present"| delay_component
+```
+
+### Read GameConfig and Time (bar/delay tuning)
+
+Used in the following systems:
+- **animate_hp**: reads `config.animation.hp_bar_decay_rate` and `Time` (via `Time::delta_secs()`) to drive `animate_bar_toward`
+- **animate_damage_bar**: reads `config.animation.damage_bar_decay_rate` and `Time` the same way
+- **arm_damage_echo_delay**: reads `config.animation.damage_bar_delay_ms` to size the delay timer
+- **tick_damage_echo_delay**: reads `Time` to tick the delay timer
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+animate_hp["`**animate_hp**`"]
+animate_damage_bar["`**animate_damage_bar**`"]
+arm["`**arm_damage_echo_delay**`"]
+tick["`**tick_damage_echo_delay**`"]
+
+update -.-> animate_hp
+update -.-> animate_damage_bar
+update -.-> arm
+update -.-> tick
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+time_res@{ shape: doc, label: "Time" }
+
+config_res --> |belongs to| world
+time_res --> |belongs to| world
+
+animate_hp ---> |"reads animation.hp_bar_decay_rate"| config_res
+animate_hp ---> |reads delta_secs| time_res
+animate_damage_bar ---> |"reads animation.damage_bar_decay_rate"| config_res
+animate_damage_bar ---> |reads delta_secs| time_res
+arm ---> |"reads animation.damage_bar_delay_ms"| config_res
+tick ---> |reads delta| time_res
+```
