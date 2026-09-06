@@ -110,9 +110,8 @@ fn initialize_map_info(
         // tilemap named "ground". Restrict the metadata lookup to the current level
         // map, otherwise the HUD map's geometry can be picked and every tile is
         // placed in HUD-space coordinates.
-        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor, _)) = tilemap_query
-            .iter()
-            .find(|(name, .., map_ref)| {
+        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor, _)) =
+            tilemap_query.iter().find(|(name, .., map_ref)| {
                 name.0 == "ground" && map_ref.0 == map_created_message.origin
             })
         else {
@@ -150,9 +149,10 @@ fn initialize_hp_bars(
     hp_bars_query: Query<(Entity, &Player, &Transform, Option<&Children>), With<HPBar>>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
-    // Full bar width in the HUD map: 16 fill tiles (256px) plus a 7px inset into each end cap = 270px.
-    let hp_container_width = 16.0 * 16.0 + 2.0 * 7.0;
-    let hp_container_height = 16.0;
+    // Full bar size in the HUD map: hud-bars tileset tiles are 16x32, stretched to
+    // a 176px-wide bar.
+    let hp_container_width = 176.0;
+    let hp_container_height = 32.0;
 
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the HUD map
@@ -164,21 +164,23 @@ fn initialize_hp_bars(
             if let Some(grid_coords) =
                 GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {
-                let player_one_offset = match player.player_id {
-                    0 => Vec3::X,
+                let player_offset = match player.player_id {
+                    1 => Vec3::X * 16.0,
                     _ => Vec3::ZERO,
                 };
 
                 commands.entity(entity).insert((
                     grid_coords,
-                    Transform::from_translation(transform.translation + player_one_offset),
+                    Transform::from_translation(transform.translation + player_offset),
                 ));
 
                 if let Some(first_child) = children.and_then(|c| c.first()).copied() {
+                    // Player 1's bar is left-anchored
+                    // Player 2's bar is right-anchored
                     let anchor_x = 0.5;
                     let offset_direction = match player.player_id {
-                        0 => 1.0,
-                        1 => -1.0,
+                        0 => -1.0,
+                        1 => 1.0,
                         _ => 0.0,
                     };
                     commands
@@ -234,7 +236,8 @@ fn initialize_players(
                         max: config.player.starting_health,
                     },
                     BeamCharges::new(
-                        (map_info.ground_entities.len() as u32) / config.player.beam_charges_divisor,
+                        (map_info.ground_entities.len() as u32)
+                            / config.player.beam_charges_divisor,
                     ),
                     ClaimedTileCount::default(),
                     AbilityList(loadouts.for_player(player.player_id)),
