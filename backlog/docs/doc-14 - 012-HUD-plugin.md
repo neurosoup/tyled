@@ -527,7 +527,8 @@ sprite_animations_query ---> |"writes (switches clip)"| dc_anim
 ### Query Player entities (health)
 
 Used in the following systems:
-- **animate_hp**: reads `Health` and `Player` components on `DamageEffectTarget`-marked entities to determine the current health ratio for each player
+- **animate_hp**: reads `Health` and `Player` components on `DamageEffectTarget`-marked entities to determine the current health ratio for each player, via `animate_bar_toward`
+- **animate_damage_bar**: same query shape, feeding `animate_bar_toward` for the damage-echo bar
 
 ```mermaid
 ---
@@ -541,11 +542,14 @@ classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
 animate_hp["`**animate_hp**`"]
+animate_damage_bar["`**animate_damage_bar**`"]
 
 update -.-> animate_hp
+update -.-> animate_damage_bar
 
 players_query{{"`players_query`"}}:::query
 animate_hp ---> players_query
+animate_damage_bar ---> players_query
 
 player_entity@{ shape: st-rect, label: "Player" }
 
@@ -561,7 +565,7 @@ players_query -..-> |filter With| pe_marker
 ### Query HPBar entities
 
 Used in the following systems:
-- **animate_hp**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio
+- **animate_hp**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `animate_bar_toward`
 
 ```mermaid
 ---
@@ -588,4 +592,48 @@ hb_transform>"`**Transform**`"] --> |belongs to| hp_bar_entity
 
 hp_bars_query ---> |reads| hb_hp_bar
 hp_bars_query ---> |writes| hb_transform
+```
+
+### Query DamageBar entities
+
+Used in the following systems:
+- **animate_damage_bar**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `animate_bar_toward`; filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` so a bar currently holding `DamageEchoDelay` is skipped entirely
+- **arm_damage_echo_delay**: reads the `Player` component on every `DamageBar` entity (no `Without` filter) to find the bars belonging to a player whose `Health` just changed
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_damage_bar["`**animate_damage_bar**`"]
+arm_damage_echo_delay["`**arm_damage_echo_delay**`"]
+
+update -.-> animate_damage_bar
+update -.-> arm_damage_echo_delay
+
+damage_bars_query{{"`damage_bars_query`"}}:::query
+animate_damage_bar ---> damage_bars_query
+
+damage_bars_query_arm{{"`damage_bars_query (arm)`"}}:::query
+arm_damage_echo_delay ---> damage_bars_query_arm
+
+damage_bar_entity@{ shape: st-rect, label: "DamageBar Entity" }
+
+db_damage_bar>"`**DamageBar**`"] --> |belongs to| damage_bar_entity
+db_transform>"`**Transform**`"] --> |belongs to| damage_bar_entity
+db_player>"`**Player**`"] --> |belongs to| damage_bar_entity
+db_delay>"`**DamageEchoDelay**`"] -.-> |absent from match, if present| damage_bar_entity
+
+damage_bars_query ---> |reads| db_player
+damage_bars_query ---> |writes| db_transform
+damage_bars_query -..-> |filter With| db_damage_bar
+damage_bars_query -..-> |filter Without| db_delay
+
+damage_bars_query_arm ---> |reads| db_player
 ```
