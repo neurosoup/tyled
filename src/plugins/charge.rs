@@ -39,6 +39,7 @@ fn regen_charges_from_solar_panels(
     time: Res<Time>,
     config: Res<GameConfig>,
     mut solar_panels_timer: ResMut<SolarPanelsTimer>,
+    map_info: Res<MapInfo>,
     mut players: Query<(Entity, &AbilityList, &ClaimedTileCount, &mut BeamCharges)>,
     mut charge_regen_writer: MessageWriter<ChargeRegen>,
 ) {
@@ -46,6 +47,15 @@ fn regen_charges_from_solar_panels(
     if !solar_panels_timer.0.is_finished() {
         return;
     }
+
+    // A charge is only useful up to a claim on a tile nobody owns yet, so cap
+    // regen at the board's remaining unclaimed count — otherwise a wide-board
+    // Solar Panels stack keeps banking charges it can never spend on a fresh
+    // claim once the board's mostly settled.
+    let total_tiles = map_info.ground_entities.len() as u32;
+    let claimed_tiles: u32 = players.iter().map(|(.., count, _)| count.current).sum();
+    let unclaimed_tiles = total_tiles.saturating_sub(claimed_tiles);
+
     for (entity, abilities, tile_count, mut charges) in &mut players {
         if !abilities.0.contains(&AbilityDescriptor::SolarPanels) {
             continue;
@@ -54,10 +64,14 @@ fn regen_charges_from_solar_panels(
         if gained == 0 {
             continue;
         }
-        charges.current = (charges.current + gained).min(charges.max);
-        charge_regen_writer.write(ChargeRegen {
-            owner: entity,
-            amount: gained,
-        });
+        let new_current = (charges.current + gained)
+            .min(charges.max)
+            .min(unclaimed_tiles);
+        if new_current == charges.current {
+            continue;
+        }
+        let amount = new_current - charges.current;
+        charges.current = new_current;
+        charge_regen_writer.write(ChargeRegen { owner: entity, amount });
     }
 }

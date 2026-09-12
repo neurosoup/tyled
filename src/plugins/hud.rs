@@ -77,6 +77,7 @@ fn nudge_bar_for_player<F: QueryFilter>(
     bars: &mut Query<(&Player, &mut Transform), F>,
     decay_rate: f32,
     delta_secs: f32,
+    bar_pixel_width: f32,
 ) {
     for (bar_player, mut transform) in &mut *bars {
         if bar_player.player_id == player_id {
@@ -85,7 +86,7 @@ fn nudge_bar_for_player<F: QueryFilter>(
                 .x
                 .smooth_nudge(&ratio, decay_rate, delta_secs);
             transform.scale.x =
-                (transform.scale.x * HUD_BAR_PIXEL_WIDTH).round() / HUD_BAR_PIXEL_WIDTH;
+                (transform.scale.x * bar_pixel_width).round() / bar_pixel_width;
             if ratio <= 0.001 && transform.scale.x <= 0.001 {
                 transform.scale.x = 0.0;
             }
@@ -106,6 +107,7 @@ fn animate_hp(
             &mut hp_bars,
             config.animation.hp_bar_decay_rate,
             time.delta_secs(),
+            HP_BAR_PIXEL_WIDTH,
         );
     }
 }
@@ -123,6 +125,7 @@ fn animate_damage_bar(
             &mut damage_bars,
             config.animation.damage_bar_decay_rate,
             time.delta_secs(),
+            HP_BAR_PIXEL_WIDTH,
         );
     }
 }
@@ -148,6 +151,7 @@ fn animate_territory_bar(
             &mut bars,
             config.animation.territory_bar_decay_rate,
             time.delta_secs(),
+            TERRITORY_BAR_PIXEL_WIDTH,
         );
     }
 }
@@ -181,6 +185,7 @@ fn animate_charges_bar(
             &mut bars,
             config.animation.charges_bar_decay_rate,
             time.delta_secs(),
+            TERRITORY_BAR_PIXEL_WIDTH,
         );
     }
 }

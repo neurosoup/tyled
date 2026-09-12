@@ -10,9 +10,15 @@ use bevy::{
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
 
-/// Full HUD bar width in pixels (HP, damage, territory, charges all share this
-/// container).
-pub const HUD_BAR_PIXEL_WIDTH: f32 = 176.0;
+/// Full HUD bar width in pixels for HP and damage bars (each player has their
+/// own container).
+pub const HP_BAR_PIXEL_WIDTH: f32 = 176.0;
+
+/// Full HUD bar width in pixels for territory and charges bars. Unlike
+/// HP/damage, P1 and P2's bars are anchored 432px apart (left edge of P1's
+/// bar to right edge of P2's) and grow toward each other across that same
+/// span, so together they represent 100% of the board.
+pub const TERRITORY_BAR_PIXEL_WIDTH: f32 = 432.0;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TiledPlugin::default());
@@ -168,9 +174,7 @@ fn initialize_hud_bars(
     >,
     mut sprite_query: Query<&mut Sprite>,
 ) {
-    // Full bar size in the HUD map: hud-bars tileset tiles are 16x32, stretched to
-    // a HUD_BAR_PIXEL_WIDTH-wide bar. Applies to HP, damage, territory, and charges bars.
-    let bar_container_width = HUD_BAR_PIXEL_WIDTH;
+    // Bar height in the HUD map: hud-bars tileset tiles are 16x32, stretched vertically to fill this; width is per-kind, set below.
     let bar_container_height = 32.0;
 
     for map_created_message in map_created_reader.read() {
@@ -210,6 +214,11 @@ fn initialize_hud_bars(
                         .entity(first_child)
                         .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.5)),));
                     if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
+                        let bar_container_width = if is_territory || is_charges {
+                            TERRITORY_BAR_PIXEL_WIDTH
+                        } else {
+                            HP_BAR_PIXEL_WIDTH
+                        };
                         sprite.custom_size =
                             Some(Vec2::new(bar_container_width, bar_container_height));
                     }
