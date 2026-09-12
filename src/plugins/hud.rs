@@ -5,11 +5,14 @@
  counterpart (`animate_damage_bar`), which additionally holds off for a beat
  after each hit (`DamageEchoDelay`, armed by `arm_damage_echo_delay` and
  ticked down by `tick_damage_echo_delay`) before it starts catching up, plus
- the generic numeric-counter machinery: rolling-odometer digit sprites via
- `DigitAnimations` / `initialize_digit_animations`, plus one `animate_*`
- system per counter. Each counter's *value* is maintained by its own domain
- plugin (beam charges by the beam plugin, claimed-tile count by the claim
- plugin); this plugin only reads those values and drives the HUD sprites.
+ the territory/charges bars (`animate_territory_bar`, `animate_charges_bar`)
+ that track a player's claimed-tile share and claimed+charges share of the
+ board, plus the generic numeric-counter machinery: rolling-odometer digit
+ sprites via `DigitAnimations` / `initialize_digit_animations`, plus one
+ `animate_*` system per counter. Each counter's *value* is maintained by its
+ own domain plugin (beam charges by the beam plugin, claimed-tile count by
+ the claim plugin); this plugin only reads those values and drives the HUD
+ sprites.
 */
 use std::time::Duration;
 
@@ -25,6 +28,8 @@ pub(crate) fn plugin(app: &mut App) {
         (
             animate_hp,
             animate_damage_bar,
+            animate_territory_bar,
+            animate_charges_bar,
             arm_damage_echo_delay,
             tick_damage_echo_delay,
             animate_beam_charges,
@@ -74,25 +79,31 @@ fn tick_damage_echo_delay(
     }
 }
 
-/// Nudges every bar matching `F` for the matching player's `scale.x` toward
-/// `health.ratio()` at `decay_rate`, snapping to `0.0` once it's close enough.
-fn animate_bar_toward<F: QueryFilter>(
-    players: &Query<(&Health, &Player), With<DamageEffectTarget>>,
+/// Nudges every bar matching `F` that belongs to `player_id` toward `ratio` at
+/// `decay_rate`, snapping to `0.0` once both the bar and its target are there.
+///
+/// The bar's rendered width is `HUD_BAR_PIXEL_WIDTH * scale.x`; a raw
+/// `smooth_nudge` leaves that at an arbitrary sub-pixel value every frame,
+/// which shimmers under this game's nearest-neighbor filtering. So after
+/// nudging, `scale.x` is snapped to the nearest value that puts the width on
+/// a whole pixel.
+fn nudge_bar_for_player<F: QueryFilter>(
+    player_id: u8,
+    ratio: f32,
     bars: &mut Query<(&Player, &mut Transform), F>,
     decay_rate: f32,
     delta_secs: f32,
 ) {
-    for (health, player) in players {
-        for (bar_player, mut transform) in &mut *bars {
-            if bar_player.player_id == player.player_id {
-                let ratio = health.ratio();
-                transform
-                    .scale
-                    .x
-                    .smooth_nudge(&ratio, decay_rate, delta_secs);
-                if transform.scale.x <= 0.001 {
-                    transform.scale.x = 0.0;
-                }
+    for (bar_player, mut transform) in &mut *bars {
+        if bar_player.player_id == player_id {
+            transform
+                .scale
+                .x
+                .smooth_nudge(&ratio, decay_rate, delta_secs);
+            transform.scale.x =
+                (transform.scale.x * HUD_BAR_PIXEL_WIDTH).round() / HUD_BAR_PIXEL_WIDTH;
+            if ratio <= 0.001 && transform.scale.x <= 0.001 {
+                transform.scale.x = 0.0;
             }
         }
     }
@@ -104,12 +115,15 @@ fn animate_hp(
     config: Res<GameConfig>,
     time: Res<Time>,
 ) {
-    animate_bar_toward(
-        &players,
-        &mut hp_bars,
-        config.animation.hp_bar_decay_rate,
-        time.delta_secs(),
-    );
+    for (health, player) in &players {
+        nudge_bar_for_player(
+            player.player_id,
+            health.ratio(),
+            &mut hp_bars,
+            config.animation.hp_bar_decay_rate,
+            time.delta_secs(),
+        );
+    }
 }
 
 fn animate_damage_bar(
@@ -118,12 +132,81 @@ fn animate_damage_bar(
     config: Res<GameConfig>,
     time: Res<Time>,
 ) {
-    animate_bar_toward(
-        &players,
-        &mut damage_bars,
-        config.animation.damage_bar_decay_rate,
-        time.delta_secs(),
-    );
+    for (health, player) in &players {
+        nudge_bar_for_player(
+            player.player_id,
+            health.ratio(),
+            &mut damage_bars,
+            config.animation.damage_bar_decay_rate,
+            time.delta_secs(),
+        );
+    }
+}
+
+/// Drives the territory bar toward a player's claimed-tile share of the board.
+/// Unlike the digit systems, this is not `Changed`-gated: a bar is a continuous
+/// tween toward a target and must keep running on unchanged frames, or it
+/// freezes mid-travel — same convention as `animate_hp`/`animate_damage_bar`.
+fn animate_territory_bar(
+    players: Query<(&Player, &ClaimedTileCount)>,
+    mut bars: Query<(&Player, &mut Transform), With<TerritoryBar>>,
+    map_info: Res<MapInfo>,
+    config: Res<GameConfig>,
+    time: Res<Time>,
+) {
+    let total = map_info.ground_entities.len();
+    if total == 0 {
+        return;
+    }
+
+    for (player, count) in &players {
+        let ratio = count.current as f32 / total as f32;
+        nudge_bar_for_player(
+            player.player_id,
+            ratio,
+            &mut bars,
+            config.animation.territory_bar_decay_rate,
+            time.delta_secs(),
+        );
+    }
+}
+
+/// Drives the charges bar toward a player's claimed-tiles-plus-beam-charges
+/// share of the board (clamped to `1.0` — Solar Panels regen can push charges
+/// back up independently of claims). Not `Changed`-gated, same reasoning as
+/// `animate_territory_bar`.
+///
+/// Counts each of the player's in-flight `Beam`s alongside `claimed` and
+/// `charges`: `spend_charge_on_fire` decrements `BeamCharges` the instant a
+/// beam is fired, but the matching claim (if any) only lands once `beam_step`
+/// resolves it, a tick or more later. Without counting the in-flight beam
+/// itself, the bar would visibly dip on every shot and pop back on a hit.
+/// Adding it back cancels that gap; a genuine miss still permanently costs
+/// the bar once the beam despawns unresolved.
+fn animate_charges_bar(
+    players: Query<(Entity, &Player, &ClaimedTileCount, &BeamCharges)>,
+    beams: Query<&Beam>,
+    mut bars: Query<(&Player, &mut Transform), With<ChargesBar>>,
+    map_info: Res<MapInfo>,
+    config: Res<GameConfig>,
+    time: Res<Time>,
+) {
+    let total = map_info.ground_entities.len();
+    if total == 0 {
+        return;
+    }
+
+    for (entity, player, count, charges) in &players {
+        let in_flight = beams.iter().filter(|beam| beam.owner == entity).count() as u32;
+        let ratio = ((count.current + charges.current + in_flight) as f32 / total as f32).min(1.0);
+        nudge_bar_for_player(
+            player.player_id,
+            ratio,
+            &mut bars,
+            config.animation.charges_bar_decay_rate,
+            time.delta_secs(),
+        );
+    }
 }
 
 // handles[from][to] — valid for all from != to in 0..10

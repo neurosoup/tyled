@@ -114,6 +114,10 @@ pub struct AnimationConfig {
     pub damage_bar_decay_rate: f32,
     /// Milliseconds the damage-echo bar holds still after a hit before catching up.
     pub damage_bar_delay_ms: u64,
+    /// How fast the territory bar snaps to its claimed-tile ratio. Higher = snappier.
+    pub territory_bar_decay_rate: f32,
+    /// How fast the charges bar snaps to its claimed+charges ratio. Higher = snappier.
+    pub charges_bar_decay_rate: f32,
 }
 
 #[derive(Reflect, Clone, Deserialize)]

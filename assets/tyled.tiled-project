@@ -805,18 +805,6 @@
                     "value": {
                         "0": 16
                     }
-                },
-                {
-                    "name": "screen_space_specular_transmission_quality",
-                    "propertyType": "bevy_camera::components::ScreenSpaceTransmissionQuality",
-                    "type": "class",
-                    "value": {
-                    }
-                },
-                {
-                    "name": "screen_space_specular_transmission_steps",
-                    "type": "int",
-                    "value": 1
                 }
             ],
             "name": "bevy_camera::components::Camera3d",
@@ -963,6 +951,15 @@
             "drawFill": true,
             "id": 45,
             "members": [
+                {
+                    "name": "frusta",
+                    "propertyType": "bevy_ecs::entity::hash_map::EntityHashMap<alloc::vec::Vec<bevy_camera::primitives::Frustum>>",
+                    "type": "class",
+                    "value": {
+                        "0": {
+                        }
+                    }
+                }
             ],
             "name": "bevy_camera::primitives::CascadesFrusta",
             "type": "class",
@@ -975,6 +972,13 @@
             "drawFill": true,
             "id": 46,
             "members": [
+                {
+                    "name": "frusta",
+                    "propertyType": "[bevy_camera::primitives::Frustum; 6]",
+                    "type": "class",
+                    "value": {
+                    }
+                }
             ],
             "name": "bevy_camera::primitives::CubemapFrusta",
             "type": "class",
@@ -1018,6 +1022,15 @@
             "drawFill": true,
             "id": 49,
             "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_math::primitives::view_frustum::ViewFrustum",
+                    "type": "class",
+                    "value": {
+                        "half_spaces": {
+                        }
+                    }
+                }
             ],
             "name": "bevy_camera::primitives::Frustum",
             "type": "class",
@@ -1720,7 +1733,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_core_pipeline::tonemapping::Tonemapping:::Variant",
                     "type": "string",
-                    "value": "None"
+                    "value": "TonyMcMapface"
                 }
             ],
             "name": "bevy_core_pipeline::tonemapping::Tonemapping",
@@ -1742,7 +1755,8 @@
                 "AgX",
                 "SomewhatBoringDisplayTransform",
                 "TonyMcMapface",
-                "BlenderFilmic"
+                "BlenderFilmic",
+                "KhronosPbrNeutral"
             ],
             "valuesAsFlags": false
         },
@@ -3588,9 +3602,21 @@
             "id": 170,
             "members": [
                 {
-                    "name": "0",
+                    "name": "current_focus",
                     "type": "object",
                     "value": 0
+                },
+                {
+                    "name": "original_focus",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "recorded_changes",
+                    "propertyType": "alloc::vec::Vec<core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>>",
+                    "type": "class",
+                    "value": {
+                    }
                 }
             ],
             "name": "bevy_input_focus::InputFocus",
@@ -3796,7 +3822,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_light::cluster::ClusterConfig:::Variant",
                     "type": "string",
-                    "value": "None"
+                    "value": "FixedZ"
                 },
                 {
                     "name": "FixedZ",
@@ -4035,6 +4061,11 @@
                     "value": "#ffffffff"
                 },
                 {
+                    "name": "contact_shadows_enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
                     "name": "illuminance",
                     "type": "float",
                     "value": 10000
@@ -4045,14 +4076,14 @@
                     "value": 0.019999999552965164
                 },
                 {
+                    "name": "shadow_maps_enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
                     "name": "shadow_normal_bias",
                     "type": "float",
                     "value": 1.7999999523162842
-                },
-                {
-                    "name": "shadows_enabled",
-                    "type": "bool",
-                    "value": false
                 }
             ],
             "name": "bevy_light::directional_light::DirectionalLight",
@@ -4140,6 +4171,11 @@
                     "value": "#ffffffff"
                 },
                 {
+                    "name": "contact_shadows_enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
                     "name": "intensity",
                     "type": "float",
                     "value": 1000000
@@ -4165,14 +4201,14 @@
                     "value": 0.10000000149011612
                 },
                 {
+                    "name": "shadow_maps_enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
                     "name": "shadow_normal_bias",
                     "type": "float",
                     "value": 0.6000000238418579
-                },
-                {
-                    "name": "shadows_enabled",
-                    "type": "bool",
-                    "value": false
                 }
             ],
             "name": "bevy_light::point_light::PointLight",
@@ -4335,6 +4371,16 @@
             "drawFill": true,
             "id": 201,
             "members": [
+                {
+                    "name": "falloff",
+                    "propertyType": "glam::Vec3",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                }
             ],
             "name": "bevy_light::probe::LightProbe",
             "type": "class",
@@ -4351,7 +4397,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_light::ShadowFilteringMethod:::Variant",
                     "type": "string",
-                    "value": "Hardware2x2"
+                    "value": "Gaussian"
                 }
             ],
             "name": "bevy_light::ShadowFilteringMethod",
@@ -4386,6 +4432,11 @@
                     "name": "color",
                     "type": "color",
                     "value": "#ffffffff"
+                },
+                {
+                    "name": "contact_shadows_enabled",
+                    "type": "bool",
+                    "value": false
                 },
                 {
                     "name": "inner_angle",
@@ -4423,14 +4474,14 @@
                     "value": 0.10000000149011612
                 },
                 {
+                    "name": "shadow_maps_enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
                     "name": "shadow_normal_bias",
                     "type": "float",
                     "value": 1.7999999523162842
-                },
-                {
-                    "name": "shadows_enabled",
-                    "type": "bool",
-                    "value": false
                 }
             ],
             "name": "bevy_light::spot_light::SpotLight",
@@ -4999,7 +5050,7 @@
             "members": [
                 {
                     "name": "0",
-                    "propertyType": "bevy_pbr::material::OpaqueRendererMethod",
+                    "propertyType": "bevy_material::opaque::OpaqueRendererMethod",
                     "type": "class",
                     "value": {
                     }
@@ -5108,7 +5159,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel:::Variant",
                     "type": "string",
-                    "value": "Low"
+                    "value": "High"
                 },
                 {
                     "name": "Custom",
@@ -5271,6 +5322,18 @@
                     "value": "#ffffffff"
                 },
                 {
+                    "name": "default_line_width",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "default_topology",
+                    "propertyType": "bevy_pbr::wireframe::WireframeTopology",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
                     "name": "global",
                     "type": "bool",
                     "value": false
@@ -5325,7 +5388,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_picking::hover::PickingInteraction:::Variant",
                     "type": "string",
-                    "value": "Pressed"
+                    "value": "None"
                 }
             ],
             "name": "bevy_picking::hover::PickingInteraction",
@@ -5722,7 +5785,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_post_process::dof::DepthOfFieldMode:::Variant",
                     "type": "string",
-                    "value": "Bokeh"
+                    "value": "Gaussian"
                 }
             ],
             "name": "bevy_post_process::dof::DepthOfFieldMode",
@@ -6044,7 +6107,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_render::view::Msaa:::Variant",
                     "type": "string",
-                    "value": "Off"
+                    "value": "Sample4"
                 }
             ],
             "name": "bevy_render::view::Msaa",
@@ -7040,7 +7103,9 @@
                 "Left",
                 "Center",
                 "Right",
-                "Justified"
+                "Justified",
+                "Start",
+                "End"
             ],
             "valuesAsFlags": false
         },
@@ -7460,7 +7525,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_ui::focus::FocusPolicy:::Variant",
                     "type": "string",
-                    "value": "Block"
+                    "value": "Pass"
                 }
             ],
             "name": "bevy_ui::focus::FocusPolicy",
@@ -7489,7 +7554,7 @@
                     "name": ":variant",
                     "propertyType": "bevy_ui::focus::Interaction:::Variant",
                     "type": "string",
-                    "value": "Pressed"
+                    "value": "None"
                 }
             ],
             "name": "bevy_ui::focus::Interaction",
@@ -7925,11 +7990,6 @@
                         "x": 0,
                         "y": 0
                     }
-                },
-                {
-                    "name": "stack_index",
-                    "type": "int",
-                    "value": 0
                 },
                 {
                     "name": "unrounded_size",
@@ -11168,6 +11228,18 @@
         {
             "color": "#ff000000",
             "drawFill": true,
+            "id": 556,
+            "members": [
+            ],
+            "name": "tyled::components::beam_charges::BeamChargesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
             "id": 549,
             "members": [
                 {
@@ -11187,6 +11259,30 @@
                 }
             ],
             "name": "tyled::components::beam::BeamChargesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 557,
+            "members": [
+            ],
+            "name": "tyled::components::claim::ClaimedTilesDigit",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 558,
+            "members": [
+            ],
+            "name": "tyled::components::countdown::CountdownDigit",
             "type": "class",
             "useAs": [
                 "property"
@@ -11381,10 +11477,40 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 556,
+            "id": 559,
             "members": [
             ],
-            "name": "tyled::components::beam_charges::BeamChargesDigit",
+            "name": "bevy_camera::camera::ShadowLodOrigin",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 560,
+            "name": "bevy_camera::components::CompositingSpace:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Srgb",
+                "Linear",
+                "Oklab"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 561,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_camera::components::CompositingSpace:::Variant",
+                    "type": "string",
+                    "value": "Srgb"
+                }
+            ],
+            "name": "bevy_camera::components::CompositingSpace",
             "type": "class",
             "useAs": [
                 "property"
@@ -11393,10 +11519,10 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 557,
+            "id": 562,
             "members": [
             ],
-            "name": "tyled::components::claim::ClaimedTilesDigit",
+            "name": "bevy_camera::components::Hdr",
             "type": "class",
             "useAs": [
                 "property"
@@ -11405,10 +11531,5568 @@
         {
             "color": "#ff000000",
             "drawFill": true,
-            "id": 558,
+            "id": 563,
+            "members": [
+                {
+                    "name": "normal_d",
+                    "propertyType": "glam::Vec4",
+                    "type": "class",
+                    "value": {
+                        "w": 0,
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                }
+            ],
+            "name": "bevy_math::primitives::half_space::HalfSpace",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 564,
+            "members": [
+                {
+                    "name": "[0]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[1]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[2]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[3]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[4]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[5]",
+                    "propertyType": "bevy_math::primitives::half_space::HalfSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "[bevy_math::primitives::half_space::HalfSpace; 6]",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 565,
+            "members": [
+                {
+                    "name": "half_spaces",
+                    "propertyType": "[bevy_math::primitives::half_space::HalfSpace; 6]",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_math::primitives::view_frustum::ViewFrustum",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 566,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_camera::primitives::CubemapLayout",
+                            "type": "class",
+                            "value": {
+                                "0": {
+                                    "half_spaces": {
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_camera::primitives::Frustum>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 567,
+            "members": [
+                {
+                    "name": "key",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "propertyType": "alloc::vec::Vec<bevy_camera::primitives::Frustum>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_camera::primitives::Frustum>, bevy_ecs::entity::hash::EntityHash>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 568,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_camera::primitives::Frustum",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_camera::primitives::Frustum>, bevy_ecs::entity::hash::EntityHash>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 569,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_camera::primitives::Frustum>, bevy_ecs::entity::hash::EntityHash>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::entity::hash_map::EntityHashMap<alloc::vec::Vec<bevy_camera::primitives::Frustum>>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 570,
+            "members": [
+                {
+                    "name": "[0]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[1]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[2]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[3]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[4]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[5]",
+                    "propertyType": "bevy_camera::primitives::Frustum",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "[bevy_camera::primitives::Frustum; 6]",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 571,
+            "members": [
+                {
+                    "name": "center",
+                    "propertyType": "glam::Vec3A",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_camera::primitives::Sphere",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 572,
             "members": [
             ],
-            "name": "tyled::components::countdown::CountdownDigit",
+            "name": "bevy_camera::visibility::DynamicSkinnedMeshBounds",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 573,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "int",
+                            "value": 0
+                        }
+                    ]
+                }
+            ],
+            "name": "smallvec::SmallVec<[u64; 1]>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 574,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "smallvec::SmallVec<[u64; 1]>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_camera::visibility::render_layers::RenderLayers",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 575,
+            "members": [
+            ],
+            "name": "bevy_core_pipeline::prepass::background_motion_vectors::NoBackgroundMotionVectors",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 576,
+            "members": [
+            ],
+            "name": "bevy_core_pipeline::schedule::RootNonCameraView",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 577,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs::component::info::ComponentId",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 578,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ecs_tiled::tiled::event::ObjectCreated",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "smallvec::SmallVec<[bevy_ecs::component::info::ComponentId; 4]>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 579,
+            "members": [
+                {
+                    "name": "disabling",
+                    "propertyType": "smallvec::SmallVec<[bevy_ecs::component::info::ComponentId; 4]>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::entity_disabling::DefaultQueryFilters",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 580,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "object",
+                            "value": 0
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_ecs::entity::Entity>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 581,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ecs::entity::Entity>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::hierarchy::Children",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 582,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ecs::entity::Entity>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::observer::distributed_storage::ObservedBy",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 583,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ecs::component::info::ComponentId",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::resource::IsResource",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 584,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "color",
+                            "value": "#ffffffff"
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_color::color::Color>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 585,
+            "members": [
+                {
+                    "name": "arrow_length",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "objects_colors_list",
+                    "propertyType": "alloc::vec::Vec<bevy_color::color::Color>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::debug::objects::TiledDebugObjectsConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 586,
+            "members": [
+                {
+                    "name": "text_color",
+                    "type": "color",
+                    "value": ""
+                },
+                {
+                    "name": "text_size",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::debug::tiles::TiledDebugTilesConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 587,
+            "members": [
+                {
+                    "name": "maps_colors_list",
+                    "propertyType": "alloc::vec::Vec<bevy_color::color::Color>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "world_chunk_color",
+                    "propertyType": "core::option::Option<bevy_color::color::Color>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::debug::world_chunk::TiledDebugWorldChunkConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 588,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "1",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "(u32, u32)",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 589,
+            "members": [
+                {
+                    "name": "key",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "type": "object",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<u32, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 590,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_light::directional_light::DirectionalLight",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<u32, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 591,
+            "members": [
+                {
+                    "name": "key",
+                    "propertyType": "(u32, u32)",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "value",
+                    "propertyType": "alloc::vec::Vec<bevy_ecs::entity::Entity>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<(u32, u32), alloc::vec::Vec<bevy_ecs::entity::Entity>, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 592,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_light::directional_light::DirectionalLightTexture",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<(u32, u32), alloc::vec::Vec<bevy_ecs::entity::Entity>, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 593,
+            "members": [
+                {
+                    "name": "layers",
+                    "propertyType": "bevy_platform::collections::HashMap<u32, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "objects",
+                    "propertyType": "bevy_platform::collections::HashMap<u32, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "tiles",
+                    "propertyType": "bevy_platform::collections::HashMap<(u32, u32), alloc::vec::Vec<bevy_ecs::entity::Entity>, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::map::storage::TiledMapStorage",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 594,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_camera::projection::ScalingMode",
+                            "type": "class",
+                            "value": {
+                                "x": 0,
+                                "y": 0
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<glam::Vec2>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 595,
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Point",
+                "Rectangle",
+                "Ellipse",
+                "Polygon",
+                "Polyline",
+                "Tile",
+                "Text",
+                "Capsule"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 596,
+            "members": [
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Rectangle",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 597,
+            "members": [
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Ellipse",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 598,
+            "members": [
+                {
+                    "name": "vertices",
+                    "propertyType": "alloc::vec::Vec<glam::Vec2>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Polygon",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 599,
+            "members": [
+                {
+                    "name": "vertices",
+                    "propertyType": "alloc::vec::Vec<glam::Vec2>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Polyline",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 600,
+            "members": [
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Tile",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 601,
+            "members": [
+                {
+                    "name": "font_size",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "offset",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "text",
+                    "type": "string",
+                    "value": ""
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Text",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 602,
+            "members": [
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject::Capsule",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 603,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject:::Variant",
+                    "type": "string",
+                    "value": "Point"
+                },
+                {
+                    "name": "Capsule",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Capsule",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Ellipse",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Ellipse",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Polygon",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Polygon",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Polyline",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Polyline",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Rectangle",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Rectangle",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Text",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Text",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Tile",
+                    "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Tile",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObject",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 604,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ecs::entity::Entity>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::object::TiledObjectVisuals",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 605,
+            "members": [
+                {
+                    "name": "maps",
+                    "propertyType": "bevy_platform::collections::HashMap<u32, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tiled::tiled::world::storage::TiledWorldStorage",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 606,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "object",
+                            "value": 0
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<core::option::Option<bevy_ecs::entity::Entity>>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 607,
+            "members": [
+                {
+                    "name": "size",
+                    "propertyType": "bevy_ecs_tilemap::map::TilemapSize",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "tiles",
+                    "propertyType": "alloc::vec::Vec<core::option::Option<bevy_ecs::entity::Entity>>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs_tilemap::tiles::storage::TileStorage",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 608,
+            "members": [
+                {
+                    "name": "color",
+                    "propertyType": "core::option::Option<bevy_color::color::Color>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_gizmos::frustum::ShowFrustumGizmo",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 609,
+            "members": [
+                {
+                    "name": "color",
+                    "propertyType": "core::option::Option<bevy_color::color::Color>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_gizmos::skinned_mesh_bounds::ShowSkinnedMeshBoundsGizmo",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 610,
+            "members": [
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoCamera",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 611,
+            "members": [
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoFocus",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 612,
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoMode:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Translate",
+                "Rotate",
+                "Scale"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 613,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoMode:::Variant",
+                    "type": "string",
+                    "value": "Translate"
+                }
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoMode",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 614,
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoSpace:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "World",
+                "Local"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 615,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoSpace:::Variant",
+                    "type": "string",
+                    "value": "World"
+                }
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoSpace",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 616,
+            "members": [
+                {
+                    "name": "axis_hit_distance",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "axis_length",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "confine_cursor",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "mode",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoMode",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "rotate_ring_radius",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "screen_scale_factor",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "snap_rotate",
+                    "propertyType": "core::option::Option<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "snap_scale",
+                    "propertyType": "core::option::Option<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "snap_translate",
+                    "propertyType": "core::option::Option<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "space",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoSettings",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 617,
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoAxis:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "X",
+                "Y",
+                "Z",
+                "View"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 618,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoAxis:::Variant",
+                    "type": "string",
+                    "value": "X"
+                }
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoAxis",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 619,
+            "name": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 620,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_gizmos::transform_gizmo::TransformGizmoAxis",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 621,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 622,
+            "members": [
+                {
+                    "name": "active",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "axis",
+                    "propertyType": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "drag_start_world",
+                    "propertyType": "glam::Vec3",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "entity",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "gizmo_origin",
+                    "propertyType": "glam::Vec3",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "hovered_axis",
+                    "propertyType": "core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "start_transform",
+                    "propertyType": "bevy_transform::components::transform::Transform",
+                    "type": "class",
+                    "value": {
+                        "rotation": {
+                            "w": 1,
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "scale": {
+                            "x": 1,
+                            "y": 1,
+                            "z": 1
+                        },
+                        "translation": {
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
+                        }
+                    }
+                }
+            ],
+            "name": "bevy_gizmos::transform_gizmo::TransformGizmoState",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 623,
+            "members": [
+                {
+                    "name": "line_gizmo_renderer",
+                    "propertyType": "bevy_render::sync_world::MainEntity",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "line_joint_gizmo_renderer",
+                    "propertyType": "bevy_render::sync_world::MainEntity",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "line_strip_gizmo_renderer",
+                    "propertyType": "bevy_render::sync_world::MainEntity",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_gizmos_render::LineGizmoEntities",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 624,
+            "name": "bevy_input::gamepad::GamepadButton:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "South",
+                "East",
+                "North",
+                "West",
+                "C",
+                "Z",
+                "LeftTrigger",
+                "LeftTrigger2",
+                "RightTrigger",
+                "RightTrigger2",
+                "Select",
+                "Start",
+                "Mode",
+                "LeftThumb",
+                "RightThumb",
+                "DPadUp",
+                "DPadDown",
+                "DPadLeft",
+                "DPadRight",
+                "Other"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 625,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadButton::Other",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 626,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_input::gamepad::GamepadButton:::Variant",
+                    "type": "string",
+                    "value": "South"
+                },
+                {
+                    "name": "Other",
+                    "propertyType": "bevy_input::gamepad::GamepadButton::Other",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadButton",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 627,
+            "members": [
+                {
+                    "name": "set",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_sprite_render::mesh2d::wireframe2d::NoWireframe2d",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 628,
+            "members": [
+                {
+                    "name": "just_pressed",
+                    "propertyType": "bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "just_released",
+                    "propertyType": "bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "pressed",
+                    "propertyType": "bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 629,
+            "name": "bevy_input::gamepad::GamepadAxis:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "LeftStickX",
+                "LeftStickY",
+                "LeftZ",
+                "RightStickX",
+                "RightStickY",
+                "RightZ",
+                "Other"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 630,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadAxis::Other",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 631,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_input::gamepad::GamepadAxis:::Variant",
+                    "type": "string",
+                    "value": "LeftStickX"
+                },
+                {
+                    "name": "Other",
+                    "propertyType": "bevy_input::gamepad::GamepadAxis::Other",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadAxis",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 632,
+            "name": "bevy_input::gamepad::GamepadInput:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Axis",
+                "Button"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 633,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_input::gamepad::GamepadAxis",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadInput::Axis",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 634,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_input::gamepad::GamepadButton",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadInput::Button",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 635,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_input::gamepad::GamepadInput:::Variant",
+                    "type": "string",
+                    "value": "Axis"
+                },
+                {
+                    "name": "Axis",
+                    "propertyType": "bevy_input::gamepad::GamepadInput::Axis",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Button",
+                    "propertyType": "bevy_input::gamepad::GamepadInput::Button",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadInput",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 636,
+            "members": [
+                {
+                    "name": "key",
+                    "propertyType": "bevy_input::gamepad::GamepadInput",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "value",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadInput, f32, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 637,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_text::text::Justify:::Variant",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadInput, f32, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 638,
+            "name": "core::option::Option<u16>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 639,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "core::option::Option<u16>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 640,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<u16>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<u16>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<u16>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 641,
+            "members": [
+                {
+                    "name": "axis_data",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadInput, f32, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::axis::Axis<bevy_input::gamepad::GamepadInput>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 642,
+            "members": [
+                {
+                    "name": "analog",
+                    "propertyType": "bevy_input::axis::Axis<bevy_input::gamepad::GamepadInput>",
+                    "type": "class",
+                    "value": {
+                        "axis_data": {
+                        }
+                    }
+                },
+                {
+                    "name": "digital",
+                    "propertyType": "bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>",
+                    "type": "class",
+                    "value": {
+                        "just_pressed": {
+                        },
+                        "just_released": {
+                        },
+                        "pressed": {
+                        }
+                    }
+                },
+                {
+                    "name": "product_id",
+                    "propertyType": "core::option::Option<u16>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "vendor_id",
+                    "propertyType": "core::option::Option<u16>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::Gamepad",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 643,
+            "members": [
+                {
+                    "name": "press_threshold",
+                    "type": "float",
+                    "value": 0.75
+                },
+                {
+                    "name": "release_threshold",
+                    "type": "float",
+                    "value": 0.6499999761581421
+                }
+            ],
+            "name": "bevy_input::gamepad::ButtonSettings",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 644,
+            "members": [
+                {
+                    "name": "deadzone_lowerbound",
+                    "type": "float",
+                    "value": -0.05000000074505806
+                },
+                {
+                    "name": "deadzone_upperbound",
+                    "type": "float",
+                    "value": 0.05000000074505806
+                },
+                {
+                    "name": "livezone_lowerbound",
+                    "type": "float",
+                    "value": -1
+                },
+                {
+                    "name": "livezone_upperbound",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "threshold",
+                    "type": "float",
+                    "value": 0.009999999776482582
+                }
+            ],
+            "name": "bevy_input::gamepad::AxisSettings",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 645,
+            "members": [
+                {
+                    "name": "high",
+                    "type": "float",
+                    "value": 0.949999988079071
+                },
+                {
+                    "name": "low",
+                    "type": "float",
+                    "value": 0.05000000074505806
+                },
+                {
+                    "name": "threshold",
+                    "type": "float",
+                    "value": 0.009999999776482582
+                }
+            ],
+            "name": "bevy_input::gamepad::ButtonAxisSettings",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 646,
+            "members": [
+                {
+                    "name": "key",
+                    "propertyType": "bevy_input::gamepad::GamepadButton",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "value",
+                    "propertyType": "bevy_input::gamepad::ButtonSettings",
+                    "type": "class",
+                    "value": {
+                        "press_threshold": 0.75,
+                        "release_threshold": 0.6499999761581421
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonSettings, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 647,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_transform::components::transform::Transform",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonSettings, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 648,
+            "members": [
+                {
+                    "name": "key",
+                    "propertyType": "bevy_input::gamepad::GamepadAxis",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "value",
+                    "propertyType": "bevy_input::gamepad::AxisSettings",
+                    "type": "class",
+                    "value": {
+                        "deadzone_lowerbound": -0.05000000074505806,
+                        "deadzone_upperbound": 0.05000000074505806,
+                        "livezone_lowerbound": -1,
+                        "livezone_upperbound": 1,
+                        "threshold": 0.009999999776482582
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadAxis, bevy_input::gamepad::AxisSettings, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 649,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::UiScale",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadAxis, bevy_input::gamepad::AxisSettings, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 650,
+            "members": [
+                {
+                    "name": "key",
+                    "propertyType": "bevy_input::gamepad::GamepadButton",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "value",
+                    "propertyType": "bevy_input::gamepad::ButtonAxisSettings",
+                    "type": "class",
+                    "value": {
+                        "high": 0.949999988079071,
+                        "low": 0.05000000074505806,
+                        "threshold": 0.009999999776482582
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonAxisSettings, bevy_platform::hash::FixedHasher>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 651,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::focus::FocusPolicy",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonAxisSettings, bevy_platform::hash::FixedHasher>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 652,
+            "members": [
+                {
+                    "name": "axis_settings",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadAxis, bevy_input::gamepad::AxisSettings, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "button_axis_settings",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonAxisSettings, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "button_settings",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonSettings, bevy_platform::hash::FixedHasher>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "default_axis_settings",
+                    "propertyType": "bevy_input::gamepad::AxisSettings",
+                    "type": "class",
+                    "value": {
+                        "deadzone_lowerbound": -0.05000000074505806,
+                        "deadzone_upperbound": 0.05000000074505806,
+                        "livezone_lowerbound": -1,
+                        "livezone_upperbound": 1,
+                        "threshold": 0.009999999776482582
+                    }
+                },
+                {
+                    "name": "default_button_axis_settings",
+                    "propertyType": "bevy_input::gamepad::ButtonAxisSettings",
+                    "type": "class",
+                    "value": {
+                        "high": 0.949999988079071,
+                        "low": 0.05000000074505806,
+                        "threshold": 0.009999999776482582
+                    }
+                },
+                {
+                    "name": "default_button_settings",
+                    "propertyType": "bevy_input::gamepad::ButtonSettings",
+                    "type": "class",
+                    "value": {
+                        "press_threshold": 0.75,
+                        "release_threshold": 0.6499999761581421
+                    }
+                }
+            ],
+            "name": "bevy_input::gamepad::GamepadSettings",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 653,
+            "name": "bevy_input_focus::gained_and_lost::FocusCause:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Navigated",
+                "Pressed"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 654,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_input_focus::gained_and_lost::FocusCause:::Variant",
+                    "type": "string",
+                    "value": "Navigated"
+                }
+            ],
+            "name": "bevy_input_focus::gained_and_lost::FocusCause",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 655,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "1",
+                    "propertyType": "bevy_input_focus::gained_and_lost::FocusCause",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 656,
+            "name": "core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 657,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 658,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 659,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::geometry::Val::Vw",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 660,
+            "name": "bevy_input_focus::directional_navigation::NavNeighbor:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Auto",
+                "Blocked",
+                "Set"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 661,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_input_focus::directional_navigation::NavNeighbor::Set",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 662,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor:::Variant",
+                    "type": "string",
+                    "value": "Auto"
+                },
+                {
+                    "name": "Set",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor::Set",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input_focus::directional_navigation::NavNeighbor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 663,
+            "members": [
+                {
+                    "name": "[0]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[1]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[2]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[3]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[4]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[5]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[6]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "[7]",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbor",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "[bevy_input_focus::directional_navigation::NavNeighbor; 8]",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 664,
+            "members": [
+                {
+                    "name": "neighbors",
+                    "propertyType": "[bevy_input_focus::directional_navigation::NavNeighbor; 8]",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_input_focus::directional_navigation::NavNeighbors",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 665,
+            "members": [
+                {
+                    "name": "key",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "propertyType": "bevy_input_focus::directional_navigation::NavNeighbors",
+                    "type": "class",
+                    "value": {
+                        "neighbors": {
+                        }
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, bevy_input_focus::directional_navigation::NavNeighbors, bevy_ecs::entity::hash::EntityHash>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 666,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::ui_node::IgnoreScroll",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, bevy_input_focus::directional_navigation::NavNeighbors, bevy_ecs::entity::hash::EntityHash>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 667,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, bevy_input_focus::directional_navigation::NavNeighbors, bevy_ecs::entity::hash::EntityHash>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::entity::hash_map::EntityHashMap<bevy_input_focus::directional_navigation::NavNeighbors>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 668,
+            "members": [
+                {
+                    "name": "neighbors",
+                    "propertyType": "bevy_ecs::entity::hash_map::EntityHashMap<bevy_input_focus::directional_navigation::NavNeighbors>",
+                    "type": "class",
+                    "value": {
+                        "0": {
+                        }
+                    }
+                }
+            ],
+            "name": "bevy_input_focus::directional_navigation::DirectionalNavigationMap",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 669,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "float",
+                            "value": 0
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<f32>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 670,
+            "members": [
+                {
+                    "name": "bounds",
+                    "propertyType": "alloc::vec::Vec<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "minimum_distance",
+                    "type": "float",
+                    "value": 0.10000000149011612
+                },
+                {
+                    "name": "overlap_proportion",
+                    "type": "float",
+                    "value": 0.20000000298023224
+                }
+            ],
+            "name": "bevy_light::cascade::CascadeShadowConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 671,
+            "members": [
+                {
+                    "name": "w_axis",
+                    "propertyType": "glam::Vec4",
+                    "type": "class",
+                    "value": {
+                        "w": 1,
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "x_axis",
+                    "propertyType": "glam::Vec4",
+                    "type": "class",
+                    "value": {
+                        "w": 0,
+                        "x": 1,
+                        "y": 0,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "y_axis",
+                    "propertyType": "glam::Vec4",
+                    "type": "class",
+                    "value": {
+                        "w": 0,
+                        "x": 0,
+                        "y": 1,
+                        "z": 0
+                    }
+                },
+                {
+                    "name": "z_axis",
+                    "propertyType": "glam::Vec4",
+                    "type": "class",
+                    "value": {
+                        "w": 0,
+                        "x": 0,
+                        "y": 0,
+                        "z": 1
+                    }
+                }
+            ],
+            "name": "glam::Mat4",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 672,
+            "members": [
+                {
+                    "name": "clip_from_cascade",
+                    "propertyType": "glam::Mat4",
+                    "type": "class",
+                    "value": {
+                        "w_axis": {
+                            "w": 1,
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "x_axis": {
+                            "w": 0,
+                            "x": 1,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "y_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 1,
+                            "z": 0
+                        },
+                        "z_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 0,
+                            "z": 1
+                        }
+                    }
+                },
+                {
+                    "name": "clip_from_world",
+                    "propertyType": "glam::Mat4",
+                    "type": "class",
+                    "value": {
+                        "w_axis": {
+                            "w": 1,
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "x_axis": {
+                            "w": 0,
+                            "x": 1,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "y_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 1,
+                            "z": 0
+                        },
+                        "z_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 0,
+                            "z": 1
+                        }
+                    }
+                },
+                {
+                    "name": "texel_size",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "world_from_cascade",
+                    "propertyType": "glam::Mat4",
+                    "type": "class",
+                    "value": {
+                        "w_axis": {
+                            "w": 1,
+                            "x": 0,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "x_axis": {
+                            "w": 0,
+                            "x": 1,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "y_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 1,
+                            "z": 0
+                        },
+                        "z_axis": {
+                            "w": 0,
+                            "x": 0,
+                            "y": 0,
+                            "z": 1
+                        }
+                    }
+                }
+            ],
+            "name": "bevy_light::cascade::Cascade",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 673,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::widget::text::Text",
+                            "type": "class",
+                            "value": {
+                                "clip_from_cascade": {
+                                    "w_axis": {
+                                        "w": 1,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "x_axis": {
+                                        "w": 0,
+                                        "x": 1,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "y_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 1,
+                                        "z": 0
+                                    },
+                                    "z_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 1
+                                    }
+                                },
+                                "clip_from_world": {
+                                    "w_axis": {
+                                        "w": 1,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "x_axis": {
+                                        "w": 0,
+                                        "x": 1,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "y_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 1,
+                                        "z": 0
+                                    },
+                                    "z_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 1
+                                    }
+                                },
+                                "texel_size": 0,
+                                "world_from_cascade": {
+                                    "w_axis": {
+                                        "w": 1,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "x_axis": {
+                                        "w": 0,
+                                        "x": 1,
+                                        "y": 0,
+                                        "z": 0
+                                    },
+                                    "y_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 1,
+                                        "z": 0
+                                    },
+                                    "z_axis": {
+                                        "w": 0,
+                                        "x": 0,
+                                        "y": 0,
+                                        "z": 1
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_light::cascade::Cascade>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 674,
+            "members": [
+                {
+                    "name": "key",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "value",
+                    "propertyType": "alloc::vec::Vec<bevy_light::cascade::Cascade>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_light::cascade::Cascade>, bevy_ecs::entity::hash::EntityHash>:::MapItem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 675,
+            "members": [
+                {
+                    "name": "map",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ui::widget::text::TextShadow",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_light::cascade::Cascade>, bevy_ecs::entity::hash::EntityHash>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 676,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_platform::collections::HashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_light::cascade::Cascade>, bevy_ecs::entity::hash::EntityHash>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ecs::entity::hash_map::EntityHashMap<alloc::vec::Vec<bevy_light::cascade::Cascade>>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 677,
+            "members": [
+                {
+                    "name": "cascades",
+                    "propertyType": "bevy_ecs::entity::hash_map::EntityHashMap<alloc::vec::Vec<bevy_light::cascade::Cascade>>",
+                    "type": "class",
+                    "value": {
+                        "0": {
+                        }
+                    }
+                }
+            ],
+            "name": "bevy_light::cascade::Cascades",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 678,
+            "name": "bevy_light::gizmos::LightGizmoColor:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Manual",
+                "Varied",
+                "MatchLightColor",
+                "ByLightType"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 679,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "color",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_light::gizmos::LightGizmoColor::Manual",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 680,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_light::gizmos::LightGizmoColor:::Variant",
+                    "type": "string",
+                    "value": "MatchLightColor"
+                },
+                {
+                    "name": "Manual",
+                    "propertyType": "bevy_light::gizmos::LightGizmoColor::Manual",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_light::gizmos::LightGizmoColor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 681,
+            "name": "core::option::Option<bevy_light::gizmos::LightGizmoColor>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 682,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_light::gizmos::LightGizmoColor",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_light::gizmos::LightGizmoColor>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 683,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<bevy_light::gizmos::LightGizmoColor>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<bevy_light::gizmos::LightGizmoColor>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_light::gizmos::LightGizmoColor>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 684,
+            "members": [
+                {
+                    "name": "color",
+                    "propertyType": "core::option::Option<bevy_light::gizmos::LightGizmoColor>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_light::gizmos::ShowLightGizmo",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 685,
+            "name": "bevy_light::probe::ParallaxCorrection:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Auto",
+                "Custom"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 686,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "glam::Vec3",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_light::probe::ParallaxCorrection::Custom",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 687,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_light::probe::ParallaxCorrection:::Variant",
+                    "type": "string",
+                    "value": "Auto"
+                },
+                {
+                    "name": "Custom",
+                    "propertyType": "bevy_light::probe::ParallaxCorrection::Custom",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_light::probe::ParallaxCorrection",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 688,
+            "members": [
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                },
+                {
+                    "name": "height",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "intensity",
+                    "type": "float",
+                    "value": 1000000
+                },
+                {
+                    "name": "range",
+                    "type": "float",
+                    "value": 20
+                },
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 1
+                }
+            ],
+            "name": "bevy_light::rect_light::RectLight",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 689,
+            "name": "bevy_mesh::morph::MeshMorphWeights:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Value",
+                "Reference"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 690,
+            "members": [
+                {
+                    "name": "weights",
+                    "propertyType": "alloc::vec::Vec<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_mesh::morph::MeshMorphWeights::Value",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 691,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_mesh::morph::MeshMorphWeights::Reference",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 692,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_mesh::morph::MeshMorphWeights:::Variant",
+                    "type": "string",
+                    "value": "Value"
+                },
+                {
+                    "name": "Reference",
+                    "propertyType": "bevy_mesh::morph::MeshMorphWeights::Reference",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Value",
+                    "propertyType": "bevy_mesh::morph::MeshMorphWeights::Value",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_mesh::morph::MeshMorphWeights",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 693,
+            "members": [
+                {
+                    "name": "length",
+                    "type": "float",
+                    "value": 0.30000001192092896
+                },
+                {
+                    "name": "linear_steps",
+                    "type": "int",
+                    "value": 16
+                },
+                {
+                    "name": "thickness",
+                    "type": "float",
+                    "value": 0.10000000149011612
+                }
+            ],
+            "name": "bevy_pbr::contact_shadows::ContactShadows",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 694,
+            "name": "bevy_material::opaque::OpaqueRendererMethod:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Forward",
+                "Deferred",
+                "Auto"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 695,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_material::opaque::OpaqueRendererMethod:::Variant",
+                    "type": "string",
+                    "value": "Forward"
+                }
+            ],
+            "name": "bevy_material::opaque::OpaqueRendererMethod",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 696,
+            "name": "bevy_pbr::transmission::ScreenSpaceTransmissionQuality:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Low",
+                "Medium",
+                "High",
+                "Ultra"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 697,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_pbr::transmission::ScreenSpaceTransmissionQuality:::Variant",
+                    "type": "string",
+                    "value": "Medium"
+                }
+            ],
+            "name": "bevy_pbr::transmission::ScreenSpaceTransmissionQuality",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 698,
+            "members": [
+                {
+                    "name": "quality",
+                    "propertyType": "bevy_pbr::transmission::ScreenSpaceTransmissionQuality",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "steps",
+                    "type": "int",
+                    "value": 1
+                }
+            ],
+            "name": "bevy_pbr::transmission::ScreenSpaceTransmission",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 699,
+            "name": "bevy_pbr::wireframe::WireframeTopology:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Triangles",
+                "Quads"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 700,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_pbr::wireframe::WireframeTopology:::Variant",
+                    "type": "string",
+                    "value": "Triangles"
+                }
+            ],
+            "name": "bevy_pbr::wireframe::WireframeTopology",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 701,
+            "members": [
+                {
+                    "name": "width",
+                    "type": "float",
+                    "value": 1
+                }
+            ],
+            "name": "bevy_pbr::wireframe::WireframeLineWidth",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 702,
+            "name": "core::option::Option<glam::Vec3>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 703,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "glam::Vec3",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<glam::Vec3>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 704,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<glam::Vec3>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<glam::Vec3>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<glam::Vec3>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 705,
+            "members": [
+                {
+                    "name": "camera",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "depth",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "normal",
+                    "propertyType": "core::option::Option<glam::Vec3>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "position",
+                    "propertyType": "core::option::Option<glam::Vec3>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_picking::backend::HitData",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 706,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "1",
+                    "propertyType": "bevy_picking::backend::HitData",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "(bevy_ecs::entity::Entity, bevy_picking::backend::HitData)",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 707,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "glam::Vec4",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_picking::backend::HitData)>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 708,
+            "members": [
+                {
+                    "name": "sorted_entities",
+                    "propertyType": "alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_picking::backend::HitData)>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_picking::pointer::PointerInteraction",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 709,
+            "members": [
+                {
+                    "name": "center",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0.5,
+                        "y": 0.5
+                    }
+                },
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ff000000"
+                },
+                {
+                    "name": "edge_compensation",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "intensity",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 0.75
+                },
+                {
+                    "name": "roundness",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "smoothness",
+                    "type": "float",
+                    "value": 5
+                }
+            ],
+            "name": "bevy_post_process::effect_stack::vignette::Vignette",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 710,
+            "members": [
+            ],
+            "name": "bevy_render::occlusion_culling::OcclusionCulling",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 711,
+            "members": [
+            ],
+            "name": "bevy_render::view::visibility::RenderShadowMapVisibleEntities",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 712,
+            "name": "bevy_sprite_render::tilemap_chunk::tile_orientation::TileOrientation:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Default",
+                "Rotate90",
+                "Rotate180",
+                "Rotate270",
+                "MirrorH",
+                "MirrorHRotate90",
+                "MirrorHRotate180",
+                "MirrorHRotate270"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 713,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_sprite_render::tilemap_chunk::tile_orientation::TileOrientation:::Variant",
+                    "type": "string",
+                    "value": "Default"
+                }
+            ],
+            "name": "bevy_sprite_render::tilemap_chunk::tile_orientation::TileOrientation",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 714,
+            "members": [
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                },
+                {
+                    "name": "orientation",
+                    "propertyType": "bevy_sprite_render::tilemap_chunk::tile_orientation::TileOrientation",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "tileset_index",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "visible",
+                    "type": "bool",
+                    "value": true
+                }
+            ],
+            "name": "bevy_sprite_render::tilemap_chunk::TileData",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 715,
+            "name": "core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 716,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_sprite_render::tilemap_chunk::TileData",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 717,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 718,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_ecs_tiled::tiled::object::TiledObject::Rectangle",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 719,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_sprite_render::tilemap_chunk::TilemapChunkTileData",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 720,
+            "name": "bevy_text::text::FontSmoothing:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "AntiAliased"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 721,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_text::text::FontSmoothing:::Variant",
+                    "type": "string",
+                    "value": "AntiAliased"
+                }
+            ],
+            "name": "bevy_text::text::FontSmoothing",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 722,
+            "members": [
+                {
+                    "name": "depth",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "entity",
+                    "type": "object",
+                    "value": 0
+                },
+                {
+                    "name": "font_smoothing",
+                    "propertyType": "bevy_text::text::FontSmoothing",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_text::text::TextEntity",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 723,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "bevy_input::gamepad::GamepadAxis",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "smallvec::SmallVec<[bevy_text::text::TextEntity; 1]>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 724,
+            "members": [
+                {
+                    "name": "entities",
+                    "propertyType": "smallvec::SmallVec<[bevy_text::text::TextEntity; 1]>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "needs_rerender",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "uses_rem_sizes",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "uses_viewport_sizes",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "bevy_text::text::ComputedTextBlock",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 725,
+            "name": "bevy_text::text::LetterSpacing:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Px",
+                "Rem"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 726,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_text::text::LetterSpacing::Px",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 727,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_text::text::LetterSpacing::Rem",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 728,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_text::text::LetterSpacing:::Variant",
+                    "type": "string",
+                    "value": "Px"
+                },
+                {
+                    "name": "Px",
+                    "propertyType": "bevy_text::text::LetterSpacing::Px",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Rem",
+                    "propertyType": "bevy_text::text::LetterSpacing::Rem",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_text::text::LetterSpacing",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 729,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "bevy_ui::accessibility::AccessibleLabel",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 730,
+            "members": [
+                {
+                    "name": "angle",
+                    "propertyType": "core::option::Option<f32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                },
+                {
+                    "name": "hint",
+                    "type": "float",
+                    "value": 0.5
+                }
+            ],
+            "name": "bevy_ui::gradients::AngularColorStop",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 731,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "core::option::Option<bevy_light::gizmos::LightGizmoColor>",
+                            "type": "class",
+                            "value": {
+                                "angle": {
+                                },
+                                "color": "#ffffffff",
+                                "hint": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_ui::gradients::AngularColorStop>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 732,
+            "members": [
+                {
+                    "name": "anchor",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0
+                    }
+                },
+                {
+                    "name": "x",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "y",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::geometry::UiPosition",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 733,
+            "name": "bevy_ui::gradients::RadialGradientShape:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "ClosestSide",
+                "FarthestSide",
+                "ClosestCorner",
+                "FarthestCorner",
+                "Circle",
+                "Ellipse"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 734,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::RadialGradientShape::Circle",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 735,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "1",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::RadialGradientShape::Ellipse",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 736,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_ui::gradients::RadialGradientShape:::Variant",
+                    "type": "string",
+                    "value": "ClosestCorner"
+                },
+                {
+                    "name": "Circle",
+                    "propertyType": "bevy_ui::gradients::RadialGradientShape::Circle",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Ellipse",
+                    "propertyType": "bevy_ui::gradients::RadialGradientShape::Ellipse",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::RadialGradientShape",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 737,
+            "members": [
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ffffffff"
+                },
+                {
+                    "name": "hint",
+                    "type": "float",
+                    "value": 0.5
+                },
+                {
+                    "name": "point",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::ColorStop",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 738,
+            "name": "bevy_ui::gradients::InterpolationColorSpace:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Oklaba",
+                "Oklcha",
+                "OklchaLong",
+                "Srgba",
+                "LinearRgba",
+                "Hsla",
+                "HslaLong",
+                "Hsva",
+                "HsvaLong"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 739,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_ui::gradients::InterpolationColorSpace:::Variant",
+                    "type": "string",
+                    "value": "Oklaba"
+                }
+            ],
+            "name": "bevy_ui::gradients::InterpolationColorSpace",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 740,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "tyled::components::abilities::AbilityDescriptor:::Variant",
+                            "type": "class",
+                            "value": {
+                                "color": "#ffffffff",
+                                "hint": 0.5,
+                                "point": {
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_ui::gradients::ColorStop>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 741,
+            "members": [
+                {
+                    "name": "angle",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "color_space",
+                    "propertyType": "bevy_ui::gradients::InterpolationColorSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "stops",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::gradients::ColorStop>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::LinearGradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 742,
+            "members": [
+                {
+                    "name": "color_space",
+                    "propertyType": "bevy_ui::gradients::InterpolationColorSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "position",
+                    "propertyType": "bevy_ui::geometry::UiPosition",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "shape",
+                    "propertyType": "bevy_ui::gradients::RadialGradientShape",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "stops",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::gradients::ColorStop>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::RadialGradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 743,
+            "members": [
+                {
+                    "name": "color_space",
+                    "propertyType": "bevy_ui::gradients::InterpolationColorSpace",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "position",
+                    "propertyType": "bevy_ui::geometry::UiPosition",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "start",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "stops",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::gradients::AngularColorStop>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::ConicGradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 744,
+            "name": "bevy_ui::gradients::Gradient:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Linear",
+                "Radial",
+                "Conic"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 745,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ui::gradients::LinearGradient",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::Gradient::Linear",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 746,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ui::gradients::RadialGradient",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::Gradient::Radial",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 747,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "bevy_ui::gradients::ConicGradient",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::Gradient::Conic",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 748,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "bevy_ui::gradients::Gradient:::Variant",
+                    "type": "string",
+                    "value": "Linear"
+                },
+                {
+                    "name": "Conic",
+                    "propertyType": "bevy_ui::gradients::Gradient::Conic",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Linear",
+                    "propertyType": "bevy_ui::gradients::Gradient::Linear",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "Radial",
+                    "propertyType": "bevy_ui::gradients::Gradient::Radial",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::Gradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 749,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "propertyType": "tyled::plugins::config::CameraConfig",
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_ui::gradients::Gradient>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 750,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::gradients::Gradient>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::BackgroundGradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 751,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::gradients::Gradient>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::gradients::BorderGradient",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 752,
+            "members": [
+            ],
+            "name": "bevy_ui::interaction_states::Checkable",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 753,
+            "members": [
+            ],
+            "name": "bevy_ui::interaction_states::Checked",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 754,
+            "members": [
+            ],
+            "name": "bevy_ui::interaction_states::InteractionDisabled",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 755,
+            "members": [
+            ],
+            "name": "bevy_ui::interaction_states::Pressed",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 756,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "bevy_ui::stack::ComputedStackIndex",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 757,
+            "members": [
+                {
+                    "name": "blur_radius",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "color",
+                    "type": "color",
+                    "value": "#ff000000"
+                },
+                {
+                    "name": "spread_radius",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "x_offset",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "y_offset",
+                    "propertyType": "bevy_ui::geometry::Val",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::ui_node::ShadowStyle",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 758,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "class",
+                            "value": {
+                                "blur_radius": {
+                                },
+                                "color": "#ff000000",
+                                "spread_radius": {
+                                },
+                                "x_offset": {
+                                },
+                                "y_offset": {
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_ui::ui_node::ShadowStyle>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 759,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<bevy_ui::ui_node::ShadowStyle>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_ui::ui_node::BoxShadow",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 760,
+            "members": [
+            ],
+            "name": "bevy_ui::ui_node::IsDefaultUiCamera",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 761,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "color",
+                    "value": "#00000000"
+                }
+            ],
+            "name": "bevy_ui::ui_node::OuterColor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 762,
+            "members": [
+            ],
+            "name": "bevy_ui::ui_node::OverrideClip",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 763,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "glam::Vec2",
+                    "type": "class",
+                    "value": {
+                        "x": 0,
+                        "y": 0
+                    }
+                }
+            ],
+            "name": "bevy_ui::widget::text_input_layout::TextScroll",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 764,
+            "name": "core::option::Option<u32>:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "None",
+                "Some"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 765,
+            "members": [
+                {
+                    "name": "0",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "core::option::Option<u32>::Some",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 766,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "core::option::Option<u32>:::Variant",
+                    "type": "string",
+                    "value": "None"
+                },
+                {
+                    "name": "Some",
+                    "propertyType": "core::option::Option<u32>::Some",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "core::option::Option<u32>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 767,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<bevy_window::monitor::VideoMode>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 768,
+            "members": [
+                {
+                    "name": "name",
+                    "propertyType": "core::option::Option<alloc::string::String>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "physical_height",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "physical_position",
+                    "propertyType": "glam::IVec2",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "physical_width",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "refresh_rate_millihertz",
+                    "propertyType": "core::option::Option<u32>",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "scale_factor",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "video_modes",
+                    "propertyType": "alloc::vec::Vec<bevy_window::monitor::VideoMode>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "bevy_window::monitor::Monitor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "id": 769,
+            "name": "tyled::components::abilities::AbilityDescriptor:::Variant",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "Lance",
+                "BorderGrinder",
+                "SolarPanels"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 770,
+            "members": [
+                {
+                    "name": ":variant",
+                    "propertyType": "tyled::components::abilities::AbilityDescriptor:::Variant",
+                    "type": "string",
+                    "value": "Lance"
+                }
+            ],
+            "name": "tyled::components::abilities::AbilityDescriptor",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 771,
+            "members": [
+                {
+                    "name": "list",
+                    "type": "list",
+                    "value": [
+                        {
+                            "type": "class",
+                            "value": {
+                            }
+                        }
+                    ]
+                }
+            ],
+            "name": "alloc::vec::Vec<tyled::components::abilities::AbilityDescriptor>",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 772,
+            "members": [
+                {
+                    "name": "0",
+                    "propertyType": "alloc::vec::Vec<tyled::components::abilities::AbilityDescriptor>",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "tyled::components::abilities::AbilityList",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 773,
+            "members": [
+            ],
+            "name": "tyled::components::markers::ChargesBar",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 774,
+            "members": [
+            ],
+            "name": "tyled::components::markers::DamageBar",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 775,
+            "members": [
+            ],
+            "name": "tyled::components::markers::TerritoryBar",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 776,
+            "members": [
+                {
+                    "name": "[0]",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "[1]",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "[2]",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "[3]",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "[f32; 4]",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 777,
+            "members": [
+                {
+                    "name": "beam_step_secs",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "move_repeat_delay_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "move_repeat_rate_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "turn_step_ms",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::TimingConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 778,
+            "members": [
+                {
+                    "name": "beam_contact",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "collision",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "on_enter",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "standing",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "tick_secs",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::DamageConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 779,
+            "members": [
+                {
+                    "name": "go_end_scale",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "go_linger_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "intro_count",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "outcome_linger_secs",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "round_duration_secs",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::RoundConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 780,
+            "members": [
+                {
+                    "name": "base_zoom_distance",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "bg_hue",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "bg_lightness",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "bg_saturation",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "decay_rate",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "zoom_decay_rate",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "zoom_levels",
+                    "propertyType": "[f32; 4]",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "zoom_max",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "zoom_min",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::CameraConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 781,
+            "members": [
+                {
+                    "name": "beam_charges_divisor",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "starting_health",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::PlayerConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 782,
+            "members": [
+                {
+                    "name": "digit_roll_frame_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "player_idle_frame_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "tile_flip_frame_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "unclaim_cascade_secs",
+                    "type": "float",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::AnimationConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 783,
+            "members": [
+                {
+                    "name": "damage_flash_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "knockback_tween_ms",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::EffectsConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 784,
+            "members": [
+                {
+                    "name": "enabled",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "history",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::TelemetryConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 785,
+            "members": [
+                {
+                    "name": "player1_bot",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "player2_bot",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "tyled::plugins::config::ControllersConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 786,
+            "members": [
+                {
+                    "name": "aggression",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "chase_cost_threshold",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "fire_cooldown_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "hostile_cost",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "player1_strike",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "player2_strike",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "think_interval_jitter_ms",
+                    "type": "int",
+                    "value": 0
+                },
+                {
+                    "name": "think_interval_ms",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::BotConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 787,
+            "members": [
+                {
+                    "name": "solar_panels_tick_secs",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "solar_panels_tiles_per_charge",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "tyled::plugins::config::ChargeConfig",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff000000",
+            "drawFill": true,
+            "id": 788,
+            "members": [
+                {
+                    "name": "animation",
+                    "propertyType": "tyled::plugins::config::AnimationConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "bot",
+                    "propertyType": "tyled::plugins::config::BotConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "camera",
+                    "propertyType": "tyled::plugins::config::CameraConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "charge",
+                    "propertyType": "tyled::plugins::config::ChargeConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "controllers",
+                    "propertyType": "tyled::plugins::config::ControllersConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "damage",
+                    "propertyType": "tyled::plugins::config::DamageConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "effects",
+                    "propertyType": "tyled::plugins::config::EffectsConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "player",
+                    "propertyType": "tyled::plugins::config::PlayerConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "round",
+                    "propertyType": "tyled::plugins::config::RoundConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "telemetry",
+                    "propertyType": "tyled::plugins::config::TelemetryConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                },
+                {
+                    "name": "timing",
+                    "propertyType": "tyled::plugins::config::TimingConfig",
+                    "type": "class",
+                    "value": {
+                    }
+                }
+            ],
+            "name": "tyled::plugins::config::GameConfig",
             "type": "class",
             "useAs": [
                 "property"

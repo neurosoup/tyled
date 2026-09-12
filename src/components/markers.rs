@@ -18,10 +18,15 @@ pub struct HPBar;
 #[reflect(Component, Default)]
 pub struct DamageBar;
 
+/// Marker attached in Tiled to each HUD bar showing a player's claimed-tile
+/// share of the board. Fills left→right for P1, right→left for P2.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct TerritoryBar;
 
+/// Marker attached in Tiled to each HUD bar showing a player's claimed-tiles
+/// plus beam-charges share of the board. Same mirrored fill direction as
+/// `TerritoryBar`.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct ChargesBar;

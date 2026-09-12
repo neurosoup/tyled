@@ -10,6 +10,11 @@ use bevy::{
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
 
+/// Full HUD bar width in pixels (HP, damage, territory, charges all share this
+/// container). `hud` reads this to pixel-snap `Transform::scale.x` so a bar's
+/// edge always lands on the pixel grid.
+pub const HUD_BAR_PIXEL_WIDTH: f32 = 176.0;
+
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(TiledPlugin::default());
 
@@ -23,7 +28,7 @@ pub(crate) fn plugin(app: &mut App) {
             (
                 initialize_players,
                 initialize_claimed_tiles,
-                initialize_hp_bars,
+                initialize_hud_bars,
             ),
         )
             .chain(),
@@ -141,20 +146,32 @@ fn initialize_map_info(
     }
 }
 
-fn initialize_hp_bars(
+fn initialize_hud_bars(
     mut commands: Commands,
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     hud_map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
     bars_query: Query<
-        (Entity, &Player, &Transform, Option<&Children>),
-        Or<(With<HPBar>, With<DamageBar>)>,
+        (
+            Entity,
+            &Player,
+            &Transform,
+            Option<&Children>,
+            Has<TerritoryBar>,
+            Has<ChargesBar>,
+        ),
+        Or<(
+            With<HPBar>,
+            With<DamageBar>,
+            With<TerritoryBar>,
+            With<ChargesBar>,
+        )>,
     >,
     mut sprite_query: Query<&mut Sprite>,
 ) {
     // Full bar size in the HUD map: hud-bars tileset tiles are 16x32, stretched to
-    // a 176px-wide bar. Applies to both HP and damage bars.
-    let hp_container_width = 176.0;
+    // a HUD_BAR_PIXEL_WIDTH-wide bar. Applies to HP, damage, territory, and charges bars.
+    let hp_container_width = HUD_BAR_PIXEL_WIDTH;
     let hp_container_height = 32.0;
 
     for map_created_message in map_created_reader.read() {
@@ -163,7 +180,7 @@ fn initialize_hp_bars(
             continue;
         };
 
-        for (entity, player, transform, children) in &bars_query {
+        for (entity, player, transform, children, is_territory, is_charges) in &bars_query {
             if let Some(grid_coords) =
                 GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
             {
@@ -172,10 +189,15 @@ fn initialize_hp_bars(
                     _ => Vec3::ZERO,
                 };
 
-                commands.entity(entity).insert((
-                    grid_coords,
-                    Transform::from_translation(transform.translation + player_offset),
-                ));
+                let mut new_transform =
+                    Transform::from_translation(transform.translation + player_offset);
+                if is_territory || is_charges {
+                    // Territory/charges bars start empty and grow as tiles are
+                    // claimed / charges accumulate, unlike HP/Damage which start full.
+                    new_transform.scale.x = 0.0;
+                }
+
+                commands.entity(entity).insert((grid_coords, new_transform));
 
                 if let Some(first_child) = children.and_then(|c| c.first()).copied() {
                     // Player 1's bar is left-anchored
