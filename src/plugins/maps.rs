@@ -11,8 +11,7 @@ use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
 
 /// Full HUD bar width in pixels (HP, damage, territory, charges all share this
-/// container). `hud` reads this to pixel-snap `Transform::scale.x` so a bar's
-/// edge always lands on the pixel grid.
+/// container).
 pub const HUD_BAR_PIXEL_WIDTH: f32 = 176.0;
 
 pub(crate) fn plugin(app: &mut App) {
@@ -171,8 +170,8 @@ fn initialize_hud_bars(
 ) {
     // Full bar size in the HUD map: hud-bars tileset tiles are 16x32, stretched to
     // a HUD_BAR_PIXEL_WIDTH-wide bar. Applies to HP, damage, territory, and charges bars.
-    let hp_container_width = HUD_BAR_PIXEL_WIDTH;
-    let hp_container_height = 32.0;
+    let bar_container_width = HUD_BAR_PIXEL_WIDTH;
+    let bar_container_height = 32.0;
 
     for map_created_message in map_created_reader.read() {
         // Skip maps that are not the HUD map
@@ -192,8 +191,7 @@ fn initialize_hud_bars(
                 let mut new_transform =
                     Transform::from_translation(transform.translation + player_offset);
                 if is_territory || is_charges {
-                    // Territory/charges bars start empty and grow as tiles are
-                    // claimed / charges accumulate, unlike HP/Damage which start full.
+                    // Territory/charges bars render from empty and grow in toward their real ratio; HP/Damage render at their true value immediately.
                     new_transform.scale.x = 0.0;
                 }
 
@@ -213,7 +211,7 @@ fn initialize_hud_bars(
                         .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.5)),));
                     if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
                         sprite.custom_size =
-                            Some(Vec2::new(hp_container_width, hp_container_height));
+                            Some(Vec2::new(bar_container_width, bar_container_height));
                     }
                 }
             }

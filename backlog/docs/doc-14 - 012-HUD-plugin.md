@@ -3,11 +3,11 @@ id: doc-14
 title: '[012] HUD plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-09-06 12:00'
+updated_date: '2026-09-12 12:00'
 ---
 # HUD Plugin
 
-Owns all HUD animations rendered on the HUD camera (render layer 1): the HP bar (`animate_hp`), its slower-trailing "damage echo" counterpart (`animate_damage_bar`), and the numeric counters rendered as rolling-odometer digit sprites. The damage-echo bar additionally holds still for a beat after each hit before it resumes catching up to the HP bar, via the `DamageEchoDelay` component (armed by `arm_damage_echo_delay`, ticked down by `tick_damage_echo_delay`). For the counters this plugin holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin, the round countdown by the Round plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites: nudging each bar's `Transform::scale.x` toward the current health ratio via `smooth_nudge`, and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
+Owns all HUD animations rendered on the HUD camera (render layer 1): the HP bar (`animate_hp`), its slower-trailing "damage echo" counterpart (`animate_damage_bar`), the territory and charges bars (`animate_territory_bar`, `animate_charges_bar`) that track each player's claimed-tile share and claimed-tiles-plus-beam-charges share of the board, and the numeric counters rendered as rolling-odometer digit sprites. The damage-echo bar additionally holds still for a beat after each hit before it resumes catching up to the HP bar, via the `DamageEchoDelay` component (armed by `arm_damage_echo_delay`, ticked down by `tick_damage_echo_delay`). For the counters this plugin holds the generic digit-animation machinery (the `DigitAnimations` resource and `initialize_digit_animations` system) plus one `animate_*` system per counter. Every value the HUD displays is maintained by its own domain plugin — player health by the Damage plugin, beam charges by the Beam plugin, claimed-tile count by the Claim plugin, the round countdown by the Round plugin — so this plugin never computes or mutates those values; it only reads them and drives the HUD sprites: nudging each bar's `Transform::scale.x` toward a target ratio via the shared `nudge_bar_for_player` helper (which also snaps the result to the nearest whole-pixel width, using the Maps plugin's `HUD_BAR_PIXEL_WIDTH`, so the bar edge doesn't shimmer under nearest-neighbor filtering), and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
 
 It is registered immediately after the Animations plugin in `AppPlugin`.
 
@@ -21,7 +21,7 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
                 - All `HPBar` entities with their `Player` and `Transform` components
                 - `GameConfig` (`config.animation.hp_bar_decay_rate`) and `Time`
             - Writes:
-                - Delegates to the shared `animate_bar_toward` helper, which nudges `Transform::scale.x` on each matching `HPBar` entity toward `Health::ratio()` for the corresponding player via `smooth_nudge` at `hp_bar_decay_rate`, snapping to `0.0` once it drops below `0.001`
+                - For each player, delegates to the shared `nudge_bar_for_player` helper with that player's `Health::ratio()`, which nudges `Transform::scale.x` on each matching `HPBar` entity toward that ratio via `smooth_nudge` at `hp_bar_decay_rate`, pixel-snaps the result, and snaps to `0.0` once both the ratio and the bar are near zero
     - Animate Damage Bar:
         - Runs every frame
             - Reads:
@@ -29,7 +29,26 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
                 - All `DamageBar` entities *not* currently carrying `DamageEchoDelay` (`(With<DamageBar>, Without<DamageEchoDelay>)`), with their `Player` and `Transform` components
                 - `GameConfig` (`config.animation.damage_bar_decay_rate`) and `Time`
             - Writes:
-                - Delegates to the shared `animate_bar_toward` helper, identically to Animate HP but at `damage_bar_decay_rate` — a `DamageBar` currently holding `DamageEchoDelay` is excluded by the query filter and does not move at all this frame
+                - Identically to Animate HP but at `damage_bar_decay_rate` — a `DamageBar` currently holding `DamageEchoDelay` is excluded by the query filter and does not move at all this frame
+    - Animate Territory Bar:
+        - Runs every frame (not `Changed`-gated — a bar is a continuous tween and must keep moving on unchanged frames or it freezes mid-travel)
+            - Reads:
+                - All player entities with their `Player` and `ClaimedTileCount` components
+                - All `TerritoryBar` entities with their `Player` and `Transform` components
+                - `MapInfo` (`ground_entities` for the total tile count; skips entirely if `0`)
+                - `GameConfig` (`config.animation.territory_bar_decay_rate`) and `Time`
+            - Writes:
+                - For each player, computes `ratio = claimed / total` and delegates to `nudge_bar_for_player` to drive that player's `TerritoryBar` toward it
+    - Animate Charges Bar:
+        - Runs every frame (same not-`Changed`-gated reasoning as Animate Territory Bar)
+            - Reads:
+                - All player entities with their `Entity`, `Player`, `ClaimedTileCount`, and `BeamCharges` components
+                - All `Beam` entities (to count each player's in-flight beams)
+                - All `ChargesBar` entities with their `Player` and `Transform` components
+                - `MapInfo` (`ground_entities` for the total tile count; skips entirely if `0`)
+                - `GameConfig` (`config.animation.charges_bar_decay_rate`) and `Time`
+            - Writes:
+                - For each player, computes `ratio = min(1.0, (claimed + charges + in_flight_beams) / total)` and delegates to `nudge_bar_for_player` to drive that player's `ChargesBar` toward it — in-flight beams are counted so the bar doesn't visibly dip on every shot and pop back on a hit, since `BeamCharges` is spent the instant a beam fires but the matching claim (if any) only lands once the beam resolves
     - Arm Damage Echo Delay:
         - Reacts to `Changed<Health>` on `DamageEffectTarget`-marked player entities (this also fires on the initial `Health` insertion at round start, not only on subsequent damage)
             - Reads:
@@ -89,17 +108,25 @@ It is registered immediately after the Animations plugin in `AppPlugin`.
 
 ## Plugin Systems
 
-### Animate Bar Toward (shared helper)
+### Nudge Bar For Player (shared helper)
 
-`animate_bar_toward<F: QueryFilter>` is a private, generic helper (not a system) that backs both bar animations. Given the players query, a mutable bar query filtered by `F`, a decay rate, and the frame's `delta_secs`, it iterates all players and, for each, all bars in the `F`-filtered query, matching them by `Player::player_id`. For each match it nudges the bar's `Transform::scale.x` toward the player's `Health::ratio()` via `f32::smooth_nudge(&ratio, decay_rate, delta_secs)`, snapping to `0.0` once the value drops to `0.001` or below. `Animate HP` and `Animate Damage Bar` each call this helper with their own bar-entity filter and decay rate; only the query filter and rate differ between them.
+`nudge_bar_for_player<F: QueryFilter>` is a private, generic helper (not a system) that backs all four bar animations. Given a `player_id`, a target `ratio`, a mutable bar query filtered by `F`, a decay rate, and the frame's `delta_secs`, it iterates the `F`-filtered bars and, for each belonging to `player_id`, nudges the bar's `Transform::scale.x` toward `ratio` via `f32::smooth_nudge(&ratio, decay_rate, delta_secs)`. It then pixel-snaps the result — rounding `scale.x` to the nearest value whose rendered width (`scale.x * HUD_BAR_PIXEL_WIDTH`) lands on a whole pixel, so the bar edge doesn't shimmer under nearest-neighbor filtering — and snaps to `0.0` once both `ratio` and the snapped `scale.x` are near zero. `Animate HP`, `Animate Damage Bar`, `Animate Territory Bar`, and `Animate Charges Bar` each call this once per player with their own ratio, bar-entity filter, and decay rate.
 
 ### Animate HP
 
-Runs every frame. A thin wrapper: queries all player entities that carry `DamageEffectTarget` (reading `Health` and `Player`) and all `HPBar` entities (reading `Player`, writing `Transform`), and delegates to `animate_bar_toward` with `With<HPBar>` and `config.animation.hp_bar_decay_rate`.
+Runs every frame. For each player carrying `DamageEffectTarget` (reading `Health` and `Player`), delegates to `nudge_bar_for_player` with that player's `Health::ratio()`, the `HPBar` query, and `config.animation.hp_bar_decay_rate`.
 
 ### Animate Damage Bar
 
-Runs every frame. Same shape as `Animate HP`, but its bar query is filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` and it delegates to `animate_bar_toward` with `config.animation.damage_bar_decay_rate`. The `Without<DamageEchoDelay>` filter means a `DamageBar` currently holding that component is excluded from the match entirely and does not move this frame — this is how the damage-echo bar holds still after a hit.
+Runs every frame. Same shape as `Animate HP`, but its bar query is filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` and it delegates at `config.animation.damage_bar_decay_rate`. The `Without<DamageEchoDelay>` filter means a `DamageBar` currently holding that component is excluded from the match entirely and does not move this frame — this is how the damage-echo bar holds still after a hit.
+
+### Animate Territory Bar
+
+Runs every frame, not gated on `Changed<ClaimedTileCount>` — like the other bars, it's a continuous tween that must keep running on unchanged frames or it freezes mid-travel. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, computes `ratio = ClaimedTileCount::current / total` and delegates to `nudge_bar_for_player` with the `TerritoryBar` query and `config.animation.territory_bar_decay_rate`.
+
+### Animate Charges Bar
+
+Runs every frame, same not-`Changed`-gated reasoning as `Animate Territory Bar`. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, counts that player's in-flight `Beam` entities (matched by `Beam::owner`), computes `ratio = min(1.0, (ClaimedTileCount::current + BeamCharges::current + in_flight) / total)`, and delegates to `nudge_bar_for_player` with the `ChargesBar` query and `config.animation.charges_bar_decay_rate`. In-flight beams are counted so the bar stays in sync with the territory bar instead of dipping the instant a beam is fired (which spends a charge immediately) and popping back only once the beam resolves into a claim a tick or more later.
 
 ### Arm Damage Echo Delay
 
@@ -375,6 +402,8 @@ digits_query -..-> |filter With| de_marker
 
 Used in the following systems:
 - **animate_claimed_tiles**: reads `MapInfo::ground_entities` to obtain the total number of ground tiles used to compute the owned-tile percentage
+- **animate_territory_bar**: reads `MapInfo::ground_entities` for the total tile count used to compute the claimed-tile ratio (returns early if `0`)
+- **animate_charges_bar**: same, for the claimed-tiles-plus-charges ratio (returns early if `0`)
 
 ```mermaid
 ---
@@ -387,8 +416,12 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 animate_claimed_tiles["`**animate_claimed_tiles**`"]
+animate_territory_bar["`**animate_territory_bar**`"]
+animate_charges_bar["`**animate_charges_bar**`"]
 
 update -.-> animate_claimed_tiles
+update -.-> animate_territory_bar
+update -.-> animate_charges_bar
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
@@ -396,6 +429,8 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 map_info_res --> |belongs to| world
 
 animate_claimed_tiles ---> |reads `ground_entities`| map_info_res
+animate_territory_bar ---> |reads `ground_entities`| map_info_res
+animate_charges_bar ---> |reads `ground_entities`| map_info_res
 ```
 
 ### Read DigitAnimations resource
@@ -527,8 +562,8 @@ sprite_animations_query ---> |"writes (switches clip)"| dc_anim
 ### Query Player entities (health)
 
 Used in the following systems:
-- **animate_hp**: reads `Health` and `Player` components on `DamageEffectTarget`-marked entities to determine the current health ratio for each player, via `animate_bar_toward`
-- **animate_damage_bar**: same query shape, feeding `animate_bar_toward` for the damage-echo bar
+- **animate_hp**: reads `Health` and `Player` components on `DamageEffectTarget`-marked entities to determine the current health ratio for each player, via `nudge_bar_for_player`
+- **animate_damage_bar**: same query shape, feeding `nudge_bar_for_player` for the damage-echo bar
 
 ```mermaid
 ---
@@ -565,7 +600,7 @@ players_query -..-> |filter With| pe_marker
 ### Query HPBar entities
 
 Used in the following systems:
-- **animate_hp**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `animate_bar_toward`
+- **animate_hp**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `nudge_bar_for_player`
 
 ```mermaid
 ---
@@ -597,7 +632,7 @@ hp_bars_query ---> |writes| hb_transform
 ### Query DamageBar entities
 
 Used in the following systems:
-- **animate_damage_bar**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `animate_bar_toward`; filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` so a bar currently holding `DamageEchoDelay` is skipped entirely
+- **animate_damage_bar**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the current health ratio, via `nudge_bar_for_player`; filtered to `(With<DamageBar>, Without<DamageEchoDelay>)` so a bar currently holding `DamageEchoDelay` is skipped entirely
 - **arm_damage_echo_delay**: reads the `Player` component on every `DamageBar` entity (no `Without` filter) to find the bars belonging to a player whose `Health` just changed
 
 ```mermaid
@@ -638,6 +673,143 @@ damage_bars_query -..-> |filter Without| db_delay
 damage_bars_query_arm ---> |reads| db_player
 ```
 
+### Query Player entities (territory/charges ratio)
+
+Used in the following systems:
+- **animate_territory_bar**: reads `Player` and `ClaimedTileCount` on every player to compute each player's claimed-tile ratio
+- **animate_charges_bar**: reads `Entity`, `Player`, `ClaimedTileCount`, and `BeamCharges` on every player to compute each player's claimed-tiles-plus-charges ratio
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_territory_bar["`**animate_territory_bar**`"]
+animate_charges_bar["`**animate_charges_bar**`"]
+
+update -.-> animate_territory_bar
+update -.-> animate_charges_bar
+
+territory_players_query{{"`players_query (territory)`"}}:::query
+animate_territory_bar ---> territory_players_query
+
+charges_players_query{{"`players_query (charges)`"}}:::query
+animate_charges_bar ---> charges_players_query
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+pe_player>"`**Player**`"] --> |belongs to| player_entity
+pe_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
+pe_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
+
+territory_players_query ---> |reads| pe_player
+territory_players_query ---> |reads| pe_count
+
+charges_players_query ---> |reads| pe_player
+charges_players_query ---> |reads| pe_count
+charges_players_query ---> |reads| pe_charges
+```
+
+### Query Beam entities (in-flight count)
+
+Used in the following systems:
+- **animate_charges_bar**: reads every `Beam`'s `owner` to count each player's in-flight beams, so a fired-but-unresolved beam still counts toward that player's charges-bar ratio
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_charges_bar["`**animate_charges_bar**`"]
+
+update -.-> animate_charges_bar
+
+beams_query{{"`beams_query`"}}:::query
+animate_charges_bar ---> beams_query
+
+beam_entity@{ shape: st-rect, label: "Beam" }
+
+be_owner>"`**owner**`"] --> |field of| beam_entity
+
+beams_query ---> |reads owner| be_owner
+```
+
+### Query TerritoryBar entities
+
+Used in the following systems:
+- **animate_territory_bar**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the player's claimed-tile ratio, via `nudge_bar_for_player`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_territory_bar["`**animate_territory_bar**`"]
+
+update -.-> animate_territory_bar
+
+territory_bars_query{{"`territory_bars_query`"}}:::query
+animate_territory_bar ---> territory_bars_query
+
+territory_bar_entity@{ shape: st-rect, label: "TerritoryBar Entity" }
+
+tb_bar>"`**TerritoryBar**`"] --> |belongs to| territory_bar_entity
+tb_transform>"`**Transform**`"] --> |belongs to| territory_bar_entity
+
+territory_bars_query ---> |reads| tb_bar
+territory_bars_query ---> |writes| tb_transform
+```
+
+### Query ChargesBar entities
+
+Used in the following systems:
+- **animate_charges_bar**: reads the `Player` component (to match against player id) and writes `Transform::scale.x` to reflect the player's claimed-tiles-plus-charges ratio, via `nudge_bar_for_player`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+animate_charges_bar["`**animate_charges_bar**`"]
+
+update -.-> animate_charges_bar
+
+charges_bars_query{{"`charges_bars_query`"}}:::query
+animate_charges_bar ---> charges_bars_query
+
+charges_bar_entity@{ shape: st-rect, label: "ChargesBar Entity" }
+
+cb_bar>"`**ChargesBar**`"] --> |belongs to| charges_bar_entity
+cb_transform>"`**Transform**`"] --> |belongs to| charges_bar_entity
+
+charges_bars_query ---> |reads| cb_bar
+charges_bars_query ---> |writes| cb_transform
+```
+
 ### DamageEchoDelay component lifecycle
 
 `DamageEchoDelay(Timer)` is a private component (declared in `hud.rs`) marking a `DamageBar` as holding still before it resumes catching up to its target ratio. Its full lifecycle:
@@ -676,8 +848,10 @@ animate -..-> |"filter Without<> — skips while present"| delay_component
 ### Read GameConfig and Time (bar/delay tuning)
 
 Used in the following systems:
-- **animate_hp**: reads `config.animation.hp_bar_decay_rate` and `Time` (via `Time::delta_secs()`) to drive `animate_bar_toward`
+- **animate_hp**: reads `config.animation.hp_bar_decay_rate` and `Time` (via `Time::delta_secs()`) to drive `nudge_bar_for_player`
 - **animate_damage_bar**: reads `config.animation.damage_bar_decay_rate` and `Time` the same way
+- **animate_territory_bar**: reads `config.animation.territory_bar_decay_rate` and `Time` the same way
+- **animate_charges_bar**: reads `config.animation.charges_bar_decay_rate` and `Time` the same way
 - **arm_damage_echo_delay**: reads `config.animation.damage_bar_delay_ms` to size the delay timer
 - **tick_damage_echo_delay**: reads `Time` to tick the delay timer
 
@@ -693,11 +867,15 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 animate_hp["`**animate_hp**`"]
 animate_damage_bar["`**animate_damage_bar**`"]
+animate_territory_bar["`**animate_territory_bar**`"]
+animate_charges_bar["`**animate_charges_bar**`"]
 arm["`**arm_damage_echo_delay**`"]
 tick["`**tick_damage_echo_delay**`"]
 
 update -.-> animate_hp
 update -.-> animate_damage_bar
+update -.-> animate_territory_bar
+update -.-> animate_charges_bar
 update -.-> arm
 update -.-> tick
 
@@ -712,6 +890,10 @@ animate_hp ---> |"reads animation.hp_bar_decay_rate"| config_res
 animate_hp ---> |reads delta_secs| time_res
 animate_damage_bar ---> |"reads animation.damage_bar_decay_rate"| config_res
 animate_damage_bar ---> |reads delta_secs| time_res
+animate_territory_bar ---> |"reads animation.territory_bar_decay_rate"| config_res
+animate_territory_bar ---> |reads delta_secs| time_res
+animate_charges_bar ---> |"reads animation.charges_bar_decay_rate"| config_res
+animate_charges_bar ---> |reads delta_secs| time_res
 arm ---> |"reads animation.damage_bar_delay_ms"| config_res
 tick ---> |reads delta| time_res
 ```

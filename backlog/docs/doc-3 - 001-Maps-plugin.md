@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-09-06 12:00'
+updated_date: '2026-09-12 12:00'
 ---
 # Maps Plugin
 
@@ -28,9 +28,10 @@ Contains systems related to map loading and entity-related initializations. This
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
             - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `GridCoords`, `Transform`, `Anchor`
             - Stores each spawned entity in `MapInfo::claimed_entities`
-        - `initialize_hp_bars`:
+        - `initialize_hud_bars`:
             - Reacts to `TiledEvent<MapCreated>` for `HudMap` maps only
-            - Matches every entity that is `HPBar` **or** `DamageBar` (`Or<(With<HPBar>, With<DamageBar>)>`) and initializes it identically with `GridCoords` and `Transform`
+            - Matches every entity that is `HPBar`, `DamageBar`, `TerritoryBar`, **or** `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`) and initializes it with `GridCoords` and `Transform`
+            - For `TerritoryBar`/`ChargesBar` matches, additionally zeroes `Transform::scale.x` so the bar renders empty and grows in once `hud`'s `animate_territory_bar`/`animate_charges_bar` start nudging it toward the real ratio; `HPBar`/`DamageBar` render at their true value immediately
             - Sets `Anchor` and `custom_size` on the child sprite entity of each matched bar
 
 ## Plugin Systems
@@ -57,11 +58,11 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For eac
 
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each ground tile in `MapInfo::ground_entities` it spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `GridCoords`, `Transform`, and `Anchor`. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
 
-### Initialize HP Bars
+### Initialize HUD Bars
 
-Reacts to `TiledEvent<MapCreated>` filtered to `HudMap` maps only. Its query matches every entity already spawned by the Tiled loader (from `hud2.tmx`) that carries either `HPBar` or `DamageBar` (`Or<(With<HPBar>, With<DamageBar>)>`) — both bar kinds are initialized by the exact same code path. For each matched entity, computes its `GridCoords` from its world-space `Transform`, and inserts `GridCoords` and `Transform` on the entity (including the player-1 `+16px` X pixel-nudge). Also sets the `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` (`176x32`) on the child sprite entity of each matched bar so it scales correctly from the correct pivot point.
+Reacts to `TiledEvent<MapCreated>` filtered to `HudMap` maps only. Its query matches every entity already spawned by the Tiled loader (from `hud2.tmx`) that carries `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`), also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the bar kinds apart. For each matched entity, computes its `GridCoords` from its world-space `Transform`, and inserts `GridCoords` and `Transform` on the entity (including the player-1 `+16px` X pixel-nudge). If the entity is a `TerritoryBar` or `ChargesBar`, its `Transform::scale.x` is additionally zeroed — those bars render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio, whereas `HPBar`/`DamageBar` render at their true value from frame one. Also sets the `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` (`HUD_BAR_PIXEL_WIDTH` × `32`, i.e. `176x32`) on the child sprite entity of each matched bar so it scales correctly from the correct pivot point.
 
-The `hp_bars` name is a slight misnomer: the system initializes `HPBar` and `DamageBar` entities identically, with no code path distinguishing the two.
+All four bar kinds are initialized by the same code path, with no per-kind branching beyond the territory/charges zero-scale step above.
 
 ## Components, Resources and Messages CRUD
 
@@ -71,7 +72,7 @@ Used in the following systems:
 - **initialize_map_info**: used to trigger map metadata initialization
 - **initialize_players**: used to trigger player entity initialization
 - **initialize_claimed_tiles**: used to trigger claimed tile entity spawning
-- **initialize_hp_bars**: used to trigger HP bar and damage bar initialization — filtered to `HudMap` maps only
+- **initialize_hud_bars**: used to trigger HP, damage, territory, and charges bar initialization — filtered to `HudMap` maps only
 
 ```mermaid
 ---
@@ -388,10 +389,10 @@ initialize_claimed_tiles ---> |spawns entity with| ct_anchor
 initialize_claimed_tiles ---> |stores entity in claimed_entities| map_info_res
 ```
 
-### Query HPBar/DamageBar entities (initialize_hp_bars)
+### Query HPBar/DamageBar/TerritoryBar/ChargesBar entities (initialize_hud_bars)
 
 Used in the following systems:
-- **initialize_hp_bars**: reads `Entity`, `Player`, `Transform`, and `Option<&Children>` on every entity matching `Or<(With<HPBar>, With<DamageBar>)>` — the same code path initializes both bar kinds identically
+- **initialize_hud_bars**: reads `Entity`, `Player`, `Transform`, `Option<&Children>`, `Has<TerritoryBar>`, and `Has<ChargesBar>` on every entity matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` — the same code path initializes all four bar kinds, branching only on the `Has<>` flags to zero territory/charges bars' initial scale
 
 ```mermaid
 ---
@@ -404,35 +405,31 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-initialize_hp_bars["`**initialize_hp_bars**`"]
+initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hp_bars
+update -.-> initialize_hud_bars
 
 bars_query{{"`bars_query`"}}:::query
-initialize_hp_bars ---> bars_query
+initialize_hud_bars ---> bars_query
 
-hp_bar_entity@{ shape: st-rect, label: "HPBar Entity" }
-damage_bar_entity@{ shape: st-rect, label: "DamageBar Entity" }
+bar_entity@{ shape: st-rect, label: "HPBar/DamageBar/TerritoryBar/ChargesBar Entity" }
 
-be_hp_bar>"`**HPBar**`"] --> |belongs to| hp_bar_entity
-be_damage_bar>"`**DamageBar**`"] --> |belongs to| damage_bar_entity
-be_player>"`**Player**`"] --> |belongs to| hp_bar_entity
-be_player2>"`**Player**`"] --> |belongs to| damage_bar_entity
-be_transform>"`**Transform**`"] --> |belongs to| hp_bar_entity
-be_transform2>"`**Transform**`"] --> |belongs to| damage_bar_entity
+be_player>"`**Player**`"] --> |belongs to| bar_entity
+be_transform>"`**Transform**`"] --> |belongs to| bar_entity
+be_is_territory>"`**Has#60;TerritoryBar#62;**`"] --> |belongs to| bar_entity
+be_is_charges>"`**Has#60;ChargesBar#62;**`"] --> |belongs to| bar_entity
 
 bars_query ---> |reads| be_player
 bars_query ---> |reads| be_transform
-bars_query ---> |reads| be_player2
-bars_query ---> |reads| be_transform2
-bars_query -..-> |filter Or With| be_hp_bar
-bars_query -..-> |filter Or With| be_damage_bar
+bars_query ---> |reads| be_is_territory
+bars_query ---> |reads| be_is_charges
+bars_query -..-> |filter Or With HPBar/DamageBar/TerritoryBar/ChargesBar| bar_entity
 ```
 
-### Query Sprite entities (initialize_hp_bars)
+### Query Sprite entities (initialize_hud_bars)
 
 Used in the following systems:
-- **initialize_hp_bars**: mutably accesses the `Sprite` component to set `custom_size` on the child sprite entity of each matched bar (`HPBar` or `DamageBar`); no filter — matches any entity carrying a `Sprite`
+- **initialize_hud_bars**: mutably accesses the `Sprite` component to set `custom_size` on the child sprite entity of each matched bar (`HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar`); no filter — matches any entity carrying a `Sprite`
 
 ```mermaid
 ---
@@ -445,12 +442,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-initialize_hp_bars["`**initialize_hp_bars**`"]
+initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hp_bars
+update -.-> initialize_hud_bars
 
 sprite_query{{"`sprite_query`"}}:::query
-initialize_hp_bars ---> sprite_query
+initialize_hud_bars ---> sprite_query
 
 sprite_entity@{ shape: st-rect, label: "Any Sprite Entity" }
 
@@ -459,10 +456,10 @@ se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
 sprite_query ---> |writes custom_size| se_sprite
 ```
 
-### Write commands — initialize_hp_bars
+### Write commands — initialize_hud_bars
 
 Used in systems:
-- **initialize_hp_bars**: initializes existing `HPBar` and `DamageBar` entities (spawned by the Tiled loader from `hud2.tmx`, matched via `Or<(With<HPBar>, With<DamageBar>)>`) with `GridCoords` and `Transform`, and sets `Anchor` and `custom_size` on the child sprite entity; triggered by `TiledEvent<MapCreated>` for the `HudMap`. Both bar kinds go through the identical code path — the system draws no distinction between them.
+- **initialize_hud_bars**: initializes existing `HPBar`, `DamageBar`, `TerritoryBar`, and `ChargesBar` entities (spawned by the Tiled loader from `hud2.tmx`) with `GridCoords` and `Transform`, additionally zeroing `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches, and sets `Anchor` and `custom_size` on the child sprite entity; triggered by `TiledEvent<MapCreated>` for the `HudMap`.
 
 ```mermaid
 ---
@@ -475,15 +472,15 @@ classDef system-group stroke-dasharray: 5 5
 classDef reader stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-initialize_hp_bars["`**initialize_hp_bars**`"]
+initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hp_bars
+update -.-> initialize_hud_bars
 
 message_reader{{"MessageReader#60;TiledEvent#60;MapCreated#62;#62;"}}:::reader
-initialize_hp_bars ---> message_reader
+initialize_hud_bars ---> message_reader
 
 hud_map_query{{"`hud_map_query`"}}:::query
-initialize_hp_bars ---> hud_map_query
+initialize_hud_bars ---> hud_map_query
 
 hud_map_entity@{ shape: st-rect, label: "TiledMap (HudMap)" }
 hm_tiled_map>"`**TiledMap**`"] --> |belongs to| hud_map_entity
@@ -491,21 +488,24 @@ hm_hud_map>"`**HudMap**`"] --> |belongs to| hud_map_entity
 hud_map_query -..-> |filter With| hm_tiled_map
 hud_map_query -..-> |filter With| hm_hud_map
 
-hp_bar_entity@{ shape: st-rect, label: "HPBar or DamageBar Entity (from hud2.tmx)" }
+hp_bar_entity@{ shape: st-rect, label: "HPBar/DamageBar/TerritoryBar/ChargesBar Entity (from hud2.tmx)" }
 hp_bar_child@{ shape: st-rect, label: "Bar Child (Sprite)" }
 
 hb_grid_coords>"`**GridCoords**`"]
 hb_transform>"`**Transform**`"]
+hb_scale_zero>"`**scale.x = 0 (TerritoryBar/ChargesBar only)**`"]
 hbc_anchor>"`**Anchor**`"]
 hbc_custom_size>"`**custom_size**`"]
 
 hb_grid_coords --> |inserted on| hp_bar_entity
 hb_transform --> |inserted on| hp_bar_entity
+hb_scale_zero --> |set on| hp_bar_entity
 hbc_anchor --> |set on| hp_bar_child
 hbc_custom_size --> |set on| hp_bar_child
 
-initialize_hp_bars ---> |inserts component| hb_grid_coords
-initialize_hp_bars ---> |inserts component| hb_transform
-initialize_hp_bars ---> |sets on child| hbc_anchor
-initialize_hp_bars ---> |sets on child| hbc_custom_size
+initialize_hud_bars ---> |inserts component| hb_grid_coords
+initialize_hud_bars ---> |inserts component| hb_transform
+initialize_hud_bars ---> |zeroes scale.x| hb_scale_zero
+initialize_hud_bars ---> |sets on child| hbc_anchor
+initialize_hud_bars ---> |sets on child| hbc_custom_size
 ```

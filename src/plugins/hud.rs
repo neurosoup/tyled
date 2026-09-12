@@ -1,18 +1,5 @@
 /*
  Plugin for all HUD animations (rendered on the HUD camera / render layer 1).
-
- Owns the HP-bar animation (`animate_hp`) and its slow-trailing "damage echo"
- counterpart (`animate_damage_bar`), which additionally holds off for a beat
- after each hit (`DamageEchoDelay`, armed by `arm_damage_echo_delay` and
- ticked down by `tick_damage_echo_delay`) before it starts catching up, plus
- the territory/charges bars (`animate_territory_bar`, `animate_charges_bar`)
- that track a player's claimed-tile share and claimed+charges share of the
- board, plus the generic numeric-counter machinery: rolling-odometer digit
- sprites via `DigitAnimations` / `initialize_digit_animations`, plus one
- `animate_*` system per counter. Each counter's *value* is maintained by its
- own domain plugin (beam charges by the beam plugin, claimed-tile count by
- the claim plugin); this plugin only reads those values and drives the HUD
- sprites.
 */
 use std::time::Duration;
 
@@ -82,11 +69,8 @@ fn tick_damage_echo_delay(
 /// Nudges every bar matching `F` that belongs to `player_id` toward `ratio` at
 /// `decay_rate`, snapping to `0.0` once both the bar and its target are there.
 ///
-/// The bar's rendered width is `HUD_BAR_PIXEL_WIDTH * scale.x`; a raw
-/// `smooth_nudge` leaves that at an arbitrary sub-pixel value every frame,
-/// which shimmers under this game's nearest-neighbor filtering. So after
-/// nudging, `scale.x` is snapped to the nearest value that puts the width on
-/// a whole pixel.
+/// Also snaps `scale.x` to the nearest whole-pixel width, so the bar doesn't
+/// shimmer under nearest-neighbor filtering.
 fn nudge_bar_for_player<F: QueryFilter>(
     player_id: u8,
     ratio: f32,
@@ -144,9 +128,6 @@ fn animate_damage_bar(
 }
 
 /// Drives the territory bar toward a player's claimed-tile share of the board.
-/// Unlike the digit systems, this is not `Changed`-gated: a bar is a continuous
-/// tween toward a target and must keep running on unchanged frames, or it
-/// freezes mid-travel — same convention as `animate_hp`/`animate_damage_bar`.
 fn animate_territory_bar(
     players: Query<(&Player, &ClaimedTileCount)>,
     mut bars: Query<(&Player, &mut Transform), With<TerritoryBar>>,
@@ -172,17 +153,12 @@ fn animate_territory_bar(
 }
 
 /// Drives the charges bar toward a player's claimed-tiles-plus-beam-charges
-/// share of the board (clamped to `1.0` — Solar Panels regen can push charges
-/// back up independently of claims). Not `Changed`-gated, same reasoning as
-/// `animate_territory_bar`.
+/// share of the board, clamped to `1.0`. Not `Changed`-gated, same reasoning
+/// as `animate_territory_bar`.
 ///
-/// Counts each of the player's in-flight `Beam`s alongside `claimed` and
-/// `charges`: `spend_charge_on_fire` decrements `BeamCharges` the instant a
-/// beam is fired, but the matching claim (if any) only lands once `beam_step`
-/// resolves it, a tick or more later. Without counting the in-flight beam
-/// itself, the bar would visibly dip on every shot and pop back on a hit.
-/// Adding it back cancels that gap; a genuine miss still permanently costs
-/// the bar once the beam despawns unresolved.
+/// Counts each player's in-flight `Beam`s alongside `claimed` and `charges`
+/// so the charges bar stays in sync with the territory bar instead of
+/// dipping on every shot and popping back on a hit.
 fn animate_charges_bar(
     players: Query<(Entity, &Player, &ClaimedTileCount, &BeamCharges)>,
     beams: Query<&Beam>,
