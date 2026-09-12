@@ -26,6 +26,10 @@ pub struct TerritoryBar;
 #[reflect(Component, Default)]
 pub struct ChargesBar;
 
+/// Raw, unrounded fill ratio for an HP/Damage/Territory/Charges bar
+#[derive(Component, Default)]
+pub struct BarFill(pub f32);
+
 #[derive(Component, Default)]
 pub struct CurrentLevel;
 

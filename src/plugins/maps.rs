@@ -199,7 +199,11 @@ fn initialize_hud_bars(
                     new_transform.scale.x = 0.0;
                 }
 
-                commands.entity(entity).insert((grid_coords, new_transform));
+                commands.entity(entity).insert((
+                    grid_coords,
+                    new_transform,
+                    BarFill(new_transform.scale.x),
+                ));
 
                 if let Some(first_child) = children.and_then(|c| c.first()).copied() {
                     // Player 1's bar is left-anchored

@@ -68,35 +68,28 @@ fn tick_damage_echo_delay(
 
 /// Nudges every bar matching `F` that belongs to `player_id` toward `ratio` at
 /// `decay_rate`, snapping to `0.0` once both the bar and its target are there.
-///
-/// Also snaps `scale.x` to the nearest whole-pixel width, so the bar doesn't
-/// shimmer under nearest-neighbor filtering.
 fn nudge_bar_for_player<F: QueryFilter>(
     player_id: u8,
     ratio: f32,
-    bars: &mut Query<(&Player, &mut Transform), F>,
+    bars: &mut Query<(&Player, &mut Transform, &mut BarFill), F>,
     decay_rate: f32,
     delta_secs: f32,
     bar_pixel_width: f32,
 ) {
-    for (bar_player, mut transform) in &mut *bars {
+    for (bar_player, mut transform, mut fill) in &mut *bars {
         if bar_player.player_id == player_id {
-            transform
-                .scale
-                .x
-                .smooth_nudge(&ratio, decay_rate, delta_secs);
-            transform.scale.x =
-                (transform.scale.x * bar_pixel_width).round() / bar_pixel_width;
-            if ratio <= 0.001 && transform.scale.x <= 0.001 {
-                transform.scale.x = 0.0;
+            fill.0.smooth_nudge(&ratio, decay_rate, delta_secs);
+            if ratio <= 0.001 && fill.0 <= 0.001 {
+                fill.0 = 0.0;
             }
+            transform.scale.x = (fill.0 * bar_pixel_width).round() / bar_pixel_width;
         }
     }
 }
 
 fn animate_hp(
     players: Query<(&Health, &Player), With<DamageEffectTarget>>,
-    mut hp_bars: Query<(&Player, &mut Transform), With<HPBar>>,
+    mut hp_bars: Query<(&Player, &mut Transform, &mut BarFill), With<HPBar>>,
     config: Res<GameConfig>,
     time: Res<Time>,
 ) {
@@ -114,7 +107,10 @@ fn animate_hp(
 
 fn animate_damage_bar(
     players: Query<(&Health, &Player), With<DamageEffectTarget>>,
-    mut damage_bars: Query<(&Player, &mut Transform), (With<DamageBar>, Without<DamageEchoDelay>)>,
+    mut damage_bars: Query<
+        (&Player, &mut Transform, &mut BarFill),
+        (With<DamageBar>, Without<DamageEchoDelay>),
+    >,
     config: Res<GameConfig>,
     time: Res<Time>,
 ) {
@@ -133,7 +129,7 @@ fn animate_damage_bar(
 /// Drives the territory bar toward a player's claimed-tile share of the board.
 fn animate_territory_bar(
     players: Query<(&Player, &ClaimedTileCount)>,
-    mut bars: Query<(&Player, &mut Transform), With<TerritoryBar>>,
+    mut bars: Query<(&Player, &mut Transform, &mut BarFill), With<TerritoryBar>>,
     map_info: Res<MapInfo>,
     config: Res<GameConfig>,
     time: Res<Time>,
@@ -166,7 +162,7 @@ fn animate_territory_bar(
 fn animate_charges_bar(
     players: Query<(Entity, &Player, &ClaimedTileCount, &BeamCharges)>,
     beams: Query<&Beam>,
-    mut bars: Query<(&Player, &mut Transform), With<ChargesBar>>,
+    mut bars: Query<(&Player, &mut Transform, &mut BarFill), With<ChargesBar>>,
     map_info: Res<MapInfo>,
     config: Res<GameConfig>,
     time: Res<Time>,
