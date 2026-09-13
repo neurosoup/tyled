@@ -15,14 +15,22 @@ pub(crate) fn plugin(app: &mut App) {
         (
             animate_hp,
             animate_damage_bar,
-            animate_territory_bar,
-            animate_charges_bar,
             arm_damage_echo_delay,
             tick_damage_echo_delay,
             animate_beam_charges,
             animate_claimed_tiles,
             animate_countdown,
             initialize_digit_animations,
+        ),
+    );
+    // Ordered after this frame's claim/cap writes so the bars never render a stale value.
+    app.add_systems(
+        Update,
+        (
+            animate_territory_bar.after(super::claim::claim_tile),
+            animate_charges_bar
+                .after(super::claim::claim_tile)
+                .after(super::charge::cap_charges_to_unclaimed_tiles),
         ),
     );
 }
@@ -156,12 +164,11 @@ fn animate_territory_bar(
 /// share of the board, clamped to `1.0`. Not `Changed`-gated, same reasoning
 /// as `animate_territory_bar`.
 ///
-/// Counts each player's in-flight `Beam`s alongside `claimed` and `charges`
+/// Adds each player's `InFlightBeamCount` alongside `claimed` and `charges`
 /// so the charges bar stays in sync with the territory bar instead of
 /// dipping on every shot and popping back on a hit.
 fn animate_charges_bar(
-    players: Query<(Entity, &Player, &ClaimedTileCount, &BeamCharges)>,
-    beams: Query<&Beam>,
+    players: Query<(&Player, &ClaimedTileCount, &BeamCharges, &InFlightBeamCount)>,
     mut bars: Query<(&Player, &mut Transform, &mut BarFill), With<ChargesBar>>,
     map_info: Res<MapInfo>,
     config: Res<GameConfig>,
@@ -172,9 +179,9 @@ fn animate_charges_bar(
         return;
     }
 
-    for (entity, player, count, charges) in &players {
-        let in_flight = beams.iter().filter(|beam| beam.owner == entity).count() as u32;
-        let ratio = ((count.current + charges.current + in_flight) as f32 / total as f32).min(1.0);
+    for (player, count, charges, in_flight) in &players {
+        let ratio = ((count.current + charges.current + in_flight.current) as f32 / total as f32)
+            .min(1.0);
         nudge_bar_for_player(
             player.player_id,
             ratio,

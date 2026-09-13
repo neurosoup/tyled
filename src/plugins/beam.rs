@@ -12,7 +12,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
     app.add_systems(
         Update,
-        (spawn_beam, beam_step, spend_charge_on_fire).run_if(in_state(RoundPhase::Playing)),
+        (spawn_beam, beam_step).run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]
     app.add_systems(Update, resync_beam_step_timer);
@@ -64,7 +64,9 @@ pub(crate) fn resolve_fire(
     }
 }
 
-/// System that shakes unclaimed tile entities in response to [`BeamFired`] messages.
+// Spends one charge per committed shot, only when a beam actually spawns —
+// a fire blocked outright (standing on a claimed tile without Lance) costs
+// nothing, but a spawned beam that finds nothing to claim still costs its charge.
 fn spawn_beam(
     mut commands: Commands,
     mut beam_fired_reader: MessageReader<BeamFired>,
@@ -72,6 +74,8 @@ fn spawn_beam(
     ability_query: Query<&AbilityList>,
     claimed_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
+    mut owner_state: Query<(&mut BeamCharges, &mut InFlightBeamCount)>,
+    mut charge_spent_writer: MessageWriter<ChargeSpent>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
@@ -97,6 +101,15 @@ fn spawn_beam(
         ) else {
             continue;
         };
+
+        if let Ok((mut charges, mut in_flight)) = owner_state.get_mut(beam_fired_message.owner) {
+            charges.current = charges.current.saturating_sub(1);
+            in_flight.current += 1;
+            charge_spent_writer.write(ChargeSpent {
+                owner: beam_fired_message.owner,
+                amount: 1,
+            });
+        }
 
         let mut entity_commands = commands.spawn((
             beam_fired_message.origin,
@@ -141,6 +154,21 @@ fn border_grinder_flips_tile(
             .is_ok_and(|list| list.0.contains(&AbilityDescriptor::BorderGrinder))
 }
 
+/// Ends a beam's lifetime: decrements its owner's in-flight count and queues
+/// the despawn. Every despawn in `beam_step` must go through this — a bare
+/// `despawn()` leaks the counter.
+fn end_beam(
+    commands: &mut Commands,
+    beam_entity: Entity,
+    owner: Entity,
+    in_flight: &mut Query<&mut InFlightBeamCount>,
+) {
+    if let Ok(mut count) = in_flight.get_mut(owner) {
+        count.current = count.current.saturating_sub(1);
+    }
+    commands.entity(beam_entity).despawn();
+}
+
 pub(crate) fn beam_step(
     mut commands: Commands,
     mut beams_query: Query<(Entity, &Beam, &mut GridCoords)>,
@@ -150,6 +178,7 @@ pub(crate) fn beam_step(
     mut beam_step_timer: ResMut<BeamStepTimer>,
     map_info: Res<MapInfo>,
     mut beam_resolved_writer: MessageWriter<BeamResolved>,
+    mut in_flight: Query<&mut InFlightBeamCount>,
 ) {
     beam_step_timer.0.tick(time.delta());
     if !beam_step_timer.0.is_finished() {
@@ -168,7 +197,7 @@ pub(crate) fn beam_step(
                 if !(map_info.on_ground(next_position)
                     || map_info.on_forbidden_areas(next_position))
                 {
-                    commands.entity(beam_entity).despawn();
+                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
                     continue;
                 }
                 let is_next_unclaimed = map_info.on_ground(next_position)
@@ -181,7 +210,7 @@ pub(crate) fn beam_step(
                         position: next_position,
                         owner: beam.owner,
                     });
-                    commands.entity(beam_entity).despawn();
+                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
                     continue;
                 }
                 *position = next_position;
@@ -218,7 +247,7 @@ pub(crate) fn beam_step(
                             owner: beam.owner,
                         });
                     }
-                    commands.entity(beam_entity).despawn();
+                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
                     continue;
                 }
 
@@ -247,7 +276,7 @@ pub(crate) fn beam_step(
                         position: next_position,
                         owner: beam.owner,
                     });
-                    commands.entity(beam_entity).despawn();
+                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
                     continue;
                 }
 
@@ -272,33 +301,13 @@ pub(crate) fn beam_step(
                             owner: beam.owner,
                         });
                     }
-                    commands.entity(beam_entity).despawn();
+                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
                     continue;
                 }
 
                 // Advance
                 *position = next_position;
             }
-        }
-    }
-}
-
-// Spend one charge per committed shot at fire time (not on resolve). A shot
-// that finds nothing to claim can still cost a charge — e.g. a Lance beam
-// that reaches the map edge without finding an unclaimed tile. Each
-// `BeamFired` spawns exactly one beam, so this is exactly one charge per shot.
-fn spend_charge_on_fire(
-    mut beam_fired_reader: MessageReader<BeamFired>,
-    mut beam_charges: Query<&mut BeamCharges>,
-    mut charge_spent_writer: MessageWriter<ChargeSpent>,
-) {
-    for message in beam_fired_reader.read() {
-        if let Ok(mut charges) = beam_charges.get_mut(message.owner) {
-            charges.current = charges.current.saturating_sub(1);
-            charge_spent_writer.write(ChargeSpent {
-                owner: message.owner,
-                amount: 1,
-            });
         }
     }
 }

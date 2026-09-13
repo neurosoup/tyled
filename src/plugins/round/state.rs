@@ -263,7 +263,7 @@ fn resolve_timeout(
 fn resolve_charge_exhaustion(
     mut died_reader: MessageReader<DamageableDied>,
     countdown: Option<Res<Countdown>>,
-    beams: Query<(), With<Beam>>,
+    in_flight: Query<&InFlightBeamCount>,
     players: Query<(&Player, &ClaimedTileCount, &Health, &BeamCharges)>,
     mut result: ResMut<RoundResult>,
     mut score: ResMut<MatchScore>,
@@ -275,7 +275,7 @@ fn resolve_charge_exhaustion(
     if countdown.is_some_and(|countdown| countdown.remaining == 0) {
         return;
     }
-    if !beams.is_empty() {
+    if in_flight.iter().any(|count| count.current > 0) {
         return;
     }
 
@@ -310,6 +310,7 @@ fn reset_round(
         &mut Health,
         &mut BeamCharges,
         &mut ClaimedTileCount,
+        &mut InFlightBeamCount,
     )>,
     mut tiles: Query<(&GridCoords, &mut ClaimedTile)>,
     beams: Query<Entity, With<Beam>>,
@@ -326,10 +327,11 @@ fn reset_round(
         *reserved_counts.entry(*owner).or_default() += 1;
     }
 
-    for (entity, spawn, mut health, mut charges, mut count) in &mut players {
+    for (entity, spawn, mut health, mut charges, mut count, mut in_flight) in &mut players {
         health.current = health.max;
         charges.current = charges.max;
         count.current = reserved_counts.get(&entity).copied().unwrap_or(0);
+        in_flight.current = 0;
         commands
             .entity(entity)
             .insert((spawn.0, PreviousGridCoords(spawn.0), Visibility::Visible))

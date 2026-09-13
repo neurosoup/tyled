@@ -8,7 +8,10 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_solar_panels_timer);
     app.add_systems(
         Update,
-        regen_charges_from_solar_panels.run_if(in_state(RoundPhase::Playing)),
+        (regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)
+            .chain()
+            .after(super::claim::claim_tile)
+            .run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]
     app.add_systems(Update, resync_solar_panels_timer);
@@ -39,7 +42,6 @@ fn regen_charges_from_solar_panels(
     time: Res<Time>,
     config: Res<GameConfig>,
     mut solar_panels_timer: ResMut<SolarPanelsTimer>,
-    map_info: Res<MapInfo>,
     mut players: Query<(Entity, &AbilityList, &ClaimedTileCount, &mut BeamCharges)>,
     mut charge_regen_writer: MessageWriter<ChargeRegen>,
 ) {
@@ -47,14 +49,6 @@ fn regen_charges_from_solar_panels(
     if !solar_panels_timer.0.is_finished() {
         return;
     }
-
-    // A charge is only useful up to a claim on a tile nobody owns yet, so cap
-    // regen at the board's remaining unclaimed count — otherwise a wide-board
-    // Solar Panels stack keeps banking charges it can never spend on a fresh
-    // claim once the board's mostly settled.
-    let total_tiles = map_info.ground_entities.len() as u32;
-    let claimed_tiles: u32 = players.iter().map(|(.., count, _)| count.current).sum();
-    let unclaimed_tiles = total_tiles.saturating_sub(claimed_tiles);
 
     for (entity, abilities, tile_count, mut charges) in &mut players {
         if !abilities.0.contains(&AbilityDescriptor::SolarPanels) {
@@ -64,14 +58,32 @@ fn regen_charges_from_solar_panels(
         if gained == 0 {
             continue;
         }
-        let new_current = (charges.current + gained)
-            .min(charges.max)
-            .min(unclaimed_tiles);
+        let new_current = (charges.current + gained).min(charges.max);
         if new_current == charges.current {
             continue;
         }
         let amount = new_current - charges.current;
         charges.current = new_current;
         charge_regen_writer.write(ChargeRegen { owner: entity, amount });
+    }
+}
+
+// Down-only clamp: no player's charges may exceed the board's unclaimed-tile count.
+pub(crate) fn cap_charges_to_unclaimed_tiles(
+    map_info: Res<MapInfo>,
+    counts: Query<&ClaimedTileCount>,
+    mut charges: Query<&mut BeamCharges>,
+) {
+    if map_info.ground_entities.is_empty() {
+        return;
+    }
+    let total_tiles = map_info.ground_entities.len() as u32;
+    let claimed_tiles: u32 = counts.iter().map(|count| count.current).sum();
+    let unclaimed_tiles = total_tiles.saturating_sub(claimed_tiles);
+
+    for mut charges in &mut charges {
+        if charges.current > unclaimed_tiles {
+            charges.current = unclaimed_tiles;
+        }
     }
 }

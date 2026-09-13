@@ -11,11 +11,13 @@ use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, claim_tile);
+    // Ordered after beam_step so this frame's claim lands before anything
+    // else reads ClaimedTileCount (charge cap/regen, HUD bars).
+    app.add_systems(Update, claim_tile.after(super::beam::beam_step));
     // Stage F2: on_resolve / on_claim descriptor resolvers land here.
 }
 
-fn claim_tile(
+pub(crate) fn claim_tile(
     mut beam_resolved_reader: MessageReader<BeamResolved>,
     mut claimed_tiles: Query<&mut ClaimedTile>,
     mut counts: Query<&mut ClaimedTileCount>,

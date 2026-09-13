@@ -16,3 +16,9 @@ pub enum BeamBehavior {
     Straight,
     Lance,
 }
+
+/// Authoritative per-player count of that player's beams currently in flight.
+#[derive(Component, Default)]
+pub struct InFlightBeamCount {
+    pub current: u32,
+}

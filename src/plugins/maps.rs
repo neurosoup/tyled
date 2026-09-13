@@ -276,6 +276,7 @@ fn initialize_players(
                             / config.player.beam_charges_divisor,
                     ),
                     ClaimedTileCount::default(),
+                    InFlightBeamCount::default(),
                     AbilityList(loadouts.for_player(player.player_id)),
                 ));
 
