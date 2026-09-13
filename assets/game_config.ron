@@ -25,7 +25,7 @@
         tick_secs: 0.5,           // [live] seconds between standing-damage ticks
     ),
     round: (
-        round_duration_secs: 120,  // [next-round] round length in seconds
+        round_duration_secs: 300,  // [next-round] round length in seconds
         intro_count: 3,            // [next-round] intro numbers before "GO!" (1/sec, so intro = this many secs)
         go_linger_ms: 500,         // [next-round] ms the "GO!" banner scales up
         go_end_scale: 24.0,        // [next-round] scale "GO!" rushes to
@@ -53,9 +53,9 @@
         unclaim_cascade_secs: 2.5, // [live] max unclaim-cascade delay, scaled by distance
         hp_bar_decay_rate: 20.0,   // [live] HP bar snap speed; higher = snappier
         damage_bar_decay_rate: 0.6, // [live] damage-echo bar catch-up speed; higher = snappier
-        damage_bar_delay_ms: 1000,  // [live] ms the damage-echo bar holds still before catching up
-        territory_bar_decay_rate: 150.0, // [live] territory bar snap speed; higher = snappier
-        charges_bar_decay_rate: 150.0,   // [live] charges bar snap speed; keep >= territory_bar_decay_rate
+        damage_bar_delay_ms: 300,  // [live] ms the damage-echo bar holds still before catching up
+        territory_bar_decay_rate: 100.0, // [live] territory bar snap speed; higher = snappier
+        charges_bar_decay_rate: 100.0,   // [live] charges bar snap speed; keep >= territory_bar_decay_rate
     ),
     effects: (
         knockback_tween_ms: 200,   // [live] ms for the knockback slide tween
