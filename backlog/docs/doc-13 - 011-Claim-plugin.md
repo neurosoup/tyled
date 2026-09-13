@@ -3,18 +3,18 @@ id: doc-13
 title: '[011] Claim plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-07-14 12:00'
+updated_date: '2026-09-13 14:00'
 ---
 # Claim Plugin
 
-Owns the authoritative tile-ownership write. When a beam stops, the Beam plugin emits a `BeamResolved` message with the landing position and firing player; this plugin reads that message, mutates the matching `ClaimedTile::owner`, and emits `TileClaimed` to record the flip. Splitting this out of the Beam plugin turns `BeamResolved` into a genuine inter-plugin message (beam writes it, claim reads it) rather than an intra-plugin self-loop, and gives the `ClaimedTile::owner` mutation a single home — the chokepoint that future claim-side ability resolvers (`on_resolve` / `on_claim`) attach to.
+Owns the authoritative tile-ownership write. When a beam stops, the Beam plugin emits `BeamResolved` (landing position, firing player); this plugin reads it, mutates the matching `ClaimedTile::owner`, and emits `TileClaimed` to record the flip. Splitting this from the Beam plugin gives `ClaimedTile::owner` a single write site — the chokepoint future claim-side ability resolvers (`on_resolve`/`on_claim`) will attach to.
 
-The only coupling to the Beam plugin is the `BeamResolved` message: this plugin never queries `Beam` entities. It is registered immediately after the Beam plugin in `AppPlugin`.
+The only coupling to the Beam plugin is the `BeamResolved` message: this plugin never queries `Beam` entities. It is registered immediately after the Beam plugin in `AppPlugin`, and `claim_tile` carries an explicit `.after(super::beam::beam_step)` — so a `BeamResolved` written this frame is folded into `ClaimedTile::owner`/`ClaimedTileCount` before anything reading them later that same frame (the Charge plugin's regen/cap pair, the HUD's territory and charges bars).
 
 ## Plugin workflow
 
 - Update phase
-    - Claim Tile:
+    - Claim Tile (registered `.after(super::beam::beam_step)`):
         - Reacts to `BeamResolved` message
             - Reads:
                 - `BeamResolved` message fields (`position`, `owner`)
@@ -28,9 +28,9 @@ The only coupling to the Beam plugin is the `BeamResolved` message: this plugin 
 
 ### Claim Tile
 
-Reads `BeamResolved` messages. For each message, looks up the corresponding claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position, then mutates `ClaimedTile::owner` on that entity to record the new owning player and emits a `TileClaimed` message capturing the `old_owner` (before the write) and `new_owner`. This is the authoritative write that marks a tile as belonging to a player, and is subsequently read by the Animations plugin to switch the tile's visual appearance; `TileClaimed` is the ability-system hook that distinguishes a real ownership flip from a no-op resolve (no consumers yet).
+Reads `BeamResolved` messages. For each, looks up the claimed tile entity from `MapInfo::claimed_entities` by the message's `GridCoords`, mutates `ClaimedTile::owner` to the new owner, and emits `TileClaimed` (`old_owner`, `new_owner`). The Animations plugin reads the ownership change to switch the tile's sprite; `TileClaimed` is the ability-system hook for a real flip vs. a no-op resolve (no consumers yet).
 
-The same system keeps each player's `ClaimedTileCount` in sync: when a tile actually changes hands (`old_owner != Some(new_owner)`), it increments the new owner's count and decrements the previous owner's (saturating at zero). No-op reclaims of an already-owned tile leave the counts untouched. This per-player count is the authoritative owned-tile tally that the HUD plugin reads to render each player's claimed-tile percentage on the HUD.
+The same system keeps each player's `ClaimedTileCount` in sync: on a real ownership flip it increments the new owner's count and decrements the previous owner's (saturating at zero); a no-op reclaim leaves counts untouched. The HUD plugin reads this count to render each player's claimed-tile percentage.
 
 ## Components, Resources and Messages CRUD
 

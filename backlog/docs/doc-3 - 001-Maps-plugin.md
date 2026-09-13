@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-09-12 12:00'
+updated_date: '2026-09-13 14:00'
 ---
 # Maps Plugin
 
@@ -22,7 +22,7 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin)
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
@@ -30,8 +30,8 @@ Contains systems related to map loading and entity-related initializations. This
             - Stores each spawned entity in `MapInfo::claimed_entities`
         - `initialize_hud_bars`:
             - Reacts to `TiledEvent<MapCreated>` for `HudMap` maps only
-            - Matches every entity that is `HPBar`, `DamageBar`, `TerritoryBar`, **or** `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`) and initializes it with `GridCoords` and `Transform`
-            - For `TerritoryBar`/`ChargesBar` matches, additionally zeroes `Transform::scale.x` so the bar renders empty and grows in once `hud`'s `animate_territory_bar`/`animate_charges_bar` start nudging it toward the real ratio; `HPBar`/`DamageBar` render at their true value immediately
+            - Matches every entity that is `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`) and initializes it with `GridCoords` and `Transform`
+            - Zeroes `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches (they grow in via `hud`'s bar animations); `HPBar`/`DamageBar` render at their true value immediately
             - Sets `Anchor` and `custom_size` on the child sprite entity of each matched bar
 
 ## Plugin Systems
@@ -51,7 +51,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads t
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), and `ClaimedTileCount{current:0}` on the player entity, reading these from the `GameConfig` resource. The `ClaimedTileCount` starts at zero and is maintained thereafter by the Claim plugin as tile ownership flips.
+3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}`, and `InFlightBeamCount::default()` on the player entity, reading these from the `GameConfig` resource. `ClaimedTileCount` starts at zero, maintained thereafter by the Claim plugin. `InFlightBeamCount` starts at zero, maintained thereafter by the Beam plugin (incremented on fire, decremented on despawn) — a synchronous per-player in-flight count for HUD and round-resolution readers.
 4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
 
 ### Initialize Claimed Tiles
@@ -60,9 +60,7 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For eac
 
 ### Initialize HUD Bars
 
-Reacts to `TiledEvent<MapCreated>` filtered to `HudMap` maps only. Its query matches every entity already spawned by the Tiled loader (from `hud2.tmx`) that carries `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`), also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the bar kinds apart. For each matched entity, computes its `GridCoords` from its world-space `Transform`, and inserts `GridCoords` and `Transform` on the entity (including the player-1 `+16px` X pixel-nudge). If the entity is a `TerritoryBar` or `ChargesBar`, its `Transform::scale.x` is additionally zeroed — those bars render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio, whereas `HPBar`/`DamageBar` render at their true value from frame one. Also sets the `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` on the child sprite entity of each matched bar so it scales correctly from the correct pivot point: `HP_BAR_PIXEL_WIDTH` × `32` (`176x32`) for `HPBar`/`DamageBar` — each player gets their own independent container — or `TERRITORY_BAR_PIXEL_WIDTH` × `32` (`432x32`) for `TerritoryBar`/`ChargesBar`, since P1 and P2's bars there are anchored 432px apart and grow toward each other across that shared span rather than each owning their own box.
-
-All four bar kinds are initialized by the same code path, branching only on the `Has<TerritoryBar>`/`Has<ChargesBar>` flags for the zero-scale step and the `custom_size` width above.
+Reacts to `TiledEvent<MapCreated>` filtered to `HudMap` maps only. Matches every entity spawned from `hud2.tmx` carrying `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`), also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the kinds apart. For each, computes `GridCoords` from its world-space `Transform` and inserts `GridCoords`/`Transform` (including the player-1 `+16px` X nudge). `TerritoryBar`/`ChargesBar` matches additionally get `Transform::scale.x` zeroed so they render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio; `HPBar`/`DamageBar` render at true value from frame one. Also sets `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` on each bar's child sprite: `HP_BAR_PIXEL_WIDTH` × `32` (`176x32`) for `HPBar`/`DamageBar`, each player owning an independent container, or `TERRITORY_BAR_PIXEL_WIDTH` × `32` (`432x32`) for `TerritoryBar`/`ChargesBar`, whose P1/P2 bars are anchored 432px apart and grow toward each other across that shared span.
 
 ## Components, Resources and Messages CRUD
 
@@ -292,7 +290,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, and `ClaimedTileCount` on each `Player` entity, and inserts `Anchor` on the first child sprite entity. `SpawnPoint` captures the player's initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement has overwritten the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. The `AbilityList` contents come from the `PlayerLoadouts` resource (owned by the Abilities plugin) via `for_player(player_id)` — the hardcoded per-player kit, empty for the Straight-only control. `ClaimedTileCount` is initialized to zero and maintained thereafter by the Claim plugin as tile ownership flips.
+- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, `ClaimedTileCount`, and `InFlightBeamCount` on each `Player` entity, and `Anchor` on its first child sprite. `SpawnPoint` captures the initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement overwrites the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. `AbilityList` comes from `PlayerLoadouts` (Abilities plugin) via `for_player(player_id)` — empty for the Straight-only control. `ClaimedTileCount` starts at zero, maintained by the Claim plugin; `InFlightBeamCount` defaults to zero, maintained by the Beam plugin.
 
 ```mermaid
 ---
@@ -319,6 +317,7 @@ pe_health>"`**Health**`"]
 pe_beam_charges>"`**BeamCharges**`"]
 pe_ability_list>"`**AbilityList**`"]
 pe_claimed_tile_count>"`**ClaimedTileCount**`"]
+pe_in_flight_count>"`**InFlightBeamCount**`"]
 ce_anchor>"`**Anchor**`"]
 
 world@{ shape: st-rect, label: "World" }
@@ -333,6 +332,7 @@ pe_health --> |inserted on| player_entity
 pe_beam_charges --> |inserted on| player_entity
 pe_ability_list --> |inserted on| player_entity
 pe_claimed_tile_count --> |inserted on| player_entity
+pe_in_flight_count --> |inserted on| player_entity
 ce_anchor --> |inserted on| child_entity
 
 initialize_players ---> |reads| player_loadouts_res
@@ -344,6 +344,7 @@ initialize_players ---> |inserts component| pe_health
 initialize_players ---> |inserts component| pe_beam_charges
 initialize_players ---> |inserts component| pe_ability_list
 initialize_players ---> |inserts component| pe_claimed_tile_count
+initialize_players ---> |inserts component| pe_in_flight_count
 initialize_players ---> |inserts component| ce_anchor
 ```
 
