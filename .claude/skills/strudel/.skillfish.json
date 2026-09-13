@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "strudel",
+  "owner": "bfollington",
+  "repo": "terma",
+  "path": "plugins/tsal/skills/strudel",
+  "branch": "main",
+  "sha": "2dfe415d397fff7b23de44f87edf43b446ad660a",
+  "source": "manual"
+}
