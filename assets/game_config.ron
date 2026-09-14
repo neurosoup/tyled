@@ -60,6 +60,14 @@
     effects: (
         knockback_tween_ms: 200,   // [live] ms for the knockback slide tween
         damage_flash_ms: 150,      // [live] ms for the damage colour-flash tween
+        beam_illumination_fade_in_ms: 10,   // [live] ms for the beam-origin illumination fade-in
+        beam_illumination_hold_ms: 10,     // [live] ms the beam-origin illumination holds at full tint
+        beam_illumination_fade_out_ms: 300, // [live] ms for the beam-origin illumination fade-out
+        // [live] per-player tint (P1 blue, P2 red), rgba. Sprite.color is multiplicative on RGB
+        // (>1.0 brightens, <=1.0 only darkens/hue-shifts) and alpha-blended (lower alpha = more
+        // translucent). Tune the dominant channel or alpha directly if it reads too dim/opaque.
+        beam_illumination_color_p1: (0.55, 0.78, 0.95, 0.55),
+        beam_illumination_color_p2: (0.97, 0.55, 0.58, 0.55),
     ),
     telemetry: (
         enabled: true,             // [live] write play-telemetry records to play_trace.jsonl

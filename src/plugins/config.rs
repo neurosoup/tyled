@@ -126,6 +126,16 @@ pub struct EffectsConfig {
     pub knockback_tween_ms: u64,
     /// Milliseconds for the damage colour-flash tween.
     pub damage_flash_ms: u64,
+    /// Milliseconds for the beam-origin illumination fade-in.
+    pub beam_illumination_fade_in_ms: u64,
+    /// Milliseconds the beam-origin illumination holds at full tint.
+    pub beam_illumination_hold_ms: u64,
+    /// Milliseconds for the beam-origin illumination fade-out.
+    pub beam_illumination_fade_out_ms: u64,
+    /// Srgba tint (including alpha) for P1's beam-origin illumination — lower alpha increases translucency.
+    pub beam_illumination_color_p1: [f32; 4],
+    /// Srgba tint (including alpha) for P2's beam-origin illumination — lower alpha increases translucency.
+    pub beam_illumination_color_p2: [f32; 4],
 }
 
 #[derive(Reflect, Clone, Deserialize)]

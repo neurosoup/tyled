@@ -3,7 +3,7 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-07-21 12:00'
+updated_date: '2026-09-14 12:00'
 ---
 # Input Plugin
 
@@ -14,7 +14,7 @@ Contains systems related to player input handling. This plugin registers the `In
 - PreUpdate phase
     - Attach Players Actions reacts to newly added `Player` + `Character` entities (without `InputMap`) and branches on `config.controllers.is_bot(player.player_id)`: a bot seat gets a bare `ActionState<Action>` plus the `Bot` marker and **no** `InputMap`; a human seat gets the appropriate `InputMap<Action>` as before. Both branches also get `MoveRepeat` and `MovementSlide`.
 - Update phase (gated on `RoundPhase::Playing`)
-    - Handle Characters Input, for each character:
+    - Handle Characters Input, for each character (excluding `IsKnockedBack` and `IsDead` entities):
         - Handles `Action::Lock` (toggles look-direction lock)
         - Handles `Action::Shoot` (writes a `BeamFired` message only if the player has a charge **and** the shot is not blocked — firing from an already-claimed tile is refused unless the player has the `Lance` ability, in which case no message is written, so no beam spawns and no charge is spent) — allowed even mid-turn
         - On release (`Action::Move` axis zero), eases a moving character to rest via `MovementSettle` and clears `MoveRepeat`'s held axis, so the next press steps immediately
@@ -30,7 +30,7 @@ Runs in `PreUpdate`. Detects newly spawned `Player` + `Character` entities that 
 
 ### Handle Characters Input
 
-Runs in `Update`, gated on `RoundPhase::Playing`, and iterates over all `Character` entities (excluding those with `IsKnockedBack`). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only when the character has a charge (`BeamCharges::current > 0`) **and** `resolve_fire` (Beam plugin) permits the shot: firing from an already-claimed tile is refused unless the player's `AbilityList` contains `Lance`, and a refused shot writes no message (no beam, no charge). Both stay active during a turn. Reads the `Action::Move` axis: on release (axis zero), eases a moving character to rest via `MovementSettle` and resets the per-character `MoveRepeat` state, so the next press steps immediately. Otherwise it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) commits the new `LookDirection` immediately and inserts an `IsTurning` state — turning out of rest holds the step back (a quick tap just turns in place, holding continues into movement after the repeat delay), while a mid-run turn falls through to keep stepping the same frame. Stepping is governed by `MoveRepeat`: the first step out of rest is immediate; every later step waits for `MoveRepeat`'s timer, spanning `config.timing.move_repeat_delay_ms` for the first repeat and `config.timing.move_repeat_rate_ms` after, shortened by `1/√2` for a cardinal (non-diagonal) step to match the diagonal's apparent speed. Each step emits an `EntityMoved` message with the new target `GridCoords` and re-sizes `MovementSlide` to that interval. Locked characters never turn (direction is frozen) and keep stepping along the pressed axis.
+Runs in `Update`, gated on `RoundPhase::Playing`, and iterates over all `Character` entities (excluding those with `IsKnockedBack` or `IsDead` — a dead player holding a movement key must not emit `EntityMoved` or interfere with its death-bounce state). Immediately handles `Action::Lock` (toggles direction lock) and `Action::Shoot` — emits a `BeamFired` message only when the character has a charge (`BeamCharges::current > 0`) **and** `resolve_fire` (Beam plugin) permits the shot: firing from an already-claimed tile is refused unless the player's `AbilityList` contains `Lance`, and a refused shot writes no message (no beam, no charge). Both stay active during a turn. Reads the `Action::Move` axis: on release (axis zero), eases a moving character to rest via `MovementSettle` and resets the per-character `MoveRepeat` state, so the next press steps immediately. Otherwise it uses `LookDirection::would_look_at` to detect whether the pressed axis implies a new facing: while unlocked, a change from the current heading (or the active turn's target) commits the new `LookDirection` immediately and inserts an `IsTurning` state — turning out of rest holds the step back (a quick tap just turns in place, holding continues into movement after the repeat delay), while a mid-run turn falls through to keep stepping the same frame. Stepping is governed by `MoveRepeat`: the first step out of rest is immediate; every later step waits for `MoveRepeat`'s timer, spanning `config.timing.move_repeat_delay_ms` for the first repeat and `config.timing.move_repeat_rate_ms` after, shortened by `1/√2` for a cardinal (non-diagonal) step to match the diagonal's apparent speed. Each step emits an `EntityMoved` message with the new target `GridCoords` and re-sizes `MovementSlide` to that interval. Locked characters never turn (direction is frozen) and keep stepping along the pressed axis.
 
 ### Tick Turning
 
@@ -131,7 +131,7 @@ attach_players_actions ---> |inserts component| pe_slide
 ### Query Character entities for input handling
 
 Used in the following systems:
-- **handle_characters_input**: reads action state, grid coords, and the optional `AbilityList` and `IsTurning` state; mutably updates look direction, `MoveRepeat`, and `MovementSlide`, for all `Character` entities (excluding those with `IsKnockedBack`); it also reads `MapInfo` + `ClaimedTile` to gate firing (see the separate section below)
+- **handle_characters_input**: reads action state, grid coords, and the optional `AbilityList` and `IsTurning` state; mutably updates look direction, `MoveRepeat`, and `MovementSlide`, for all `Character` entities (excluding those with `IsKnockedBack` or `IsDead`); it also reads `MapInfo` + `ClaimedTile` to gate firing (see the separate section below)
 
 ```mermaid
 ---
@@ -164,6 +164,7 @@ pe_is_turning>"`**IsTurning**`"] --> |belongs to| character_entity
 pe_move_repeat>"`**MoveRepeat**`"] --> |belongs to| character_entity
 pe_slide>"`**MovementSlide**`"] --> |belongs to| character_entity
 pe_is_knocked_back>"`**IsKnockedBack**`"] --> |belongs to| character_entity
+pe_is_dead>"`**IsDead**`"] --> |belongs to| character_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_action_state
@@ -176,6 +177,7 @@ players_query ---> |"reads (optional)"| pe_ability_list
 players_query ---> |"reads (optional)"| pe_is_turning
 players_query -..-> |filter With| pe_character
 players_query -..-> |filter Without| pe_is_knocked_back
+players_query -..-> |filter Without| pe_is_dead
 ```
 
 ### Read fire-gate inputs (MapInfo + ClaimedTile)

@@ -26,6 +26,23 @@ pub struct BounceEffectTarget;
 pub struct WaveEffectTarget;
 
 /*
+ * Marks tiles that can receive the beam-origin illumination.
+ * Permanent, like WaveEffectTarget.
+ */
+#[derive(Component)]
+pub struct IlluminationEffectTarget;
+
+/*
+ * Marks a transient driver entity whose TweenAnim is redirected at `tile`'s
+ * Sprite, because the tile entity's own TweenAnim slot is occupied by the
+ * bounce effect.
+ */
+#[derive(Component)]
+pub struct IlluminationDriver {
+    pub tile: Entity,
+}
+
+/*
  * Translate effect target component.
  * Used in conjunction with GridCoords component (Changed event).
  */
@@ -65,5 +82,27 @@ pub struct KnockbackEffect {
     pub direction: GridCoords,
 }
 
+/// Locks input processing while an entity is knocked back.
 #[derive(Component)]
-pub struct IsKnockedBack;
+pub struct IsKnockedBack(pub Timer);
+
+/// Which effect currently owns an entity's `Transform` `TweenAnim` slot.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ActiveTransformEffect(pub TransformEffectKind);
+
+/// Priority order (highest first): Bounce > Knockback > {Settle, Translate}.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TransformEffectKind {
+    Translate,
+    Settle,
+    Knockback,
+    Bounce,
+}
+
+/// A death bounce that is waiting for an in-flight knockback slide to finish.
+#[derive(Component)]
+pub struct PendingDeathBounce;
+
+/// Marks entities allowed to act as a wave source for `apply_wave_effect`.
+#[derive(Component)]
+pub struct WaveSource;

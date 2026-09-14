@@ -76,7 +76,7 @@ pub(crate) fn handle_characters_input(
             Option<&AbilityList>,
             Option<&IsTurning>,
         ),
-        (With<Character>, Without<IsKnockedBack>),
+        (With<Character>, Without<IsKnockedBack>, Without<IsDead>),
     >,
     mut entity_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,

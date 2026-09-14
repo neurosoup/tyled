@@ -121,12 +121,15 @@ fn spawn_beam(
             },
         ));
         if !owner_has_active_beam {
-            entity_commands.insert(BounceEffect {
-                intensity: 5.0,
-                bounce_count: 2,
-                decay: 0.3,
-                z_index: CLAIMED_TILE_Z_INDEX,
-            });
+            entity_commands.insert((
+                WaveSource,
+                BounceEffect {
+                    intensity: 5.0,
+                    bounce_count: 2,
+                    decay: 0.3,
+                    z_index: CLAIMED_TILE_Z_INDEX,
+                },
+            ));
         }
     }
 }

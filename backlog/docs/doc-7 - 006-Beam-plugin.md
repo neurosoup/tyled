@@ -3,7 +3,7 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-09-13 14:00'
+updated_date: '2026-09-14 12:00'
 ---
 # Beam Plugin
 
@@ -32,7 +32,7 @@ Charges are spent **on fire**, not on resolve: once `resolve_fire` yields a beha
                 - Calls `resolve_fire`; when it returns no behavior (origin already claimed and no `Lance`), skips the message — no `Beam` is spawned and nothing is spent
                 - Otherwise, decrements the owner's `BeamCharges::current` (saturating at zero), increments the owner's `InFlightBeamCount::current`, and emits a `ChargeSpent` message (`owner`, `amount`)
                 - Spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,behavior}`, where `behavior` is `BeamBehavior::Lance` when the origin is claimed **and** the owner has drafted `Lance`, otherwise `BeamBehavior::Straight`
-                - Also inserts `BounceEffect` unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire)
+                - Also inserts `WaveSource` and `BounceEffect` together unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire) — a lane-suppressed beam gets neither, so it triggers no tile bounce, though it still triggers the beam-origin illumination telegraph (Effects plugin), which is gated only on `With<Beam>`
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
             - Reads:
@@ -51,7 +51,7 @@ Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Time
 
 ### Spawn Beam
 
-Reacts to `BeamFired` messages. `resolve_fire` decides the behavior from whether the origin tile is already claimed (`MapInfo` + `ClaimedTile`) and whether the firing player's `AbilityList` has `AbilityDescriptor::Lance`: claimed-without-`Lance` yields no behavior and `spawn_beam` skips the spawn entirely, spending nothing; claimed-with-`Lance` yields `BeamBehavior::Lance`; unclaimed yields `BeamBehavior::Straight`. Only once a behavior is resolved does `spawn_beam` spend anything: it decrements `BeamCharges::current` (saturating at zero), increments `InFlightBeamCount::current`, and emits `ChargeSpent` (`owner`, `amount`) — all before the `Beam` entity is spawned, so spend, in-flight bump, and spawn happen atomically. The resulting `Changed<BeamCharges>` drives the digit flip-counter animation in the Animations plugin. A spawned beam carries `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, behavior}`. `BounceEffect` is inserted only when the owner has no existing beam on the same lane — suppressed for a horizontal beam if another of the owner's beams shares the same row and is also horizontal, and likewise for a vertical beam sharing a column — preventing overlapping visual effects on shared paths. No sprite or transform is set up here; visual representation is handled by the effects/animations plugins reacting to `BounceEffect`.
+Reacts to `BeamFired` messages. `resolve_fire` decides the behavior from whether the origin tile is already claimed (`MapInfo` + `ClaimedTile`) and whether the firing player's `AbilityList` has `AbilityDescriptor::Lance`: claimed-without-`Lance` yields no behavior and `spawn_beam` skips the spawn entirely, spending nothing; claimed-with-`Lance` yields `BeamBehavior::Lance`; unclaimed yields `BeamBehavior::Straight`. Only once a behavior is resolved does `spawn_beam` spend anything: it decrements `BeamCharges::current` (saturating at zero), increments `InFlightBeamCount::current`, and emits `ChargeSpent` (`owner`, `amount`) — all before the `Beam` entity is spawned, so spend, in-flight bump, and spawn happen atomically. The resulting `Changed<BeamCharges>` drives the digit flip-counter animation in the Animations plugin. A spawned beam carries `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, behavior}`. `WaveSource` and `BounceEffect` are inserted together, only when the owner has no existing beam on the same lane — suppressed for a horizontal beam if another of the owner's beams shares the same row and is also horizontal, and likewise for a vertical beam sharing a column — preventing overlapping visual effects on shared paths. `WaveSource` (Effects plugin) is what makes the beam eligible to bounce the claimed tile beneath it (`apply_wave_effect`); a lane-suppressed beam gets neither component, so it never triggers a tile bounce, but it is unaffected for the beam-origin illumination telegraph, which reacts to any `With<Beam>` entity regardless of lane suppression. No sprite or transform is set up here; visual representation is handled by the effects/animations plugins reacting to `BounceEffect`/`WaveSource` and to the beam's own `GridCoords`.
 
 ### Beam Step
 
@@ -102,7 +102,7 @@ message_reader ---> |reads| beam_fired_message
 ### Query Beam entities (spawn)
 
 Used in the following systems:
-- **spawn_beam**: reads `Beam.owner`, `Beam.direction`, and `GridCoords` of all active beams to detect lane overlap before deciding whether to insert `BounceEffect`
+- **spawn_beam**: reads `Beam.owner`, `Beam.direction`, and `GridCoords` of all active beams to detect lane overlap before deciding whether to insert `WaveSource` + `BounceEffect`
 
 ```mermaid
 ---
@@ -201,7 +201,7 @@ beam_step ---> |reads `claimed_entities`| map_info_res
 ### Write commands — spawn Beam entity
 
 Used in the following systems:
-- **spawn_beam**: spawns a new `Beam` entity with grid position, beam data, and bounce effect
+- **spawn_beam**: spawns a new `Beam` entity with grid position, beam data, and (unless lane-suppressed) `WaveSource` + `BounceEffect`
 
 ```mermaid
 ---
@@ -221,14 +221,17 @@ beam_entity@{ shape: st-rect, label: "Beam (spawned)" }
 
 be_grid_coords>"`**GridCoords**`"]
 be_beam>"`**Beam**`"]
+be_wave_source>"`**WaveSource**`"]
 be_bounce>"`**BounceEffect**`"]
 
 be_grid_coords --> |spawned on| beam_entity
 be_beam --> |spawned on| beam_entity
-be_bounce --> |spawned on| beam_entity
+be_wave_source --> |"spawned on (unless lane-suppressed)"| beam_entity
+be_bounce --> |"spawned on (unless lane-suppressed)"| beam_entity
 
 spawn_beam ---> |spawns entity with| be_grid_coords
 spawn_beam ---> |spawns entity with| be_beam
+spawn_beam ---> |spawns entity with| be_wave_source
 spawn_beam ---> |spawns entity with| be_bounce
 ```
 

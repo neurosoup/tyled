@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-09-13 14:00'
+updated_date: '2026-09-14 12:00'
 ---
 # Maps Plugin
 
@@ -22,11 +22,11 @@ Contains systems related to map loading and entity-related initializations. This
     - Then in parallel (after `initialize_map_info`):
         - `initialize_players`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
+            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (the grid coord's world translation, kept in sync thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `GridCoords`, `Transform`, `Anchor`
+            - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, `Transform`
             - Stores each spawned entity in `MapInfo::claimed_entities`
         - `initialize_hud_bars`:
             - Reacts to `TiledEvent<MapCreated>` for `HudMap` maps only
@@ -51,12 +51,12 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads t
 Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}`, and `InFlightBeamCount::default()` on the player entity, reading these from the `GameConfig` resource. `ClaimedTileCount` starts at zero, maintained thereafter by the Claim plugin. `InFlightBeamCount` starts at zero, maintained thereafter by the Beam plugin (incremented on fire, decremented on despawn) — a synchronous per-player in-flight count for HUD and round-resolution readers.
+3. Inserts `GridCoords`, `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (set to that same `GridCoords`'s world translation), `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), `ClaimedTileCount{current:0}`, and `InFlightBeamCount::default()` on the player entity, reading these from the `GameConfig` resource. `ClaimedTileCount` starts at zero, maintained thereafter by the Claim plugin. `InFlightBeamCount` starts at zero, maintained thereafter by the Beam plugin (incremented on fire, decremented on despawn) — a synchronous per-player in-flight count for HUD and round-resolution readers. `RestingTranslation` is kept aligned with `GridCoords` thereafter by the Effects plugin's `sync_resting_translation`, so bounce effects always read a player's resting position rather than a `Transform` that may be mid-tween.
 4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
 
 ### Initialize Claimed Tiles
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each ground tile in `MapInfo::ground_entities` it spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `GridCoords`, `Transform`, and `Anchor`. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
+Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each ground tile in `MapInfo::ground_entities` it spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, and `Transform`. `IlluminationEffectTarget` is the permanent marker that lets the Effects plugin's beam-origin illumination telegraph light up the tile as a beam crosses it. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
 
 ### Initialize HUD Bars
 
@@ -290,7 +290,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, `ClaimedTileCount`, and `InFlightBeamCount` on each `Player` entity, and `Anchor` on its first child sprite. `SpawnPoint` captures the initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement overwrites the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. `AbilityList` comes from `PlayerLoadouts` (Abilities plugin) via `for_player(player_id)` — empty for the Straight-only control. `ClaimedTileCount` starts at zero, maintained by the Claim plugin; `InFlightBeamCount` defaults to zero, maintained by the Beam plugin.
+- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `RestingTranslation`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, `ClaimedTileCount`, and `InFlightBeamCount` on each `Player` entity, and `Anchor` on its first child sprite. `SpawnPoint` captures the initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement overwrites the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. `RestingTranslation` is seeded to that same `GridCoords`'s world translation and kept in sync thereafter by the Effects plugin's `sync_resting_translation`, so bounce effects always read a resting position rather than a `Transform` that may be mid-tween. `AbilityList` comes from `PlayerLoadouts` (Abilities plugin) via `for_player(player_id)` — empty for the Straight-only control. `ClaimedTileCount` starts at zero, maintained by the Claim plugin; `InFlightBeamCount` defaults to zero, maintained by the Beam plugin.
 
 ```mermaid
 ---
@@ -312,6 +312,7 @@ child_entity@{ shape: st-rect, label: "Player Child (Sprite)" }
 pe_grid_coords>"`**GridCoords**`"]
 pe_look_direction>"`**LookDirection**`"]
 pe_translate_effect>"`**TranslateEffectTarget**`"]
+pe_resting_translation>"`**RestingTranslation**`"]
 pe_damage_effect>"`**DamageEffectTarget**`"]
 pe_health>"`**Health**`"]
 pe_beam_charges>"`**BeamCharges**`"]
@@ -327,6 +328,7 @@ player_loadouts_res --> |belongs to| world
 pe_grid_coords --> |inserted on| player_entity
 pe_look_direction --> |inserted on| player_entity
 pe_translate_effect --> |inserted on| player_entity
+pe_resting_translation --> |inserted on| player_entity
 pe_damage_effect --> |inserted on| player_entity
 pe_health --> |inserted on| player_entity
 pe_beam_charges --> |inserted on| player_entity
@@ -339,6 +341,7 @@ initialize_players ---> |reads| player_loadouts_res
 initialize_players ---> |inserts component| pe_grid_coords
 initialize_players ---> |inserts component| pe_look_direction
 initialize_players ---> |inserts component| pe_translate_effect
+initialize_players ---> |inserts component| pe_resting_translation
 initialize_players ---> |inserts component| pe_damage_effect
 initialize_players ---> |inserts component| pe_health
 initialize_players ---> |inserts component| pe_beam_charges
@@ -372,21 +375,21 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 
 ct_claimed_tile>"`**ClaimedTile**`"]
 ct_wave_effect>"`**WaveEffectTarget**`"]
+ct_illumination_effect>"`**IlluminationEffectTarget**`"]
 ct_grid_coords>"`**GridCoords**`"]
 ct_transform>"`**Transform**`"]
-ct_anchor>"`**Anchor**`"]
 
 ct_claimed_tile --> |spawned on| claimed_tile_entity
 ct_wave_effect --> |spawned on| claimed_tile_entity
+ct_illumination_effect --> |spawned on| claimed_tile_entity
 ct_grid_coords --> |spawned on| claimed_tile_entity
 ct_transform --> |spawned on| claimed_tile_entity
-ct_anchor --> |spawned on| claimed_tile_entity
 
 initialize_claimed_tiles ---> |spawns entity with| ct_claimed_tile
 initialize_claimed_tiles ---> |spawns entity with| ct_wave_effect
+initialize_claimed_tiles ---> |spawns entity with| ct_illumination_effect
 initialize_claimed_tiles ---> |spawns entity with| ct_grid_coords
 initialize_claimed_tiles ---> |spawns entity with| ct_transform
-initialize_claimed_tiles ---> |spawns entity with| ct_anchor
 initialize_claimed_tiles ---> |stores entity in claimed_entities| map_info_res
 ```
 

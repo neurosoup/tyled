@@ -3,7 +3,7 @@ id: doc-19
 title: '[017] Config plugin'
 type: other
 created_date: '2026-07-19 12:00'
-updated_date: '2026-09-06 12:00'
+updated_date: '2026-09-14 12:00'
 ---
 # Config Plugin
 
@@ -43,6 +43,15 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
     - `hp_bar_decay_rate` `[live]` — how fast the HP bar snaps to its target ratio, read every frame by the HUD plugin's `animate_hp`. Higher = snappier.
     - `damage_bar_decay_rate` `[live]` — how fast the damage-echo bar catches up to the HP bar once it resumes, read every frame by the HUD plugin's `animate_damage_bar`. Higher = snappier.
     - `damage_bar_delay_ms` `[live]` — milliseconds the damage-echo bar holds still after a hit before it starts catching up, read by the HUD plugin's `arm_damage_echo_delay` each time a player's `Health` changes.
+
+- `effects` (`EffectsConfig`) — read by the Effects plugin (see the Effects plugin doc):
+    - `knockback_tween_ms` `[live]` — milliseconds for the knockback slide tween.
+    - `damage_flash_ms` `[live]` — milliseconds for the damage colour-flash tween.
+    - `beam_illumination_fade_in_ms` `[live]` — milliseconds for the beam-origin illumination fade-in.
+    - `beam_illumination_hold_ms` `[live]` — milliseconds the beam-origin illumination holds at full tint.
+    - `beam_illumination_fade_out_ms` `[live]` — milliseconds for the beam-origin illumination fade-out.
+    - `beam_illumination_color_p1` `[live]` — srgba tint (`[f32; 4]`) applied to P1's beam-origin illumination. `Sprite::color` is a *multiplicative* tint, so values ≤ 1.0 can only darken or hue-shift the tile's existing color, while values > 1.0 are what actually brighten it (subject to the render target's dynamic range). The 4th component is alpha, which blends the tile against whatever's beneath — lower alpha makes the illumination more translucent.
+    - `beam_illumination_color_p2` `[live]` — srgba tint (`[f32; 4]`) applied to P2's beam-origin illumination. Same multiplicative-tint and alpha-translucency behavior as `beam_illumination_color_p1`.
 
 - `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
     - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.

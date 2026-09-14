@@ -266,6 +266,7 @@ fn initialize_players(
                     PreviousGridCoords(grid_coords),
                     look_direction,
                     TranslateEffectTarget,
+                    RestingTranslation(grid_coords.to_translation(&map_info)),
                     DamageEffectTarget,
                     Health {
                         current: config.player.starting_health,
@@ -325,6 +326,7 @@ fn initialize_claimed_tiles(
                     Name::new("Tiles"),
                     ClaimedTile { owner: None },
                     WaveEffectTarget,
+                    IlluminationEffectTarget,
                     grid_coords,
                     Transform::from_translation(tile_transform),
                     // Anchor::from(Vec2::new(-0.02, 0.18)),

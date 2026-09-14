@@ -30,6 +30,7 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
+use bevy_tweening::TweenAnim;
 
 use crate::prelude::*;
 
@@ -304,6 +305,7 @@ fn reset_round(
     mut commands: Commands,
     config: Res<GameConfig>,
     exceptions: Res<RoundResetExceptions>,
+    map_info: Res<MapInfo>,
     mut players: Query<(
         Entity,
         &SpawnPoint,
@@ -311,6 +313,8 @@ fn reset_round(
         &mut BeamCharges,
         &mut ClaimedTileCount,
         &mut InFlightBeamCount,
+        &mut Transform,
+        &mut RestingTranslation,
     )>,
     mut tiles: Query<(&GridCoords, &mut ClaimedTile)>,
     beams: Query<Entity, With<Beam>>,
@@ -327,15 +331,31 @@ fn reset_round(
         *reserved_counts.entry(*owner).or_default() += 1;
     }
 
-    for (entity, spawn, mut health, mut charges, mut count, mut in_flight) in &mut players {
+    for (entity, spawn, mut health, mut charges, mut count, mut in_flight, mut transform, mut resting) in
+        &mut players
+    {
         health.current = health.max;
         charges.current = charges.max;
         count.current = reserved_counts.get(&entity).copied().unwrap_or(0);
         in_flight.current = 0;
+        let spawn_translation = spawn.0.to_translation(&map_info);
+        transform.translation = spawn_translation;
+        resting.0 = spawn_translation;
         commands
             .entity(entity)
             .insert((spawn.0, PreviousGridCoords(spawn.0), Visibility::Visible))
-            .remove::<(IsDead, IsTurning)>();
+            .remove::<(
+                IsDead,
+                IsTurning,
+                IsKnockedBack,
+                KnockbackEffect,
+                BounceEffect,
+                BounceEffectTarget,
+                PendingDeathBounce,
+                MovementSettle,
+                ActiveTransformEffect,
+                TweenAnim,
+            )>();
     }
 
     // Clear any beams still in flight when the round ended.
