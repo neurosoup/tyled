@@ -20,7 +20,8 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(PreUpdate, attach_players_actions);
     app.add_systems(
         Update,
-        (handle_characters_input, tick_turning).run_if(in_state(RoundPhase::Playing)),
+        (handle_characters_input.in_set(GameplaySet::Input), tick_turning)
+            .run_if(in_state(RoundPhase::Playing)),
     );
 }
 
@@ -58,7 +59,7 @@ fn attach_players_actions(
     }
 }
 
-pub(crate) fn handle_characters_input(
+fn handle_characters_input(
     mut commands: Commands,
     time: Res<Time>,
     config: Res<GameConfig>,

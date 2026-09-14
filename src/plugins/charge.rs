@@ -10,7 +10,7 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)
             .chain()
-            .after(super::claim::claim_tile)
+            .in_set(GameplaySet::Economy)
             .run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]
@@ -69,7 +69,7 @@ fn regen_charges_from_solar_panels(
 }
 
 // Down-only clamp: no player's charges may exceed the board's unclaimed-tile count.
-pub(crate) fn cap_charges_to_unclaimed_tiles(
+fn cap_charges_to_unclaimed_tiles(
     map_info: Res<MapInfo>,
     counts: Query<&ClaimedTileCount>,
     mut charges: Query<&mut BeamCharges>,

@@ -18,6 +18,7 @@ pub(crate) fn plugin(app: &mut App) {
             apply_beam_damage,
             apply_collision_damage,
         )
+            .in_set(GameplaySet::Damage)
             .run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]

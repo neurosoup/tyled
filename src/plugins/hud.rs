@@ -23,15 +23,9 @@ pub(crate) fn plugin(app: &mut App) {
             initialize_digit_animations,
         ),
     );
-    // Ordered after this frame's claim/cap writes so the bars never render a stale value.
     app.add_systems(
         Update,
-        (
-            animate_territory_bar.after(super::claim::claim_tile),
-            animate_charges_bar
-                .after(super::claim::claim_tile)
-                .after(super::charge::cap_charges_to_unclaimed_tiles),
-        ),
+        (animate_territory_bar, animate_charges_bar).in_set(GameplaySet::HudSync),
     );
 }
 

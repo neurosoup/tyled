@@ -14,7 +14,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         move_characters
-            .before(super::beam::beam_step)
+            .in_set(GameplaySet::Movement)
             .run_if(in_state(RoundPhase::Playing)),
     );
 }

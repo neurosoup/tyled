@@ -23,7 +23,7 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         bot_think
             .after(attach_bot_state)
-            .before(crate::plugins::inputs::handle_characters_input)
+            .in_set(GameplaySet::BotThink)
             .run_if(in_state(RoundPhase::Playing)),
     );
 }

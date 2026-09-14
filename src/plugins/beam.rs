@@ -12,7 +12,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_beam_step_timer);
     app.add_systems(
         Update,
-        (spawn_beam, beam_step).run_if(in_state(RoundPhase::Playing)),
+        (spawn_beam, beam_step.in_set(GameplaySet::Beam)).run_if(in_state(RoundPhase::Playing)),
     );
     #[cfg(feature = "dev")]
     app.add_systems(Update, resync_beam_step_timer);
@@ -172,9 +172,9 @@ fn end_beam(
     commands.entity(beam_entity).despawn();
 }
 
-pub(crate) fn beam_step(
+fn beam_step(
     mut commands: Commands,
-    mut beams_query: Query<(Entity, &Beam, &mut GridCoords)>,
+    mut beams_query: Query<(Entity, &Beam, &mut GridCoords), Without<Character>>,
     claimed_query: Query<&ClaimedTile>,
     ability_query: Query<&AbilityList>,
     time: Res<Time>,

@@ -18,6 +18,7 @@ pub(super) mod maps;
 pub(super) mod menu;
 pub(super) mod messages;
 pub(super) mod round;
+pub(super) mod schedule;
 pub(super) mod telemetry;
 pub(super) mod text;
 
@@ -41,5 +42,6 @@ pub use maps::*;
 pub use menu::*;
 pub use messages::*;
 pub use round::*;
+pub use schedule::*;
 pub use telemetry::*;
 pub use text::*;

@@ -1,5 +1,6 @@
 #![cfg(feature = "dev")]
 
+use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 use bevy_inspector_egui::{
@@ -19,6 +20,13 @@ pub(crate) fn plugin(app: &mut App) {
         ..default()
     });
     app.add_systems(Update, attach_egui_to_viewport_camera);
+
+    app.edit_schedule(Update, |schedule| {
+        schedule.set_build_settings(ScheduleBuildSettings {
+            ambiguity_detection: LogLevel::Warn,
+            ..default()
+        });
+    });
 
     // Tiled debug
     // app.add_plugins(TiledDebugPluginGroup);
