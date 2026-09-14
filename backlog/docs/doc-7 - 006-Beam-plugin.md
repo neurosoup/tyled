@@ -32,7 +32,7 @@ Charges are spent **on fire**, not on resolve: once `resolve_fire` yields a beha
                 - Calls `resolve_fire`; when it returns no behavior (origin already claimed and no `Lance`), skips the message — no `Beam` is spawned and nothing is spent
                 - Otherwise, decrements the owner's `BeamCharges::current` (saturating at zero), increments the owner's `InFlightBeamCount::current`, and emits a `ChargeSpent` message (`owner`, `amount`)
                 - Spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,behavior}`, where `behavior` is `BeamBehavior::Lance` when the origin is claimed **and** the owner has drafted `Lance`, otherwise `BeamBehavior::Straight`
-                - Also inserts `WaveSource` and `BounceEffect` together unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire) — a lane-suppressed beam gets neither, so it triggers no tile bounce, though it still triggers the beam-origin illumination telegraph (Effects plugin), which is gated only on `With<Beam>`
+                - Also inserts `WaveSource` and `BounceEffect` together unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire) — a lane-suppressed beam gets neither, so it triggers no tile bounce (the beam-origin illumination telegraph is unaffected; see Spawn Beam below)
     - Beam Step:
         - Runs on every `BeamStepTimer` tick (62.5 ms)
             - Reads:

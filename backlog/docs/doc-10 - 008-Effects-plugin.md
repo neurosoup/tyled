@@ -13,8 +13,8 @@ Contains systems responsible for all visual effects applied to game entities: sm
 
 Four systems can write a player's `Transform` `TweenAnim`: `apply_bounce_effect`, `apply_knockback`, `apply_movement_settle`, `apply_translate_effect`. Only one tween can occupy the slot at a time, so ownership among them follows a fixed precedence — **Bounce > Knockback > {Settle, Translate}** — enforced structurally through query shape rather than a runtime priority comparison:
 - `apply_bounce_effect` never checks for a competing effect: it fires on `Added<BounceEffectTarget>`, which is only ever inserted once the entity is already committed to bouncing — a death bounce (via `start_deferred_death_bounce` or directly from `apply_death_effect`) on a player, or a tile-claim bounce inserted by the Animations plugin's `animate_claimed_tile` on a claimed tile. This precedence rule matters only for players: a claimed tile has no competing `Transform` effect, so `ActiveTransformEffect(Bounce)` lands on it too but is never read back.
-- `apply_knockback` reads `Has<IsDead>` in the system body rather than filtering the query on it, so `KnockbackEffect` is always removed even when the tween itself is skipped — filtering it out of the query instead would strand the request component and permanently block the entity from re-triggering this `Added<KnockbackEffect>`-gated system.
-- `apply_movement_settle` reads `Has<IsDead>`, `Has<IsKnockedBack>`, and `Has<KnockbackEffect>` in the system body for the same reason: all three are body-checks rather than query filters, so `MovementSettle` is always removed even when the tween is skipped. `KnockbackEffect` is included alongside the other two because it can be present for one frame before its own insert of `IsKnockedBack` is visible — filtering on it instead of body-checking it would let `MovementSettle` strand on that frame, since this system only matches `Added<MovementSettle>`.
+- `apply_knockback` reads `Has<IsDead>` in the system body rather than filtering the query on it, so `KnockbackEffect` is always removed even when the tween itself is skipped (see Apply Knockback below for why).
+- `apply_movement_settle` reads `Has<IsDead>`, `Has<IsKnockedBack>`, and `Has<KnockbackEffect>` in the system body for the same reason, so `MovementSettle` is always removed even when the tween is skipped (see Apply Movement Settle below for why `KnockbackEffect` is checked alongside the other two).
 - `apply_translate_effect` filters `Without<KnockbackEffect>`, `Without<IsKnockedBack>`, `Without<IsDead>` directly on the query, since it re-runs every frame the entity's `GridCoords` changes and has no request component of its own to strand.
 
 Settle and Translate are not ordered against each other and nothing arbitrates between them; whichever system's `Commands` are applied later wins that frame.
@@ -28,11 +28,11 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
 - Update phase (ordered)
     - `sync_resting_translation` (before `apply_bounce_effect` and `apply_wave_effect`):
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities (players)
-            - Writes `RestingTranslation` to the new grid position's world translation, so bounce origins are never derived from a mid-tween interpolated `Transform`
+            - Writes `RestingTranslation` to the new grid position's world translation
     - `apply_knockback` (before `apply_translate_effect`):
         - Reacts to `Added<KnockbackEffect>`
             - Reads `Transform`, `GridCoords`, `Has<IsDead>`, and `MapInfo` to validate the target tile and compute the destination
-            - If the target is on ground and the entity is not dead: mutates `GridCoords`, inserts a slide `TweenAnim`, `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms` (the same duration as the tween), and `ActiveTransformEffect(Knockback)` — the timer runs independently of the tween's own completion from this point on
+            - If the target is on ground and the entity is not dead: mutates `GridCoords`, inserts a slide `TweenAnim`, `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`, and `ActiveTransformEffect(Knockback)`
             - Always removes `KnockbackEffect`
     - `apply_translate_effect`:
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities without `KnockbackEffect`, `IsKnockedBack`, or `IsDead`
@@ -51,7 +51,7 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `apply_wave_effect`:
         - Reacts to `Changed<GridCoords>` on entities carrying both `WaveSource` and `BounceEffect` (in practice, beams that are not lane-suppressed — see the Beam plugin doc)
             - Resolves the source's `GridCoords` to a `WaveEffectTarget` claimed-tile entity via `MapInfo::claimed_entities`
-            - Inserts a bounce `TweenAnim` directly on that tile — no `ActiveTransformEffect` tag, since no completion handler ever needs to identify a wave bounce
+            - Inserts a bounce `TweenAnim` directly on that tile — no `ActiveTransformEffect` tag
     - `apply_bounce_effect`:
         - Reacts to `Added<BounceEffectTarget>` on any entity
             - Inserts a bounce `TweenAnim` and `ActiveTransformEffect(Bounce)`, removes `BounceEffectTarget`
@@ -78,7 +78,7 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
 
 ### Apply Knockback
 
-Reacts to `Added<KnockbackEffect>`. Computes the knockback target tile (`GridCoords + direction`) and validates it with `MapInfo::on_ground`. If valid and `Has<IsDead>` reads false, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.knockback_tween_ms`, default `200`) plus `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))` and `ActiveTransformEffect(TransformEffectKind::Knockback)`. `IsKnockedBack`'s timer is seeded from the same duration as the tween but its lifecycle is independent from that point on — it is the authoritative input lock, ticked and removed solely by `tick_knockback_lock`, regardless of what happens to the visual tween. `KnockbackEffect` is removed unconditionally — even when dead or blocked — because leaving it stranded would permanently block all future `Transform` effects on that entity.
+Reacts to `Added<KnockbackEffect>`. Computes the knockback target tile (`GridCoords + direction`) and validates it with `MapInfo::on_ground`. If valid and `Has<IsDead>` reads false, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.knockback_tween_ms`, default `200`) plus `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))` and `ActiveTransformEffect(TransformEffectKind::Knockback)` (see the `IsKnockedBack` lifecycle section below for how the lock is cleared). `KnockbackEffect` is removed unconditionally — even when dead or blocked — because leaving it stranded would permanently block all future `Transform` effects on that entity.
 
 ### Apply Translate Effect
 
@@ -94,7 +94,7 @@ Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities — only pla
 
 ### Apply Wave Effect
 
-Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a beam suppressed for sharing a lane with another of the owner's beams gets neither, so it never triggers a wave, though it still triggers illumination (`apply_illumination_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile. This causes the tile underneath the beam to "ripple" as the beam passes over it. No `ActiveTransformEffect` tag is written here — no completion handler ever needs to identify a wave bounce, unlike the death and knockback tweens.
+Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers illumination (`apply_illumination_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile — no `ActiveTransformEffect` tag. This causes the tile underneath the beam to "ripple" as the beam passes over it.
 
 ### Apply Bounce Effect
 
@@ -110,7 +110,7 @@ Reads `DamageableDied` messages, matched against a query filtered to entities wi
 
 ### Start Deferred Death Bounce
 
-Runs every frame against entities with `PendingDeathBounce` + `BounceEffect` and neither `IsKnockedBack` nor `KnockbackEffect`. Promotes each match to `BounceEffectTarget` and removes `PendingDeathBounce`. This is the self-healing arm of the knockback-to-death-bounce handoff: it fires regardless of why the knockback state cleared (the knockback lock timer expiring via `tick_knockback_lock`, or the knockback never starting because the target tile was blocked), so `PendingDeathBounce` can never strand.
+Runs every frame against entities with `PendingDeathBounce` + `BounceEffect` and neither `IsKnockedBack` nor `KnockbackEffect`. Promotes each match to `BounceEffectTarget` and removes `PendingDeathBounce` — the self-healing arm of the knockback-to-death-bounce handoff described under Transform effect ownership above.
 
 ### On Death Effect Completed
 
@@ -118,23 +118,23 @@ Reads `AnimCompletedEvent` events. For each, checks whether the completed animat
 
 ### On Knockback Tween Completed
 
-Reads `AnimCompletedEvent` events. For each, checks whether the completed animation's target entity carries `IsKnockedBack`; if so, reads its `ActiveTransformEffect` and only proceeds when the tag reads `TransformEffectKind::Knockback`. On a match, removes only `ActiveTransformEffect` — pure cosmetic bookkeeping so a completed Knockback-tagged tween doesn't leave a stale tag claiming ownership of the `Transform` channel. It no longer removes `IsKnockedBack`: a `Transform`-channel tween can be silently replaced by another effect without firing a completion event for the discarded one, so tween-completion identity is not a sound basis for the input lock's duration — see `tick_knockback_lock`, which is timer-driven instead.
+Reads `AnimCompletedEvent` events. For each, checks whether the completed animation's target entity carries `IsKnockedBack`; if so, reads its `ActiveTransformEffect` and only proceeds when the tag reads `TransformEffectKind::Knockback`. On a match, removes only `ActiveTransformEffect` — pure cosmetic bookkeeping so a completed Knockback-tagged tween doesn't leave a stale tag claiming ownership of the `Transform` channel. It no longer removes `IsKnockedBack`, which is timer-driven (see `tick_knockback_lock` and the `IsKnockedBack` lifecycle section below).
 
 ### Tick Knockback Lock
 
-Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack`. This is the sole path by which `IsKnockedBack` clears during normal play, entirely decoupled from the visual knockback tween's own `TweenAnim`/`ActiveTransformEffect` state — releasing the entity back to normal movement (and, if a death bounce was parked behind it, letting `start_deferred_death_bounce` promote it the same or next frame) purely on elapsed time.
+Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack` — releasing the entity back to normal movement, and, if a death bounce was parked behind it, letting `start_deferred_death_bounce` promote it the same or next frame.
 
 ### Apply Illumination Effect
 
-Reacts to `Changed<GridCoords>` on `Beam` entities — every tile a beam crosses, not only its spawn position. Also reads `&Beam` (for `owner`) and a `Query<&Player>` to resolve the firing player: looks up `owner.player_id` and selects `config.effects.beam_illumination_color_p1` for `0`, `beam_illumination_color_p2` for `1`, falling back to `beam_illumination_color_p1` for any other value rather than panicking, since this runs every frame on live beams. Resolves the beam's current `GridCoords` to a tile entity via `MapInfo::get_claimed_entity_by_position`, requiring that tile to carry both `IlluminationEffectTarget` and a `Sprite`. Despawns any existing `IlluminationDriver` already targeting that same tile (so a beam re-crossing a tile, or two beams crossing the same tile, doesn't leave two competing tweens), then spawns a new driver entity carrying `IlluminationDriver { tile }`, `AnimTarget::component::<Sprite>(tile)`, and a `TweenAnim` built by `create_illumination_tween` from the tile's live `sprite.color` to the resolved per-player color and back to `Color::WHITE`, over `beam_illumination_fade_in_ms` / `beam_illumination_hold_ms` / `beam_illumination_fade_out_ms`. `create_illumination_tween` clamps the fade-in/fade-out durations to a minimum of 1 ms (`bevy_tweening`'s `Tween` cannot have a zero duration) and omits the hold `Delay` stage entirely when `beam_illumination_hold_ms` is `0` (`Delay::new` panics on a zero duration), so a fully-zeroed hold plays as a direct fade-in-to-fade-out with no pause. The driver is a separate entity from the tile because the tile's own `TweenAnim` slot is already used by the wave-bounce effect (`Transform`), and `bevy_tweening` allows only one `TweenAnim` per `(entity, component)` pair — routing the illumination tween at the tile's `Sprite` through a proxy entity lets both animate independently.
+Reacts to `Changed<GridCoords>` on `Beam` entities — every tile a beam crosses, not only its spawn position. Also reads `&Beam` (for `owner`) and a `Query<&Player>` to resolve the firing player: looks up `owner.player_id` and selects `config.effects.beam_illumination_color_p1` for `0`, `beam_illumination_color_p2` for `1`, falling back to `beam_illumination_color_p1` for any other value rather than panicking, since this runs every frame on live beams. Resolves the beam's current `GridCoords` to a tile entity via `MapInfo::get_claimed_entity_by_position`, requiring that tile to carry both `IlluminationEffectTarget` and a `Sprite`. Despawns any existing `IlluminationDriver` already targeting that same tile (re-fire dedup), then spawns a new driver entity carrying `IlluminationDriver { tile }`, `AnimTarget::component::<Sprite>(tile)`, and a `TweenAnim` built by `create_illumination_tween` from the tile's live `sprite.color` to the resolved per-player color and back to `Color::WHITE`, over `beam_illumination_fade_in_ms` / `beam_illumination_hold_ms` / `beam_illumination_fade_out_ms`. `create_illumination_tween` clamps the fade-in/fade-out durations to a minimum of 1 ms (`bevy_tweening`'s `Tween` cannot have a zero duration) and omits the hold `Delay` stage entirely when `beam_illumination_hold_ms` is `0` (`Delay::new` panics on a zero duration), so a fully-zeroed hold plays as a direct fade-in-to-fade-out with no pause. See the `IlluminationDriver` lifecycle section below for why the tween is redirected at a proxy entity rather than living on the tile.
 
 ### On Illumination Completed
 
-Reads `AnimCompletedEvent` events. For each, despawns the `IlluminationDriver` entity whose tween just finished. `bevy_tweening` removes the `TweenAnim` component on completion but not the entity itself, so this prevents driver entities from leaking indefinitely, one per beam tile-step. No color reset is needed here — the tween's own final keyframe already lands on `Color::WHITE`.
+Reads `AnimCompletedEvent` events. For each, despawns the `IlluminationDriver` entity whose tween just finished. `bevy_tweening` removes the `TweenAnim` component on completion but not the entity itself, so this prevents driver entities from leaking indefinitely, one per beam tile-step.
 
 ### Clear Illumination Drivers
 
-Runs on `OnExit(RoundPhase::Playing)`. For every `IlluminationDriver` still alive (a tint whose tween hadn't finished when the round left `Playing`), force-sets its target tile's `Sprite::color` back to `Color::WHITE` and despawns the driver. Unlike `on_illumination_completed`, this system must explicitly reset the color, since a mid-flight driver has not yet reached the tween's white end keyframe.
+Runs on `OnExit(RoundPhase::Playing)`. For every `IlluminationDriver` still alive (a tint whose tween hadn't finished when the round left `Playing`), force-sets its target tile's `Sprite::color` back to `Color::WHITE` and despawns the driver.
 
 ## Components, Resources and Messages CRUD
 
