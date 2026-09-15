@@ -15,12 +15,14 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             animate_player,
-            animate_claimed_tile,
-            animate_unclaimed_tile,
-            tick_unclaim_reverts,
             initialize_player_animations,
             initialize_claimed_tile_animations,
         ),
+    );
+    app.add_systems(
+        Update,
+        (animate_claimed_tile, animate_unclaimed_tile, tick_unclaim_reverts)
+            .in_set(GameplaySet::Presentation),
     );
 }
 
