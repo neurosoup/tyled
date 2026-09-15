@@ -3,7 +3,7 @@ id: doc-20
 title: '[018] Bot plugin'
 type: other
 created_date: '2026-07-21 12:00'
-updated_date: '2026-07-27 12:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Bot Plugin
 
@@ -27,7 +27,7 @@ Each seat runs one of two decision modes, selected per seat by `config.bot.strik
 
 - Update phase
     - Attach Bot State reacts to newly added `Bot` entities that don't yet carry `BotBrain` and inserts default `BotBrain`/`BotDecision`.
-    - Bot Think (`.after(attach_bot_state)`, `.before(handle_characters_input)`, gated `in_state(RoundPhase::Playing)`) paces itself to `think_interval_ms` and, once its beat elapses, runs the seat's decision mode (striking or territory) — fire/aim/hunt/claim/reposition/dodge — writing the result into the bot's `ActionState<Action>` and mirroring it into `BotDecision`.
+    - Bot Think (`.after(attach_bot_state)`, `.in_set(GameplaySet::BotThink)`, gated `in_state(RoundPhase::Playing)`) paces itself to `think_interval_ms` and, once its beat elapses, runs the seat's decision mode (striking or territory) — fire/aim/hunt/claim/reposition/dodge — writing the result into the bot's `ActionState<Action>` and mirroring it into `BotDecision`. The shared `GameplaySet` chain (`schedule.rs`) orders `GameplaySet::BotThink` before `GameplaySet::Input`, so the synthesized `ActionState` is in place before the Input plugin's `handle_characters_input` reads it the same frame (see the Input plugin doc).
 
 ## Plugin Systems
 
@@ -37,7 +37,7 @@ Runs in `Update`. Query filters `Added<Bot>, Without<BotBrain>` — for every bo
 
 ### Bot Think
 
-Runs in `Update`, ordered `.after(attach_bot_state)` and `.before(handle_characters_input)` (so its synthesized `ActionState` is in place before the input handler reads it that same frame), gated `in_state(RoundPhase::Playing)`.
+Runs in `Update`, ordered `.after(attach_bot_state)` and tagged `.in_set(GameplaySet::BotThink)` — the shared `GameplaySet` chain (`schedule.rs`) orders `BotThink` before `GameplaySet::Input`, so its synthesized `ActionState` is in place before the Input plugin's `handle_characters_input` reads it that same frame — gated `in_state(RoundPhase::Playing)`.
 
 **Beat gate**: if `time.elapsed_secs()` is still short of `brain.next_beat_secs`, the system zeroes the move axis, releases `Action::Shoot`, and continues to the next bot without deliberating — this paces movement/aim/fire choices to `config.bot.think_interval_ms` rather than re-deciding every frame. Otherwise it schedules the next beat, resolves the opponent's tile (first non-self `Character` player), computes the fireable `behavior` from the current tile (`resolve_fire` with the bot's own `AbilityList`/`Lance`), and picks a branch based on `config.bot.strike_for(player.player_id)`.
 

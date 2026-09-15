@@ -3,7 +3,7 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Maps Plugin
 
@@ -13,26 +13,26 @@ Contains systems related to map loading and entity-related initializations. This
 
 - `OnEnter(AppState::InRound)` (see the Menu plugin doc — this fires once the main menu's matchup selection is confirmed, not unconditionally at launch)
     - `load_maps` spawns two `TiledMap` entities: one for `level2.tmx` (tagged `CurrentLevel`) and one for `hud2.tmx` (tagged `HudMap`).
-    - The `TiledPlugin` later emits `TiledEvent<MapCreated>` for each loaded map.
-- Update phase (chained)
+- `OnExit(RoundPhase::Loading)` (chained; this transition fires exactly once, since `Loading` is the round state machine's default variant and every later round loop cycles `Starting → Playing → Outcome → Starting` without ever revisiting `Loading` — see the Round plugin doc)
     - `initialize_map_info`:
-        - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - Reads tilemap metadata components, all `Ground` tiles (`Entity`, `TilePos`), and all `ForbiddenArea` tiles
-            - Writes the `MapInfo` resource, including `ground_entities`, `claimed_entities`, `forbidden_areas` HashMaps and all map geometry fields
-    - Then in parallel (after `initialize_map_info`):
+        - Queries the `CurrentLevel` map entity directly (`Query<..., (With<TiledMap>, With<CurrentLevel>)>::single()`), plus tilemap metadata, all `Ground` tiles (`Entity`, `TilePos`), and all `ForbiddenArea` tiles
+        - Writes the `MapInfo` resource, including `ground_entities`, `claimed_entities`, `forbidden_areas` HashMaps and all map geometry fields
+    - Then, unordered relative to each other (after `initialize_map_info`, so `MapInfo` is populated first):
         - `initialize_players`:
-            - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
-            - For each `Player` TiledObject: computes `GridCoords` from `Transform`, inserts `GridCoords`, `SpawnPoint` (the initial `GridCoords`, used by the round reset), `PreviousGridCoords` (seeded to the same spawn coord for the Damage plugin's on-enter spike), `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (the grid coord's world translation, kept in sync thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `AbilityList` (from `PlayerLoadouts`, keyed by player id), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
+            - Queries every `Player`-marked `Character` entity directly
+            - For each: computes `GridCoords` from `Transform`, inserts `GridCoords`, `SpawnPoint` (the initial `GridCoords`, used by the round reset), `PreviousGridCoords` (seeded to the same spawn coord for the Damage plugin's on-enter spike), `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (the grid coord's world translation, kept in sync thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `AbilityList` (from `PlayerLoadouts`, keyed by player id), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
-            - Reacts to `TiledEvent<MapCreated>` for `CurrentLevel` maps only
+            - Reads `MapInfo::ground_entities` directly
             - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, `Transform`
             - Stores each spawned entity in `MapInfo::claimed_entities`
         - `initialize_hud_bars`:
-            - Reacts to `TiledEvent<MapCreated>` for `HudMap` maps only
-            - Matches every entity that is `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`) and initializes it with `GridCoords` and `Transform`
+            - Queries every entity in the world matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` directly, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`
+            - Initializes each matched entity with `GridCoords` and `Transform`
             - Zeroes `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches (they grow in via `hud`'s bar animations); `HPBar`/`DamageBar` render at their true value immediately
             - Sets `Anchor` and `custom_size` on the child sprite entity of each matched bar
+
+None of these four systems read any message — by the time `OnExit(RoundPhase::Loading)` fires, both `TiledMap` entities and everything Tiled spawns from them already exist in the world, so each system queries directly instead of reacting to `TiledEvent<MapCreated>`. See the Round plugin doc for what triggers the `Loading → Starting` transition itself.
 
 ## Plugin Systems
 
@@ -44,11 +44,11 @@ Runs on `OnEnter(AppState::InRound)` — once the main menu's matchup selection 
 
 ### Initialize Map Info
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. Reads tilemap metadata components from the tilemap whose `TiledName` is `"ground"` **and** whose `TiledMapReference` matches the `MapCreated` event's origin (the current level map entity) — the level map and the HUD map both use the `ground.tsx` tileset, so both spawn a tilemap named `"ground"`, and this map-scoped filter ensures the level's own tile geometry (size, grid, tile-size, anchor) is read rather than the HUD map's. Iterates all `Ground`-marked tile entities (storing them in `ground_entities`) and all `ForbiddenArea`-marked tile entities (storing them in `forbidden_areas`). Also allocates the `claimed_entities` HashMap keyed by `GridCoords`. Writes all collected data into the `MapInfo` resource so it is available world-wide.
+Runs on `OnExit(RoundPhase::Loading)`, first in the chain. Queries the `CurrentLevel` map entity directly via `Query<(Entity, &TiledMapLayerZOffset), (With<TiledMap>, With<CurrentLevel>)>::single()`, then reads tilemap metadata components from the tilemap whose `TiledName` is `"ground"` **and** whose `TiledMapReference` matches that level map entity — the level map and the HUD map both use the `ground.tsx` tileset, so both spawn a tilemap named `"ground"`, and this map-scoped filter ensures the level's own tile geometry (size, grid, tile-size, anchor) is read rather than the HUD map's. Iterates all `Ground`-marked tile entities (storing them in `ground_entities`) and all `ForbiddenArea`-marked tile entities (storing them in `forbidden_areas`). Also allocates the `claimed_entities` HashMap keyed by `GridCoords`. Writes all collected data into the `MapInfo` resource so it is available world-wide.
 
 ### Initialize Players
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each `Player`-marked `TiledObject` entity that also carries a `Character` marker component it:
+Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_claimed_tiles` and `initialize_hud_bars`. Queries every entity carrying `Character` directly (`Query<(Entity, &Player, &mut Transform), With<Character>>`). For each it:
 1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
 2. Derives the starting `LookDirection` from the player id.
 3. Inserts `GridCoords`, `SpawnPoint` (the initial `GridCoords`, letting the round reset restore it after movement overwrites the Tiled transform), `PreviousGridCoords` (seeded to the same spawn coord so the Damage plugin's on-enter spike has a valid origin tile), `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (set to that same `GridCoords`'s world translation, kept aligned thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), `AbilityList` (from `PlayerLoadouts`, via `for_player(player_id)`), `ClaimedTileCount{current:0}`, and `InFlightBeamCount::default()` on the player entity, reading these from the `GameConfig` resource. `ClaimedTileCount` starts at zero, maintained thereafter by the Claim plugin. `InFlightBeamCount` starts at zero, maintained thereafter by the Beam plugin (incremented on fire, decremented on despawn) — a synchronous per-player in-flight count for HUD and round-resolution readers.
@@ -56,44 +56,13 @@ Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For eac
 
 ### Initialize Claimed Tiles
 
-Reacts to `TiledEvent<MapCreated>` filtered to `CurrentLevel` maps only. For each ground tile in `MapInfo::ground_entities` it spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, and `Transform`. `IlluminationEffectTarget` is the permanent marker that lets the Effects plugin's beam-origin illumination telegraph light up the tile as a beam crosses it. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
+Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_hud_bars`. Reads `MapInfo::ground_entities` directly (already populated by `initialize_map_info` earlier in the chain) and for each ground tile spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, and `Transform`. `IlluminationEffectTarget` is the permanent marker that lets the Effects plugin's beam-origin illumination telegraph light up the tile as a beam crosses it. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
 
 ### Initialize HUD Bars
 
-Reacts to `TiledEvent<MapCreated>` filtered to `HudMap` maps only. Matches every entity spawned from `hud2.tmx` carrying `HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar` (`Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>`), also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the kinds apart. For each, computes `GridCoords` from its world-space `Transform` and inserts `GridCoords`/`Transform` (including the player-1 `+16px` X nudge). `TerritoryBar`/`ChargesBar` matches additionally get `Transform::scale.x` zeroed so they render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio; `HPBar`/`DamageBar` render at true value from frame one. Also sets `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` on each bar's child sprite: `HP_BAR_PIXEL_WIDTH` × `32` (`176x32`) for `HPBar`/`DamageBar`, each player owning an independent container, or `TERRITORY_BAR_PIXEL_WIDTH` × `32` (`432x32`) for `TerritoryBar`/`ChargesBar`, whose P1/P2 bars are anchored 432px apart and grow toward each other across that shared span.
+Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_claimed_tiles`. Queries every entity in the world matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` directly, also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the kinds apart. For each, computes `GridCoords` from its world-space `Transform` and inserts `GridCoords`/`Transform` (including the player-1 `+16px` X nudge). `TerritoryBar`/`ChargesBar` matches additionally get `Transform::scale.x` zeroed so they render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio; `HPBar`/`DamageBar` render at true value from frame one. Also sets `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` on each bar's child sprite: `HP_BAR_PIXEL_WIDTH` × `32` (`176x32`) for `HPBar`/`DamageBar`, each player owning an independent container, or `TERRITORY_BAR_PIXEL_WIDTH` × `32` (`432x32`) for `TerritoryBar`/`ChargesBar`, whose P1/P2 bars are anchored 432px apart and grow toward each other across that shared span.
 
 ## Components, Resources and Messages CRUD
-
-### Read TiledEvent MapCreated messages
-
-Used in the following systems:
-- **initialize_map_info**: used to trigger map metadata initialization
-- **initialize_players**: used to trigger player entity initialization
-- **initialize_claimed_tiles**: used to trigger claimed tile entity spawning
-- **initialize_hud_bars**: used to trigger HP, damage, territory, and charges bar initialization — filtered to `HudMap` maps only
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef reader stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-on_map_created["`**On Map Created**`"]
-
-update -.-> on_map_created
-
-message_reader{{"MessageReader#60;TiledEvent#60;MapCreated#62;#62;"}}:::reader
-on_map_created ---> message_reader
-
-map_created_message(["`**TiledEvent#60;MapCreated**#62;`"])
-
-message_reader ---> |reads| map_created_message
-```
 
 ### Query Tilemap metadata
 
@@ -110,13 +79,13 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
-on_map_created["`**On Map Created**`"]
+on_exit_loading(("`OnExit(Loading)`")):::system-group
+initialize_map_info["`**initialize_map_info**`"]
 
-update -.-> on_map_created
+on_exit_loading -.-> initialize_map_info
 
 tilemap_query{{"`tilemap_query`"}}:::query
-on_map_created ---> tilemap_query
+initialize_map_info ---> tilemap_query
 
 tilemap_entity@{ shape: st-rect, label: "Tilemap (MapTiles)" }
 
@@ -152,13 +121,13 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
-on_map_created["`**On Map Created**`"]
+on_exit_loading(("`OnExit(Loading)`")):::system-group
+initialize_map_info["`**initialize_map_info**`"]
 
-update -.-> on_map_created
+on_exit_loading -.-> initialize_map_info
 
 ground_tiles_query{{"`ground_tiles_query`"}}:::query
-on_map_created ---> ground_tiles_query
+initialize_map_info ---> ground_tiles_query
 
 ground_entity@{ shape: st-rect, label: "Ground Tile" }
 
@@ -186,13 +155,13 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
-on_map_created["`**On Map Created**`"]
+on_exit_loading(("`OnExit(Loading)`")):::system-group
+initialize_map_info["`**initialize_map_info**`"]
 
-update -.-> on_map_created
+on_exit_loading -.-> initialize_map_info
 
 forbidden_tiles_query{{"`forbidden_tiles_query`"}}:::query
-on_map_created ---> forbidden_tiles_query
+initialize_map_info ---> forbidden_tiles_query
 
 forbidden_entity@{ shape: st-rect, label: "ForbiddenArea Tile" }
 
@@ -205,10 +174,10 @@ forbidden_tiles_query ---> |reads| ft_tile_pos
 forbidden_tiles_query -..-> |filter With| ft_forbidden
 ```
 
-### Query All Player tiled objects
+### Query Character entities (initialize_players)
 
 Used in the following systems:
-- **initialize_players**: used to get all `Entity`, `Player::player_id` and `Transform` of `Player`-marked entities spawned after loading the map
+- **initialize_players**: used to get all `Entity`, `Player::player_id` and `Transform` of `Character`-marked player entities in the world
 
 ```mermaid
 ---
@@ -220,26 +189,24 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
-on_map_created["`**On Map Created**`"]
+on_exit_loading(("`OnExit(Loading)`")):::system-group
+initialize_players["`**initialize_players**`"]
 
-update -.-> on_map_created
+on_exit_loading -.-> initialize_players
 
 players_query{{"`players_query`"}}:::query
-on_map_created ---> players_query
+initialize_players ---> players_query
 
-player_entity@{ shape: st-rect, label: "Player (TiledObject)" }
+player_entity@{ shape: st-rect, label: "Player (Character)" }
 
 pe_entity>"`**Entity**`"] --> |belongs to| player_entity
 pe_player>"`**Player**`"] --> |belongs to| player_entity
 pe_transform>"`**Transform**`"] --> |belongs to| player_entity
-pe_tiled_object>"`**TiledObject**`"] --> |belongs to| player_entity
 pe_character>"`**Character**`"] --> |belongs to| player_entity
 
 players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_player
 players_query ---> |reads| pe_transform
-players_query -..-> |filter With| pe_tiled_object
 players_query -..-> |filter With| pe_character
 ```
 
@@ -257,10 +224,10 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_map_info["`**initialize_map_info**`"]
 
-update -.-> initialize_map_info
+on_exit_loading -.-> initialize_map_info
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
@@ -301,12 +268,12 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_players["`**initialize_players**`"]
 
-update -.-> initialize_players
+on_exit_loading -.-> initialize_players
 
-player_entity@{ shape: st-rect, label: "Player (TiledObject)" }
+player_entity@{ shape: st-rect, label: "Player (Character)" }
 child_entity@{ shape: st-rect, label: "Player Child (Sprite)" }
 
 pe_grid_coords>"`**GridCoords**`"]
@@ -365,10 +332,10 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_claimed_tiles["`**initialize_claimed_tiles**`"]
 
-update -.-> initialize_claimed_tiles
+on_exit_loading -.-> initialize_claimed_tiles
 
 claimed_tile_entity@{ shape: st-rect, label: "ClaimedTile (spawned)" }
 map_info_res@{ shape: doc, label: "MapInfo" }
@@ -408,10 +375,10 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hud_bars
+on_exit_loading -.-> initialize_hud_bars
 
 bars_query{{"`bars_query`"}}:::query
 initialize_hud_bars ---> bars_query
@@ -445,10 +412,10 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hud_bars
+on_exit_loading -.-> initialize_hud_bars
 
 sprite_query{{"`sprite_query`"}}:::query
 initialize_hud_bars ---> sprite_query
@@ -463,7 +430,7 @@ sprite_query ---> |writes custom_size| se_sprite
 ### Write commands — initialize_hud_bars
 
 Used in systems:
-- **initialize_hud_bars**: initializes existing `HPBar`, `DamageBar`, `TerritoryBar`, and `ChargesBar` entities (spawned by the Tiled loader from `hud2.tmx`) with `GridCoords` and `Transform`, additionally zeroing `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches, and sets `Anchor` and `custom_size` on the child sprite entity; triggered by `TiledEvent<MapCreated>` for the `HudMap`.
+- **initialize_hud_bars**: initializes existing `HPBar`, `DamageBar`, `TerritoryBar`, and `ChargesBar` entities (spawned by the Tiled loader from `hud2.tmx`) with `GridCoords` and `Transform`, additionally zeroing `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches, and sets `Anchor` and `custom_size` on the child sprite entity; runs on `OnExit(RoundPhase::Loading)`, matching every such entity already present in the world.
 
 ```mermaid
 ---
@@ -473,24 +440,11 @@ config:
 
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
-classDef reader stroke-dasharray: 3 3
 
-update(("`Update`")):::system-group
+on_exit_loading(("`OnExit(Loading)`")):::system-group
 initialize_hud_bars["`**initialize_hud_bars**`"]
 
-update -.-> initialize_hud_bars
-
-message_reader{{"MessageReader#60;TiledEvent#60;MapCreated#62;#62;"}}:::reader
-initialize_hud_bars ---> message_reader
-
-hud_map_query{{"`hud_map_query`"}}:::query
-initialize_hud_bars ---> hud_map_query
-
-hud_map_entity@{ shape: st-rect, label: "TiledMap (HudMap)" }
-hm_tiled_map>"`**TiledMap**`"] --> |belongs to| hud_map_entity
-hm_hud_map>"`**HudMap**`"] --> |belongs to| hud_map_entity
-hud_map_query -..-> |filter With| hm_tiled_map
-hud_map_query -..-> |filter With| hm_hud_map
+on_exit_loading -.-> initialize_hud_bars
 
 hp_bar_entity@{ shape: st-rect, label: "HPBar/DamageBar/TerritoryBar/ChargesBar Entity (from hud2.tmx)" }
 hp_bar_child@{ shape: st-rect, label: "Bar Child (Sprite)" }

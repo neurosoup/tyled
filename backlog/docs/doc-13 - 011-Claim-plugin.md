@@ -3,18 +3,18 @@ id: doc-13
 title: '[011] Claim plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-09-13 14:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Claim Plugin
 
 Owns the authoritative tile-ownership write. When a beam stops, the Beam plugin emits `BeamResolved` (landing position, firing player); this plugin reads it, mutates the matching `ClaimedTile::owner`, and emits `TileClaimed` to record the flip. Splitting this from the Beam plugin gives `ClaimedTile::owner` a single write site — the chokepoint future claim-side ability resolvers (`on_resolve`/`on_claim`) will attach to.
 
-The only coupling to the Beam plugin is the `BeamResolved` message: this plugin never queries `Beam` entities. It is registered immediately after the Beam plugin in `AppPlugin`, and `claim_tile` carries an explicit `.after(super::beam::beam_step)` — so a `BeamResolved` written this frame is folded into `ClaimedTile::owner`/`ClaimedTileCount` before anything reading them later that same frame (the Charge plugin's regen/cap pair, the HUD's territory and charges bars).
+The only coupling to the Beam plugin is the `BeamResolved` message: this plugin never queries `Beam` entities. It is registered immediately after the Beam plugin in `AppPlugin`, and `claim_tile` runs in `GameplaySet::Claim`, which the shared `GameplaySet` chain (`schedule.rs`) orders after `GameplaySet::Beam` — so a `BeamResolved` written this frame is folded into `ClaimedTile::owner`/`ClaimedTileCount` before anything reading them later that same frame (the Charge plugin's regen/cap pair, the HUD's territory and charges bars).
 
 ## Plugin workflow
 
 - Update phase
-    - Claim Tile (registered `.after(super::beam::beam_step)`):
+    - Claim Tile (`in_set(GameplaySet::Claim)`):
         - Reacts to `BeamResolved` message
             - Reads:
                 - `BeamResolved` message fields (`position`, `owner`)

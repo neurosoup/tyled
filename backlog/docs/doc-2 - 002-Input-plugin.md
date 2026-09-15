@@ -3,11 +3,11 @@ id: doc-2
 title: '[002] Input plugin'
 type: other
 created_date: '2026-01-27 18:05'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Input Plugin
 
-Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, attaches input maps and a per-character `MoveRepeat` auto-repeat state to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions. A facing change while the direction is unlocked commits the new `LookDirection` immediately and starts a transient `IsTurning` state that rotates the character in place through an intermediate 3/4 pose alongside movement in the new direction. `handle_characters_input` is `pub(crate)`: a bot-controlled player carries no `InputMap`, so instead of a human's key presses it is the Bot plugin's `bot_think` that synthesizes the `ActionState<Action>` this system reads, ordered `.before` it so the synthesized state is in place the same frame (see the Bot plugin doc).
+Contains systems related to player input handling. This plugin registers the `InputManagerPlugin` and the `TweeningPlugin`, attaches input maps and a per-character `MoveRepeat` auto-repeat state to player entities, and dispatches `EntityMoved` and `BeamFired` messages in reaction to player actions. A facing change while the direction is unlocked commits the new `LookDirection` immediately and starts a transient `IsTurning` state that rotates the character in place through an intermediate 3/4 pose alongside movement in the new direction. `handle_characters_input` is `pub(crate)`: a bot-controlled player carries no `InputMap`, so instead of a human's key presses it is the Bot plugin's `bot_think` that synthesizes the `ActionState<Action>` this system reads. `handle_characters_input` runs in `GameplaySet::Input`, which the shared `GameplaySet` chain (`schedule.rs`) orders after `GameplaySet::BotThink`, so the synthesized state is in place the same frame (see the Bot plugin doc).
 
 ## Plugin workflow
 

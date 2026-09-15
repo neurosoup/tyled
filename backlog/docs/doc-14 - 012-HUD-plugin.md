@@ -3,7 +3,7 @@ id: doc-14
 title: '[012] HUD plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-09-13 14:00'
+updated_date: '2026-09-15 12:00'
 ---
 # HUD Plugin
 
@@ -13,11 +13,11 @@ HP/damage bars are independent per-player containers. Territory and charges bars
 
 Every value the HUD displays is owned by its own domain plugin — health by Damage, beam charges by Beam, claimed-tile count by Claim, the round countdown by Round — so this plugin only reads them and drives the sprites: nudging each bar's `Transform::scale.x` toward a target ratio via the shared `nudge_bar_for_player` helper (which pixel-snaps the result so the bar edge doesn't shimmer under nearest-neighbor filtering), and switching each `Digit` entity's `SpritesheetAnimation` to the correct from→to transition clip when the underlying value changes.
 
-Registered immediately after the Animations plugin in `AppPlugin`. `animate_territory_bar` and `animate_charges_bar` are registered separately from the rest of this plugin's systems, each carrying an explicit `.after(super::claim::claim_tile)` (and `animate_charges_bar` additionally `.after(super::charge::cap_charges_to_unclaimed_tiles)`), so both bars read this frame's up-to-date `ClaimedTileCount`/`BeamCharges` rather than a value lagging behind the Claim and Charge plugins.
+Registered immediately after the Animations plugin in `AppPlugin`. `animate_hp`, `animate_damage_bar`, `arm_damage_echo_delay`, `animate_beam_charges`, `animate_claimed_tiles`, `animate_countdown`, `animate_territory_bar`, and `animate_charges_bar` are all tagged `.in_set(GameplaySet::HudSync)`; the shared `GameplaySet` chain (`schedule.rs`) orders `HudSync` after `GameplaySet::Claim`, `GameplaySet::Economy`, and `GameplaySet::Damage`, so every bar in this batch reads the current frame's up-to-date `ClaimedTileCount`/`BeamCharges`/`Health` rather than a value lagging behind the Claim, Charge, or Damage plugins. `tick_damage_echo_delay` and `initialize_digit_animations` are registered separately, untagged, since neither reads state written by those plugins.
 
 ## Plugin workflow
 
-- Update phase (systems run unordered relative to each other — animation systems write `Transform`, delay systems only touch `DamageEchoDelay`, so no races. `animate_territory_bar` and `animate_charges_bar` are the exception, each carrying an explicit cross-plugin `.after(...)` — see below)
+- Update phase (`animate_hp`, `animate_damage_bar`, `arm_damage_echo_delay`, `animate_beam_charges`, `animate_claimed_tiles`, `animate_countdown`, `animate_territory_bar`, and `animate_charges_bar` run in `GameplaySet::HudSync`, ordered after the gameplay-writing sets; `tick_damage_echo_delay` and `initialize_digit_animations` run unordered — animation systems write `Transform`, delay systems only touch `DamageEchoDelay`, so no races)
     - Animate HP:
         - Runs every frame
             - Reads:
@@ -34,7 +34,7 @@ Registered immediately after the Animations plugin in `AppPlugin`. `animate_terr
                 - `GameConfig` (`config.animation.damage_bar_decay_rate`) and `Time`
             - Writes:
                 - Identically to Animate HP but at `damage_bar_decay_rate` — a `DamageBar` currently holding `DamageEchoDelay` is excluded by the query filter and does not move at all this frame
-    - Animate Territory Bar (registered `.after(claim_tile)` — see below):
+    - Animate Territory Bar (`in_set(GameplaySet::HudSync)` — see above):
         - Runs every frame (not `Changed`-gated — a bar is a continuous tween and must keep moving on unchanged frames or it freezes mid-travel)
             - Reads:
                 - All player entities with their `Player` and `ClaimedTileCount` components
@@ -43,7 +43,7 @@ Registered immediately after the Animations plugin in `AppPlugin`. `animate_terr
                 - `GameConfig` (`config.animation.territory_bar_decay_rate`) and `Time`
             - Writes:
                 - For each player, computes `ratio = claimed / total` and delegates to `nudge_bar_for_player` to drive that player's `TerritoryBar` toward it
-    - Animate Charges Bar (registered `.after(claim_tile)` and `.after(cap_charges_to_unclaimed_tiles)` — see below):
+    - Animate Charges Bar (`in_set(GameplaySet::HudSync)` — see above):
         - Runs every frame (same not-`Changed`-gated reasoning as Animate Territory Bar)
             - Reads:
                 - All player entities with their `Player`, `ClaimedTileCount`, `BeamCharges`, and `InFlightBeamCount` components
@@ -125,11 +125,11 @@ Runs every frame. Same shape as `Animate HP`, but its bar query is filtered to `
 
 ### Animate Territory Bar
 
-Runs every frame, not gated on `Changed<ClaimedTileCount>` — like the other bars, it's a continuous tween that must keep running on unchanged frames or it freezes mid-travel. Registered `.after(super::claim::claim_tile)`, so it always reads this frame's up-to-date `ClaimedTileCount` rather than a value that could otherwise lag a frame behind the Claim plugin. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, computes `ratio = ClaimedTileCount::current / total` and delegates to `nudge_bar_for_player` with the `TerritoryBar` query and `config.animation.territory_bar_decay_rate`.
+Runs every frame, not gated on `Changed<ClaimedTileCount>` — like the other bars, it's a continuous tween that must keep running on unchanged frames or it freezes mid-travel. Runs in `GameplaySet::HudSync`, which the shared `GameplaySet` chain orders after `GameplaySet::Claim`, so it always reads this frame's up-to-date `ClaimedTileCount` rather than a value that could otherwise lag a frame behind the Claim plugin. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, computes `ratio = ClaimedTileCount::current / total` and delegates to `nudge_bar_for_player` with the `TerritoryBar` query and `config.animation.territory_bar_decay_rate`.
 
 ### Animate Charges Bar
 
-Runs every frame, same not-`Changed`-gated reasoning as `Animate Territory Bar`. Registered `.after(claim_tile)` and `.after(cap_charges_to_unclaimed_tiles)`, so it reads this frame's up-to-date `ClaimedTileCount` and capped `BeamCharges`, never a stale pre-claim/pre-cap value. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, reads `InFlightBeamCount::current` directly (synchronously maintained by the Beam plugin), computes `ratio = min(1.0, (ClaimedTileCount::current + BeamCharges::current + InFlightBeamCount::current) / total)`, and delegates to `nudge_bar_for_player` with the `ChargesBar` query and `config.animation.charges_bar_decay_rate`. Reading the synchronous counter, rather than scanning `Query<&Beam>`, keeps the bar in sync with the territory bar instead of dipping for a frame whenever a beam fires or resolves — a live scan would lag behind the `Commands::spawn`/`despawn` that create/destroy those entities.
+Runs every frame, same not-`Changed`-gated reasoning as `Animate Territory Bar`. Runs in `GameplaySet::HudSync`, which the shared `GameplaySet` chain orders after both `GameplaySet::Claim` and `GameplaySet::Economy`, so it reads this frame's up-to-date `ClaimedTileCount` and capped `BeamCharges`, never a stale pre-claim/pre-cap value. Reads `MapInfo::ground_entities` for the total tile count (returns early if `0`). For each player, reads `InFlightBeamCount::current` directly (synchronously maintained by the Beam plugin), computes `ratio = min(1.0, (ClaimedTileCount::current + BeamCharges::current + InFlightBeamCount::current) / total)`, and delegates to `nudge_bar_for_player` with the `ChargesBar` query and `config.animation.charges_bar_decay_rate`. Reading the synchronous counter, rather than scanning `Query<&Beam>`, keeps the bar in sync with the territory bar instead of dipping for a frame whenever a beam fires or resolves — a live scan would lag behind the `Commands::spawn`/`despawn` that create/destroy those entities.
 
 ### Arm Damage Echo Delay
 

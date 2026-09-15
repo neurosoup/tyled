@@ -3,7 +3,7 @@ id: doc-15
 title: '[013] Round plugin'
 type: other
 created_date: '2026-07-14 12:00'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Round Plugin
 
@@ -14,9 +14,11 @@ The `round` feature — everything scoped to a single round of the match. It is 
 
 `round/mod.rs` also holds `spawn_round_label`, a small shared helper that centres a bitmap-font label (via the Text plugin's `spawn_label`) on the overlay camera — used by the presentation submodules.
 
-`RoundPhase` is the game's lifecycle state for a round — `Loading` (waiting for the level map), `Starting` (intro countdown, gameplay frozen), `Playing` (live), `Outcome` (round over). It's the project's only Bevy `States` type; live-gameplay systems across input, movement, beam, and damage run only `in_state(RoundPhase::Playing)`, so non-play phases freeze the world without per-system pausing logic. The `state` submodule owns phase transitions; intro-countdown visuals live in the sibling `intro` submodule.
+`RoundPhase` is the game's lifecycle state for a round — `Loading` (waiting for both the level map and the HUD map to be created), `Starting` (intro countdown, gameplay frozen), `Playing` (live), `Outcome` (round over). It's the project's only Bevy `States` type; live-gameplay systems across input, movement, beam, and damage run only `in_state(RoundPhase::Playing)`, so non-play phases freeze the world without per-system pausing logic. The `state` submodule owns phase transitions; intro-countdown visuals live in the sibling `intro` submodule. `Loading` only happens once, at boot — every later round loop cycles `Starting → Playing → Outcome → Starting` and never revisits `Loading` — so `OnExit(RoundPhase::Loading)` is the anchor the Maps plugin's one-time map-bootstrap systems use (see the Maps plugin doc).
 
 The countdown is a global, player-agnostic timer from `config.round.round_duration_secs` (default 180) to 0. This plugin owns the `Countdown` resource and the systems that (re)start and tick it; the HUD plugin only reads `Countdown::remaining` to drive the digits.
+
+`tick_countdown`, `resolve_kill`, `resolve_timeout`, and `resolve_charge_exhaustion` are chained together and tagged `GameplaySet::RoundResolution` (see `schedule.rs`), which the shared `GameplaySet` chain orders after `GameplaySet::Damage` and before `GameplaySet::HudSync` — so a kill or a tile flip from earlier in the same frame is visible to resolution before the HUD renders it.
 
 Round resolution ends via one of three paths. **Kill** (`resolve_kill`) ends the round the instant a player's HP reaches zero — the survivor wins; a same-frame mutual kill is broken by tile count, then seat. **Timeout** (`resolve_timeout`) ends the round when the countdown reaches zero, resolving by tile count → HP → seat; a same-frame kill preempts it. **Charge exhaustion** (`resolve_charge_exhaustion`) ends the round once every player's charges and `InFlightBeamCount` are both zero — neither side can act — resolving by the same tile → HP → seat tiebreak rather than waiting for the timeout; a same-frame kill preempts it, and it defers to the timeout branch on the countdown-zero frame so the score isn't credited twice. `InFlightBeamCount` (owned by the Beam plugin) is read directly rather than scanned via `Query<&Beam>`, since a live scan lags a frame behind a beam's spawn. The two backstops share the `winner_by_standing` ranking helper. Every path records `RoundResult`, credits `MatchScore`, and enters `Outcome`. The `outcome` submodule shows the win banner, then loops back to `Starting`; leaving `Outcome` runs `reset_round` — an in-place wipe of board ownership, charges, health, positions, and `InFlightBeamCount` that also revives the dead loser (players are hidden, not despawned, on death — see the Effects plugin doc). A revived or reset player's `Transform.translation` and `RestingTranslation` are both set directly to the spawn tile's translation, so the player appears at spawn instantly rather than sliding there. Tile ownership is wiped except for entries in `RoundResetExceptions`, the carve-out hook reserved for future burst-claim abilities; empty today. `reset_round` also clears every transient effect-state component a player might be carrying (`IsKnockedBack`, `KnockbackEffect`, `BounceEffect`, `BounceEffectTarget`, `PendingDeathBounce`, `MovementSettle`, `ActiveTransformEffect`, `TweenAnim`, plus `IsDead`/`IsTurning`), so a round boundary can't strand mid-flight Effects plugin state (see the Effects plugin doc) on a revived or repositioned player.
 
@@ -40,9 +42,9 @@ The digit *sprites* that render the countdown are per-entity `Digit` components 
     - Start Round on Map Created (runs only `in_state(Loading)`):
         - Reacts to `TiledEvent<MapCreated>` message
             - Reads:
-                - `TiledEvent<MapCreated>` messages, filtered to the `CurrentLevel` map (ignores the HUD map)
+                - `TiledEvent<MapCreated>` messages; latches (via two `Local<bool>` flags) whether the message's origin was the `CurrentLevel` map or the `HudMap`
             - Writes:
-                - Sets `NextState<RoundPhase>` to `Starting`
+                - Once both latches are set, sets `NextState<RoundPhase>` to `Starting`
     - Start Countdown:
         - Reacts to `TiledEvent<MapCreated>` message
             - Reads:
@@ -85,7 +87,7 @@ The digit *sprites* that render the countdown are per-entity `Digit` components 
 
 ### Start Round on Map Created
 
-Runs only `in_state(RoundPhase::Loading)`. Reads `TiledEvent<MapCreated>`, filtered to `CurrentLevel` (ignoring the HUD map's own event), and sets `NextState<RoundPhase>` to `Starting`. The `Loading` run condition guarantees this fires exactly once per load — once state leaves `Loading`, a second `MapCreated` can't re-trigger it. The transition applies next frame, after the Maps plugin's init chain has populated `MapInfo` and players, so `Starting` always begins with the board ready.
+Runs only `in_state(RoundPhase::Loading)`. Reads `TiledEvent<MapCreated>` and, for each message, checks its origin against both the `CurrentLevel` map and the `HudMap` entity, setting one of two `Local<bool>` latches (`level_ready`, `hud_ready`) accordingly — the two maps' `TiledMap` assets can finish loading in either order, so this waits for both rather than assuming the level map fires first. Once both latches are set, it sets `NextState<RoundPhase>` to `Starting`. The `Loading` run condition guarantees this fires exactly once per load — once state leaves `Loading`, further `MapCreated` messages can't re-trigger it. Bevy runs `OnExit(RoundPhase::Loading)` before entering `Starting`, and it is that schedule point — not this system — that runs the Maps plugin's map-bootstrap chain (`initialize_map_info`, `initialize_players`, `initialize_claimed_tiles`, `initialize_hud_bars`; see the Maps plugin doc), so `Starting` always begins with the board ready.
 
 ### Start Countdown
 
@@ -119,7 +121,7 @@ This system only touches claim data (`ClaimedTile::owner`) — clearing an owner
 
 Used in the following systems:
 - **start_countdown**: used to (re)start the countdown when a map is created
-- **start_round_on_map_created** (runs `in_state(Loading)`): filtered to the `CurrentLevel` map, enters `Starting` once the level map exists
+- **start_round_on_map_created** (runs `in_state(Loading)`): latches origin against both the `CurrentLevel` map and the `HudMap`, enters `Starting` once both have fired
 
 ```mermaid
 ---
@@ -363,7 +365,7 @@ reset_round ---> |reads| exceptions_res
 ### Set NextState RoundPhase
 
 Used in the following systems:
-- **start_round_on_map_created**: sets `Starting` once the level map is created
+- **start_round_on_map_created**: sets `Starting` once both the level map and the HUD map are created
 - **resolve_kill** / **resolve_timeout** / **resolve_charge_exhaustion** (via `conclude_round`): set `Outcome` when the round ends
 
 (The `intro` and `outcome` submodules also drive later transitions — see their docs.)

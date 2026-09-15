@@ -3,7 +3,7 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Beam Plugin
 
@@ -13,7 +13,7 @@ Contains systems responsible for spawning and stepping beam projectiles fired by
 - **Straight** (the baseline): the mode for any shot fired from unclaimed ground. It advances until it leaves the map bounds or the next tile is already claimed, resolving at the last unclaimed position (at minimum its own origin).
 - **Lance** (a drafted ability): advances through claimed and forbidden tiles until the next tile would be unclaimed, resolving on that unclaimed tile; despawns silently if none is found before the edge. `spawn_beam` selects it only when the beam is fired from already-claimed ground **and** the firing player's `AbilityList` contains `AbilityDescriptor::Lance` (see the Abilities plugin doc) — it is what lets a player fire from their own territory at all.
 
-Charges are spent **on fire**, not on resolve: once `resolve_fire` yields a behavior, `spawn_beam` decrements the owner's `BeamCharges::current`, increments `InFlightBeamCount::current`, and emits `ChargeSpent`, all before the `Beam` entity is spawned. A shot refused by `resolve_fire` costs nothing; the only shot that spends a charge without claiming anything is a `Lance` that reaches the map edge unclaimed. `InFlightBeamCount` is a per-player component, synchronously maintained (incremented here, decremented in `beam_step` via `end_beam`) so other plugins can read an always-current in-flight count instead of scanning `Query<&Beam>`, which lags a frame behind `Commands::spawn`/`despawn` (see the lifecycle section below). When a beam resolves, `BeamResolved` is emitted and the beam is despawned via `end_beam` (which also releases the in-flight slot); the Claim plugin reads that message to update ownership and emit `TileClaimed`, registered `.after(beam_step)` so a same-frame claim is visible to anything reading `ClaimedTileCount` later that frame.
+Charges are spent **on fire**, not on resolve: once `resolve_fire` yields a behavior, `spawn_beam` decrements the owner's `BeamCharges::current`, increments `InFlightBeamCount::current`, and emits `ChargeSpent`, all before the `Beam` entity is spawned. A shot refused by `resolve_fire` costs nothing; the only shot that spends a charge without claiming anything is a `Lance` that reaches the map edge unclaimed. `InFlightBeamCount` is a per-player component, synchronously maintained (incremented here, decremented in `beam_step` via `end_beam`) so other plugins can read an always-current in-flight count instead of scanning `Query<&Beam>`, which lags a frame behind `Commands::spawn`/`despawn` (see the lifecycle section below). When a beam resolves, `BeamResolved` is emitted and the beam is despawned via `end_beam` (which also releases the in-flight slot); the Claim plugin reads that message to update ownership and emit `TileClaimed`; `claim_tile` runs in `GameplaySet::Claim`, which the shared `GameplaySet` chain (`schedule.rs`) orders after this plugin's `GameplaySet::Beam`, so a same-frame claim is visible to anything reading `ClaimedTileCount` later that frame.
 
 ## Plugin workflow
 

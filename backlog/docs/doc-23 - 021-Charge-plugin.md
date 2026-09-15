@@ -3,13 +3,13 @@ id: doc-23
 title: '[021] Charge plugin'
 type: other
 created_date: '2026-08-13 12:00'
-updated_date: '2026-09-13 13:00'
+updated_date: '2026-09-15 12:00'
 ---
 # Charge Plugin
 
 Owns `BeamCharges` regen/refund/cost-policy resolvers — home for any beam ability that adjusts a player's charge pool without being a beam-behavior or tile-ownership effect. Today that's just Solar Panels' regen tick.
 
-Registered in `AppPlugin` between Claim and Damage. The chained `(regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)` pair carries an explicit `.after(claim::claim_tile)`, guaranteeing both read each player's `ClaimedTileCount` after Claim has written it that frame — Bevy does not guarantee this from plugin declaration order alone when systems have a data-access conflict without explicit ordering.
+Registered in `AppPlugin` between Claim and Damage. The chained `(regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)` pair runs in `GameplaySet::Economy`, which the shared `GameplaySet` chain (`schedule.rs`) orders after `GameplaySet::Claim`, guaranteeing both read each player's `ClaimedTileCount` after Claim has written it that frame — Bevy does not guarantee this from plugin declaration order alone when systems have a data-access conflict without explicit ordering.
 
 ## Plugin workflow
 
