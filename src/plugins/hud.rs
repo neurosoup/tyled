@@ -10,22 +10,20 @@ use bevy_ecs_tiled::prelude::*;
 use bevy_spritesheet_animation::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
+    app.add_systems(Update, (tick_damage_echo_delay, initialize_digit_animations));
     app.add_systems(
         Update,
         (
             animate_hp,
             animate_damage_bar,
             arm_damage_echo_delay,
-            tick_damage_echo_delay,
             animate_beam_charges,
             animate_claimed_tiles,
             animate_countdown,
-            initialize_digit_animations,
-        ),
-    );
-    app.add_systems(
-        Update,
-        (animate_territory_bar, animate_charges_bar).in_set(GameplaySet::HudSync),
+            animate_territory_bar,
+            animate_charges_bar,
+        )
+            .in_set(GameplaySet::HudSync),
     );
 }
 

@@ -22,7 +22,7 @@ pub(crate) fn plugin(app: &mut App) {
             apply_knockback.before(apply_translate_effect),
             apply_translate_effect,
             apply_movement_settle,
-            apply_death_effect.after(apply_knockback),
+            apply_death_effect.after(apply_knockback).after(GameplaySet::Damage),
             start_deferred_death_bounce,
             apply_wave_effect,
             apply_bounce_effect,

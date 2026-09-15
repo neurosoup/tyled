@@ -66,6 +66,8 @@ pub(crate) fn plugin(app: &mut App) {
                 resolve_timeout,
                 resolve_charge_exhaustion,
             )
+                .chain()
+                .in_set(GameplaySet::RoundResolution)
                 .run_if(in_state(RoundPhase::Playing)),
         ),
     );
