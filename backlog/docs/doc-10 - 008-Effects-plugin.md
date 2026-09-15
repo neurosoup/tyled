@@ -3,7 +3,7 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-09-15 14:00'
 ---
 # Effects Plugin
 
@@ -41,7 +41,7 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
         - Reacts to `Added<MovementSettle>`
             - If not dead, not knocked back, and no `KnockbackEffect` pending: inserts an ease-out `TweenAnim` and `ActiveTransformEffect(Settle)`
             - Always removes `MovementSettle`
-    - `apply_death_effect` (after `apply_knockback`):
+    - `apply_death_effect` (after `apply_knockback`, tagged `GameplaySet::Presentation`):
         - Reads `DamageableDied` messages, matched against entities without `IsDead`
             - Always inserts `BounceEffect` + `IsDead`
             - Inserts `PendingDeathBounce` if a knockback is in flight or about to start on that entity, otherwise inserts `BounceEffectTarget` directly
@@ -106,7 +106,7 @@ Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker
 
 ### Apply Death Effect
 
-Reads `DamageableDied` messages, matched against a query filtered to entities without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, always inserts `BounceEffect` and `IsDead` on the dying entity. Then reads `Has<IsKnockedBack>` on the entity and a separate `Query<(), With<KnockbackEffect>>` to check whether a knockback is already playing or about to start: if either is true, inserts `PendingDeathBounce` instead of triggering the bounce immediately; otherwise inserts `BounceEffectTarget` directly, which `apply_bounce_effect` picks up the same frame.
+Reads `DamageableDied` messages, matched against a query filtered to entities without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, always inserts `BounceEffect` and `IsDead` on the dying entity. Then reads `Has<IsKnockedBack>` on the entity and a separate `Query<(), With<KnockbackEffect>>` to check whether a knockback is already playing or about to start: if either is true, inserts `PendingDeathBounce` instead of triggering the bounce immediately; otherwise inserts `BounceEffectTarget` directly, which `apply_bounce_effect` picks up the same frame. It is tagged `.in_set(GameplaySet::Presentation)`, purely for its position relative to `GameplaySet::Damage`/`GameplaySet::RoundResolution` in the shared chain (`schedule.rs`) — the tag carries no `RoundPhase` gate of its own, so `apply_death_effect` remains as ungated as the rest of this plugin, letting it still catch and animate a `DamageableDied` message written on the last `Playing` frame before a kill ends the round, after the phase has already flipped to `Outcome`.
 
 ### Start Deferred Death Bounce
 

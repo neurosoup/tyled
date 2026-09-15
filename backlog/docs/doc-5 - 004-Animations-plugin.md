@@ -3,13 +3,15 @@ id: doc-5
 title: '[004] Animations plugin'
 type: other
 created_date: '2026-02-01 18:59'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-09-15 14:00'
 ---
 # Animations Plugin
 
 Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages. While a character carries an `IsTurning` state, its active clip is instead the intermediate 3/4 pose for the current turn segment (`diag_front`/`diag_back`, mirrored with `flip_x`).
 
 HUD animation more broadly — both the HP bars and the numeric rolling-odometer counters — now lives in the HUD plugin.
+
+`animate_player`, `initialize_player_animations`, and `initialize_claimed_tile_animations` are registered as a plain untagged tuple — none of them reads anything the Beam or Claim plugins write, so their ordering against those plugins doesn't matter. `animate_claimed_tile`, `animate_unclaimed_tile`, and `tick_unclaim_reverts` are registered as a second tuple tagged `.in_set(GameplaySet::Presentation)`, which the shared `GameplaySet` chain (`schedule.rs`) orders after both `GameplaySet::Beam` and `GameplaySet::Claim`. The ordering is load-bearing for two of the three: `animate_claimed_tile` reads `BeamResolved`, so running after `beam_step` (Beam plugin) means it sees a same-frame message instead of catching it one frame late; `tick_unclaim_reverts` re-checks `ClaimedTile::owner` before reverting a tile, so running after `claim_tile` (Claim plugin) means that check sees a same-frame re-claim rather than a stale value. `animate_unclaimed_tile` is grouped with the other two for consistency rather than its own ordering need — `claim_tile` only ever writes `Some(new_owner)`, never `None`, so the `Changed<ClaimedTile>` transition this system watches for (ownership cleared) is only ever produced by `reset_round` (Round plugin), which runs in the `OnExit(RoundPhase::Outcome)` schedule, before `Update` starts, so it's already settled by the time any `Presentation` member runs regardless of intra-`Update` ordering.
 
 ## Plugin workflow
 
