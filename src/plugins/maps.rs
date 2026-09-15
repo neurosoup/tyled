@@ -27,7 +27,7 @@ pub(crate) fn plugin(app: &mut App) {
 
     app.add_systems(OnEnter(AppState::InRound), load_maps);
     app.add_systems(
-        Update,
+        OnExit(RoundPhase::Loading),
         (
             initialize_map_info,
             (
@@ -93,9 +93,11 @@ fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn initialize_map_info(
-    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     mut map_info: ResMut<MapInfo>,
-    current_level_query: Query<&TiledMapLayerZOffset, (With<TiledMap>, With<CurrentLevel>)>,
+    current_level_query: Query<
+        (Entity, &TiledMapLayerZOffset),
+        (With<TiledMap>, With<CurrentLevel>),
+    >,
     tilemap_query: Query<
         (
             &TiledName,
@@ -111,51 +113,44 @@ fn initialize_map_info(
     ground_tiles_query: Query<(Entity, &TilePos), (With<Ground>, Without<ForbiddenArea>)>,
     forbidden_areas_query: Query<(Entity, &TilePos), With<ForbiddenArea>>,
 ) {
-    for map_created_message in map_created_reader.read() {
-        // Skip maps that are not the current level
-        let Ok(z_offset) = current_level_query.get(map_created_message.origin) else {
-            continue;
-        };
-        // The "ground" tileset is shared by the level and HUD maps, so both spawn a
-        // tilemap named "ground". Restrict the metadata lookup to the current level
-        // map, otherwise the HUD map's geometry can be picked and every tile is
-        // placed in HUD-space coordinates.
-        let Some((_, tile_size, grid_size, map_size, map_type, map_anchor, _)) =
-            tilemap_query.iter().find(|(name, .., map_ref)| {
-                name.0 == "ground" && map_ref.0 == map_created_message.origin
-            })
-        else {
-            panic!("Ground tilemap not found");
-        };
-        let ground_entities = ground_tiles_query
+    let Ok((level_map_entity, z_offset)) = current_level_query.single() else {
+        return;
+    };
+    // Both maps have a "ground" tilemap by that name; match on level_map_entity
+    // or the HUD map's geometry can get picked instead.
+    let Some((_, tile_size, grid_size, map_size, map_type, map_anchor, _)) =
+        tilemap_query
             .iter()
-            .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
-            .collect();
+            .find(|(name, .., map_ref)| name.0 == "ground" && map_ref.0 == level_map_entity)
+    else {
+        panic!("Ground tilemap not found");
+    };
+    let ground_entities = ground_tiles_query
+        .iter()
+        .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
+        .collect();
 
-        let forbidden_areas = forbidden_areas_query
-            .iter()
-            .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
-            .collect();
+    let forbidden_areas = forbidden_areas_query
+        .iter()
+        .map(|(entity, tile_pos)| (GridCoords::from(*tile_pos), entity))
+        .collect();
 
-        *map_info = MapInfo {
-            ground_entities,
-            forbidden_areas,
-            claimed_entities: HashMap::new(),
-            map_size: *map_size,
-            grid_size: *grid_size,
-            tile_size: *tile_size,
-            map_type: *map_type,
-            map_anchor: *map_anchor,
-            z_offset: z_offset.0,
-        };
-    }
+    *map_info = MapInfo {
+        ground_entities,
+        forbidden_areas,
+        claimed_entities: HashMap::new(),
+        map_size: *map_size,
+        grid_size: *grid_size,
+        tile_size: *tile_size,
+        map_type: *map_type,
+        map_anchor: *map_anchor,
+        z_offset: z_offset.0,
+    };
 }
 
 fn initialize_hud_bars(
     mut commands: Commands,
-    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
-    hud_map_query: Query<Entity, (With<TiledMap>, With<HudMap>)>,
     bars_query: Query<
         (
             Entity,
@@ -177,55 +172,48 @@ fn initialize_hud_bars(
     // Bar height in the HUD map: hud-bars tileset tiles are 16x32, stretched vertically to fill this; width is per-kind, set below.
     let bar_container_height = 32.0;
 
-    for map_created_message in map_created_reader.read() {
-        // Skip maps that are not the HUD map
-        let Ok(_) = hud_map_query.get(map_created_message.origin) else {
-            continue;
-        };
+    for (entity, player, transform, children, is_territory, is_charges) in &bars_query {
+        if let Some(grid_coords) =
+            GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
+        {
+            let player_offset = match player.player_id {
+                1 => Vec3::X * 16.0,
+                _ => Vec3::ZERO,
+            };
 
-        for (entity, player, transform, children, is_territory, is_charges) in &bars_query {
-            if let Some(grid_coords) =
-                GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
-            {
-                let player_offset = match player.player_id {
-                    1 => Vec3::X * 16.0,
-                    _ => Vec3::ZERO,
+            let mut new_transform =
+                Transform::from_translation(transform.translation + player_offset);
+            if is_territory || is_charges {
+                // Territory/charges bars render from empty and grow in toward their real ratio; HP/Damage render at their true value immediately.
+                new_transform.scale.x = 0.0;
+            }
+
+            commands.entity(entity).insert((
+                grid_coords,
+                new_transform,
+                BarFill(new_transform.scale.x),
+            ));
+
+            if let Some(first_child) = children.and_then(|c| c.first()).copied() {
+                // Player 1's bar is left-anchored
+                // Player 2's bar is right-anchored
+                let anchor_x = 0.5;
+                let offset_direction = match player.player_id {
+                    0 => -1.0,
+                    1 => 1.0,
+                    _ => 0.0,
                 };
-
-                let mut new_transform =
-                    Transform::from_translation(transform.translation + player_offset);
-                if is_territory || is_charges {
-                    // Territory/charges bars render from empty and grow in toward their real ratio; HP/Damage render at their true value immediately.
-                    new_transform.scale.x = 0.0;
-                }
-
-                commands.entity(entity).insert((
-                    grid_coords,
-                    new_transform,
-                    BarFill(new_transform.scale.x),
-                ));
-
-                if let Some(first_child) = children.and_then(|c| c.first()).copied() {
-                    // Player 1's bar is left-anchored
-                    // Player 2's bar is right-anchored
-                    let anchor_x = 0.5;
-                    let offset_direction = match player.player_id {
-                        0 => -1.0,
-                        1 => 1.0,
-                        _ => 0.0,
+                commands
+                    .entity(first_child)
+                    .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.5)),));
+                if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
+                    let bar_container_width = if is_territory || is_charges {
+                        TERRITORY_BAR_PIXEL_WIDTH
+                    } else {
+                        HP_BAR_PIXEL_WIDTH
                     };
-                    commands
-                        .entity(first_child)
-                        .insert((Anchor::from(Vec2::new(anchor_x * offset_direction, -0.5)),));
-                    if let Ok(mut sprite) = sprite_query.get_mut(first_child) {
-                        let bar_container_width = if is_territory || is_charges {
-                            TERRITORY_BAR_PIXEL_WIDTH
-                        } else {
-                            HP_BAR_PIXEL_WIDTH
-                        };
-                        sprite.custom_size =
-                            Some(Vec2::new(bar_container_width, bar_container_height));
-                    }
+                    sprite.custom_size =
+                        Some(Vec2::new(bar_container_width, bar_container_height));
                 }
             }
         }
@@ -236,105 +224,83 @@ const PLAYER_SPRITE_SCALE: f32 = 1.25;
 
 fn initialize_players(
     mut commands: Commands,
-    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     map_info: Res<MapInfo>,
     config: Res<GameConfig>,
-    current_level_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
     mut players_query: Query<(Entity, &Player, &mut Transform), With<Character>>,
     children_query: Query<&Children>,
     loadouts: Res<PlayerLoadouts>,
 ) {
-    for map_created_message in map_created_reader.read() {
-        // Skip maps that are not the current level
-        let Ok(_) = current_level_query.get(map_created_message.origin) else {
-            continue;
-        };
+    for (entity, player, mut transform) in &mut players_query {
+        let look_direction = LookDirection::new(match player.player_id {
+            0 => Direction::Down,
+            1 => Direction::Up,
+            _ => Direction::Down,
+        });
 
-        for (entity, player, mut transform) in &mut players_query {
-            let look_direction = LookDirection::new(match player.player_id {
-                0 => Direction::Down,
-                1 => Direction::Up,
-                _ => Direction::Down,
-            });
+        if let Some(grid_coords) =
+            GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
+        {
+            commands.entity(entity).insert((
+                grid_coords,
+                SpawnPoint(grid_coords),
+                PreviousGridCoords(grid_coords),
+                look_direction,
+                TranslateEffectTarget,
+                RestingTranslation(grid_coords.to_translation(&map_info)),
+                DamageEffectTarget,
+                Health {
+                    current: config.player.starting_health,
+                    max: config.player.starting_health,
+                },
+                BeamCharges::new(
+                    (map_info.ground_entities.len() as u32) / config.player.beam_charges_divisor,
+                ),
+                ClaimedTileCount::default(),
+                InFlightBeamCount::default(),
+                AbilityList(loadouts.for_player(player.player_id)),
+            ));
 
-            if let Some(grid_coords) =
-                GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
-            {
-                commands.entity(entity).insert((
-                    grid_coords,
-                    SpawnPoint(grid_coords),
-                    PreviousGridCoords(grid_coords),
-                    look_direction,
-                    TranslateEffectTarget,
-                    RestingTranslation(grid_coords.to_translation(&map_info)),
-                    DamageEffectTarget,
-                    Health {
-                        current: config.player.starting_health,
-                        max: config.player.starting_health,
-                    },
-                    BeamCharges::new(
-                        (map_info.ground_entities.len() as u32)
-                            / config.player.beam_charges_divisor,
-                    ),
-                    ClaimedTileCount::default(),
-                    InFlightBeamCount::default(),
-                    AbilityList(loadouts.for_player(player.player_id)),
-                ));
+            transform.scale = Vec3::new(PLAYER_SPRITE_SCALE, PLAYER_SPRITE_SCALE, 1.0);
 
-                transform.scale = Vec3::new(PLAYER_SPRITE_SCALE, PLAYER_SPRITE_SCALE, 1.0);
-
-                if let Ok(children) = children_query.get(entity) {
-                    if let Some(&first_child) = children.first() {
-                        commands
-                            .entity(first_child)
-                            .insert(Anchor::from(Vec2::new(0.0, -0.25)));
-                    }
+            if let Ok(children) = children_query.get(entity) {
+                if let Some(&first_child) = children.first() {
+                    commands
+                        .entity(first_child)
+                        .insert(Anchor::from(Vec2::new(0.0, -0.25)));
                 }
             }
         }
     }
 }
 
-fn initialize_claimed_tiles(
-    mut commands: Commands,
-    mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
-    mut map_info: ResMut<MapInfo>,
-    map_query: Query<Entity, (With<TiledMap>, With<CurrentLevel>)>,
-) {
-    for map_created_message in map_created_reader.read() {
-        // Skip maps that are not the current level
-        let Ok(_) = map_query.get(map_created_message.origin) else {
-            continue;
-        };
+fn initialize_claimed_tiles(mut commands: Commands, mut map_info: ResMut<MapInfo>) {
+    // Collect keys first to avoid holding a borrow on map_info
+    let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
 
-        // Collect keys first to avoid holding a borrow on map_info
-        let grid_coords_list: Vec<_> = map_info.ground_entities.keys().copied().collect();
+    let parent = commands
+        .spawn((
+            Name::new("ClaimedTiles"),
+            Transform::default(),
+            InheritedVisibility::default(),
+        ))
+        .id();
 
-        let parent = commands
+    for grid_coords in grid_coords_list {
+        let tile_transform =
+            grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX);
+        let entity = commands
             .spawn((
-                Name::new("ClaimedTiles"),
-                Transform::default(),
-                InheritedVisibility::default(),
+                Name::new("Tiles"),
+                ClaimedTile { owner: None },
+                WaveEffectTarget,
+                IlluminationEffectTarget,
+                grid_coords,
+                Transform::from_translation(tile_transform),
+                // Anchor::from(Vec2::new(-0.02, 0.18)),
             ))
             .id();
+        commands.entity(parent).add_child(entity);
 
-        for grid_coords in grid_coords_list {
-            let tile_transform =
-                grid_coords.to_translation_with_z_index(&map_info, CLAIMED_TILE_Z_INDEX);
-            let entity = commands
-                .spawn((
-                    Name::new("Tiles"),
-                    ClaimedTile { owner: None },
-                    WaveEffectTarget,
-                    IlluminationEffectTarget,
-                    grid_coords,
-                    Transform::from_translation(tile_transform),
-                    // Anchor::from(Vec2::new(-0.02, 0.18)),
-                ))
-                .id();
-            commands.entity(parent).add_child(entity);
-
-            map_info.claimed_entities.insert(grid_coords, entity);
-        }
+        map_info.claimed_entities.insert(grid_coords, entity);
     }
 }

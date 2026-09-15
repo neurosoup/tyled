@@ -3,14 +3,17 @@
  * timer.
  *
  * `RoundPhase` is the project's state machine for a single round:
- *   Loading  → waiting for the level map to be created
- *   Starting → the "3 · 2 · 1 · GO!" intro countdown (gameplay frozen)
+ *   Loading  → waiting for both the level map and the HUD map to be created
+ *   Starting → the intro countdown
  *   Playing  → live gameplay
- *   Outcome  → the round is over (win banner) [not yet wired]
+ *   Outcome  → the round is over (win banner)
  * Live-gameplay systems across the input/movement/beam/damage plugins gate on
  * `in_state(RoundPhase::Playing)`, so the intro and outcome screens freeze the
  * world for free. The intro countdown itself is rendered by the sibling `intro`
  * submodule.
+ *
+ * `Loading` only happens once, at boot, so its exit is the right anchor for
+ * `maps::plugin`'s one-time map-bootstrap systems (see `OnExit(RoundPhase::Loading)`).
  *
  * The `Countdown` resource is a global, player-agnostic count from the configured
  * round length down to 0. It is inserted on `MapCreated` (so the
@@ -38,7 +41,8 @@ use crate::prelude::*;
 /// type; gameplay systems gate on `Playing` so non-play phases freeze the world.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum RoundPhase {
-    /// Waiting for the level map to be created and players/tiles initialized.
+    /// Waiting for the level map and the HUD map to be created and
+    /// players/tiles initialized.
     #[default]
     Loading,
     /// The "3 · 2 · 1 · GO!" intro countdown. Gameplay is frozen.
@@ -76,19 +80,28 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(OnExit(RoundPhase::Outcome), reset_round);
 }
 
-/// Enters `Starting` once the current level's map is created. The
-/// `in_state(Loading)` guard makes this fire exactly once and ignore the HUD
-/// map's `MapCreated` message.
+/// Enters `Starting` once both the level map and the HUD map are created.
+/// Bound to `run_if(in_state(RoundPhase::Loading))` in `plugin()`, which makes
+/// this fire exactly once.
 fn start_round_on_map_created(
     mut map_created_reader: MessageReader<TiledEvent<MapCreated>>,
     current_level_query: Query<(), (With<TiledMap>, With<CurrentLevel>)>,
+    hud_map_query: Query<(), (With<TiledMap>, With<HudMap>)>,
+    mut level_ready: Local<bool>,
+    mut hud_ready: Local<bool>,
     mut next_phase: ResMut<NextState<RoundPhase>>,
 ) {
     for map_created_message in map_created_reader.read() {
         if current_level_query.get(map_created_message.origin).is_ok() {
-            next_phase.set(RoundPhase::Starting);
-            return;
+            *level_ready = true;
         }
+        if hud_map_query.get(map_created_message.origin).is_ok() {
+            *hud_ready = true;
+        }
+    }
+
+    if *level_ready && *hud_ready {
+        next_phase.set(RoundPhase::Starting);
     }
 }
 
