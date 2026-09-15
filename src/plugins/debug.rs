@@ -3,6 +3,7 @@
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
+use crate::prelude::*;
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,
@@ -27,6 +28,7 @@ pub(crate) fn plugin(app: &mut App) {
             ..default()
         });
     });
+    app.allow_ambiguous_resource::<GameConfig>();
 
     // Tiled debug
     // app.add_plugins(TiledDebugPluginGroup);
