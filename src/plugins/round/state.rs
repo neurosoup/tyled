@@ -63,12 +63,15 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             start_countdown,
-            start_round_on_map_created.run_if(in_state(RoundPhase::Loading)),
+            start_round_on_map_created
+                .run_if(in_state(RoundPhase::Loading))
+                .in_set(RoundPhaseWriter)
+                .ambiguous_with(RoundPhaseWriter),
             (
                 tick_countdown,
-                resolve_kill,
-                resolve_timeout,
-                resolve_charge_exhaustion,
+                (resolve_kill, resolve_timeout, resolve_charge_exhaustion)
+                    .in_set(RoundPhaseWriter)
+                    .ambiguous_with(RoundPhaseWriter),
             )
                 .chain()
                 .in_set(GameplaySet::RoundResolution)

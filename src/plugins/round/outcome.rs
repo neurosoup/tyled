@@ -18,7 +18,10 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(OnEnter(RoundPhase::Outcome), show_outcome_banner);
     app.add_systems(
         Update,
-        advance_outcome.run_if(in_state(RoundPhase::Outcome)),
+        advance_outcome
+            .run_if(in_state(RoundPhase::Outcome))
+            .in_set(RoundPhaseWriter)
+            .ambiguous_with(RoundPhaseWriter),
     );
     app.add_systems(OnExit(RoundPhase::Outcome), despawn_outcome_banner);
 }

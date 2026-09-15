@@ -40,3 +40,7 @@ pub(crate) fn plugin(app: &mut App) {
             .chain(),
     );
 }
+
+/// Marks the systems that write `NextState<RoundPhase>`.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RoundPhaseWriter;

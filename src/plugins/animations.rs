@@ -21,7 +21,13 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_systems(
         Update,
-        (animate_claimed_tile, animate_unclaimed_tile, tick_unclaim_reverts)
+        (
+            animate_claimed_tile
+                .ambiguous_with(animate_unclaimed_tile)
+                .ambiguous_with(tick_unclaim_reverts),
+            animate_unclaimed_tile.ambiguous_with(tick_unclaim_reverts),
+            tick_unclaim_reverts,
+        )
             .in_set(GameplaySet::Presentation),
     );
 }

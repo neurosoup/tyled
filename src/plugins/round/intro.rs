@@ -18,7 +18,10 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            advance_intro_countdown.run_if(in_state(RoundPhase::Starting)),
+            advance_intro_countdown
+                .run_if(in_state(RoundPhase::Starting))
+                .in_set(RoundPhaseWriter)
+                .ambiguous_with(RoundPhaseWriter),
             // UNGATED on purpose: this fires while the state is already `Playing`.
             despawn_go_banner,
         ),
