@@ -11,8 +11,17 @@ use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Update, claim_tile.in_set(GameplaySet::Claim));
+    app.add_systems(
+        Update,
+        claim_tile
+            .in_set(GameplaySet::Claim)
+            .run_if(in_state(RoundPhase::Playing)),
+    );
     // Stage F2: on_resolve / on_claim descriptor resolvers land here.
+    // Invariant this gate depends on: any future `BeamResolved` writer must
+    // also be `Playing`-gated and ordered before `GameplaySet::Claim`, or its
+    // message is silently dropped by the message double-buffer instead of
+    // being picked up on a later `Playing` frame.
 }
 
 fn claim_tile(
