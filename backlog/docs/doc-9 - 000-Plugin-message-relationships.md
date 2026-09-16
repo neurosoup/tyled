@@ -3,7 +3,7 @@ id: doc-9
 title: '[000] Plugin message relationships'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-09-15 13:00'
+updated_date: '2026-09-16 11:00'
 ---
 # Plugin Message Relationships
 
@@ -13,9 +13,11 @@ For the other axis of plugin coupling — which plugins are gated by, hooked to,
 
 There are three categories of messages in this codebase:
 
-- **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Camera, Round, Animations, and HUD plugins to react to map and object loading completion. `MapCreated` is read by the Camera and Round plugins (the Round plugin (re)starts the countdown on map creation); `ObjectCreated` is read by both the Animations plugin (to initialize player animations) and the HUD plugin (to initialize digit-counter animations). The Maps plugin has no message relationships — its one-time bootstrap systems (`initialize_map_info`, `initialize_players`, `initialize_claimed_tiles`, `initialize_hud_bars`) run on `OnExit(RoundPhase::Loading)` and query the world directly, so its node in the diagram below carries no edges.
-- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `DamageableDied` is emitted by the Damage plugin and read by both the Effects plugin (death bounce) and the Round plugin (round resolution — every `resolve_*` vector reads it, to end the round on a kill or to defer to a kill). `TileClaimed`, `ChargeSpent`, and `ChargeRegen` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin, `ChargeSpent` by the Beam plugin, and `ChargeRegen` by the Charge plugin (Solar Panels' regen tick) — none have consumers yet.
-- **Library tween events** (`AnimCompletedEvent`) — emitted by the external `bevy_tweening` library when a tween finishes. Externally emitted like the Tiled events, but they drive cross-plugin reactions, so they belong on the map. Consumed by the Effects plugin (to hide a player once its death-bounce tween completes, and to clear the `ActiveTransformEffect` tag once a knockback slide completes — `IsKnockedBack` itself is timer-driven and clears independently of this event) and the round Intro submodule (to despawn the "GO!" banner once its scale-up tween completes).
+- **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Camera, Round, Animations, and HUD plugins to react to map and object loading completion. `MapCreated` is read by the Camera plugin and by the Round plugin's `state` submodule (`round/state.rs`, which (re)starts the countdown and latches the `Loading → Starting` transition on map creation); `ObjectCreated` is read by both the Animations plugin (to initialize player animations) and the HUD plugin (to initialize digit-counter animations). The Maps plugin has no message relationships — its one-time bootstrap systems (`initialize_map_info`, `initialize_players`, `initialize_claimed_tiles`, `initialize_hud_bars`) run on `OnExit(RoundPhase::Loading)` and query the world directly, so its node in the diagram below carries no edges.
+- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `DamageableDied` is emitted by the Damage plugin and read by both the Effects plugin (death bounce) and the Round plugin's `state` submodule (round resolution — every `resolve_*` vector reads it, to end the round on a kill or to defer to a kill). `TileClaimed`, `ChargeSpent`, and `ChargeRegen` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin, `ChargeSpent` by the Beam plugin, and `ChargeRegen` by the Charge plugin (Solar Panels' regen tick) — none have consumers yet.
+- **Library tween events** (`AnimCompletedEvent`) — emitted by the external `bevy_tweening` library when a tween finishes. Externally emitted like the Tiled events, but they drive cross-plugin reactions, so they belong on the map. Consumed by the Effects plugin (to hide a player once its death-bounce tween completes, and to clear the `ActiveTransformEffect` tag once a knockback slide completes — `IsKnockedBack` itself is timer-driven and clears independently of this event) and the Round plugin's `intro` submodule (`round/intro.rs`, to despawn the "GO!" banner once its scale-up tween completes). The Round plugin's `outcome` submodule (`round/outcome.rs`) has no message relationships of its own — it reacts to `RoundPhase` transitions directly (`OnEnter`/`OnExit`, see `doc-24`) rather than any message — so its node also carries no edges.
+
+The Round plugin is split into its three submodules here, matching the breakdown in `doc-24`, since each has a distinct set of message relationships (or none, for `outcome`).
 
 The diagram below shows every plugin as a node, every message type as a distinct node, and the write/read relationships as directed edges. The flow generally moves from left to right: external events bootstrap the world, player input drives movement and combat, beam collisions trigger tile ownership changes, damage accumulates on claimed tiles, and visual effects react to the resulting state changes.
 
@@ -34,7 +36,9 @@ tweening_lib(["`**bevy_tweening**`"]):::external
 
 maps_plugin["`**Maps Plugin**`"]:::system-group
 camera_plugin["`**Camera Plugin**`"]:::system-group
-round_plugin["`**Round Plugin**`"]:::system-group
+round_state_plugin["`**Round Plugin (state)**`"]:::system-group
+round_intro_plugin["`**Round Plugin (intro)**`"]:::system-group
+round_outcome_plugin["`**Round Plugin (outcome)**`"]:::system-group
 input_plugin["`**Input Plugin**`"]:::system-group
 controller_plugin["`**Controller Plugin**`"]:::system-group
 animations_plugin["`**Animations Plugin**`"]:::system-group
@@ -60,7 +64,7 @@ tiled_plugin ---> |writes| map_created_message
 tiled_plugin ---> |writes| object_created_message
 
 map_created_message ---> |read by| camera_plugin
-map_created_message ---> |read by| round_plugin
+map_created_message ---> |read by| round_state_plugin
 
 object_created_message ---> |read by| animations_plugin
 object_created_message ---> |read by| hud_plugin
@@ -85,9 +89,9 @@ charge_plugin ---> |writes| charge_regen_message
 damage_plugin ---> |writes| damageable_died_message
 
 damageable_died_message ---> |read by| effects_plugin
-damageable_died_message ---> |read by| round_plugin
+damageable_died_message ---> |read by| round_state_plugin
 
 tweening_lib ---> |writes| anim_completed_message
 
 anim_completed_message ---> |read by| effects_plugin
-anim_completed_message ---> |read by| round_plugin
+anim_completed_message ---> |read by| round_intro_plugin

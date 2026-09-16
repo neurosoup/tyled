@@ -3,7 +3,7 @@ id: doc-24
 title: '[000] Plugin state relationships'
 type: other
 created_date: '2026-09-15 12:00'
-updated_date: '2026-09-16 10:00'
+updated_date: '2026-09-16 12:00'
 ---
 # Plugin State Relationships
 
@@ -14,6 +14,8 @@ There are two state machines in this codebase, and three distinct relationship t
 - **Gated by** (`run_if(in_state(...))`) — the system is skipped entirely while the game is not in that state.
 - **Hooked to enter/exit** (`OnEnter`/`OnExit`) — the system runs exactly once, at the instant of the transition.
 - **Writes** (`NextState<T>::set`) — the system decides when the whole app moves to a different state. For either machine, only a small number of systems, spread across few files, are allowed to do this.
+
+Each state machine also has exactly one **default state** — the variant Bevy sets it to at `init_state::<T>()`, before any system runs. The diagrams mark this with a small filled-circle node (a UML-style initial pseudostate) pointing at that state, distinct from the `Gated by`/`Hooked to`/`Writes` edges above since nothing "writes" the default — it's just where the machine starts.
 
 ## AppState
 
@@ -90,6 +92,7 @@ config:
 
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
+classDef default-marker fill:#fff,stroke:#fff
 
 menu_plugin["`**Menu Plugin**`"]:::system-group
 maps_plugin["`**Maps Plugin**`"]:::system-group
@@ -103,8 +106,8 @@ beam_plugin["`**Beam Plugin**`"]:::system-group
 charge_plugin["`**Charge Plugin**`"]:::system-group
 damage_plugin["`**Damage Plugin**`"]:::system-group
 telemetry_plugin["`**Telemetry Plugin**`"]:::system-group
-effects_plugin["`**Effects Plugin (ungated; incl. Presentation member apply_death_effect)**`"]:::system-group
-claim_plugin["`**Claim Plugin (gated on Playing)**`"]:::system-group
+effects_plugin["`**Effects Plugin**`"]:::system-group
+claim_plugin["`**Claim Plugin**`"]:::system-group
 hud_plugin["`**HUD Plugin — HudSync**`"]:::system-group
 animations_plugin["`**Animations Plugin — Presentation**`"]:::system-group
 
@@ -115,6 +118,12 @@ phase_loading(["`**RoundPhase::Loading**`"])
 phase_starting(["`**RoundPhase::Starting**`"])
 phase_playing(["`**RoundPhase::Playing**`"])
 phase_outcome(["`**RoundPhase::Outcome**`"])
+
+default_app((" ")):::default-marker
+default_round((" ")):::default-marker
+
+default_app ---> |default| app_main_menu
+default_round ---> |default| phase_loading
 
 app_main_menu ---> |gates| menu_plugin
 menu_plugin ---> |writes| app_in_round
