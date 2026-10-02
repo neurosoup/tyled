@@ -68,7 +68,7 @@ fn bot_think(
     map_info: Res<MapInfo>,
     claimed_query: Query<&ClaimedTile>,
     positions: Query<(Entity, &GridCoords), (With<Player>, With<Character>)>,
-    beams: Query<(&GridCoords, &Beam), Without<Character>>,
+    beams: Query<(Entity, &GridCoords, &Beam), Without<Character>>,
     mut bots: Query<
         (
             Entity,
@@ -255,7 +255,27 @@ fn bot_think(
             })
             .flatten();
 
-        let (axis, behaviour, why, shoot) = if let (true, Some(foe)) = (strike_mode, opponent) {
+        let (axis, behaviour, why, shoot) = if find_parryable_beam(
+            coords,
+            look.to_grid_coords(),
+            entity,
+            &beams,
+            &map_info,
+            &claimed_query,
+            config.parry.window_fraction,
+        )
+        .is_some()
+        {
+            // Parrying is strictly better than every other decision when it's available: it
+            // removes the threat and returns it to the opponent instead of just displacing the
+            // bot (dodge) or eating the hit while pushing aggressively (strike_mode). Checked
+            // ahead of strike_mode, dodge, chase_target, and can_fire. Free (no charge check),
+            // same as the human input branch. Doesn't touch `last_fire_secs` — parry isn't
+            // gated by the fire cooldown.
+            action_state.press(&Action::Shoot);
+            brain.shooting = true;
+            (Vec2::ZERO, "parry", "parrying incoming beam".to_string(), true)
+        } else if let (true, Some(foe)) = (strike_mode, opponent) {
             // Offense-focused: fire in any direction whose shot geometrically reaches the
             // opponent (line-of-fire, not adjacency); otherwise seek their row/column. Territory
             // is irrelevant here. `behavior` is `None` when firing is blocked (a claimed tile
@@ -655,12 +675,12 @@ fn lance_hits_enemy(
 /// step onto a safe (on-ground, non-hostile) tile to escape the line, else `None`.
 fn incoming_beam_dodge(
     coords: GridCoords,
-    beams: &Query<(&GridCoords, &Beam), Without<Character>>,
+    beams: &Query<(Entity, &GridCoords, &Beam), Without<Character>>,
     self_entity: Entity,
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
 ) -> Option<GridCoords> {
-    for (beam_pos, beam) in beams {
+    for (_, beam_pos, beam) in beams {
         if beam.owner == self_entity {
             continue;
         }

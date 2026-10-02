@@ -11,6 +11,8 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<ChargeRegen>();
     app.add_message::<DamageableDied>();
     app.add_message::<CharacterCollision>();
+    app.add_message::<ParryTriggered>();
+    app.add_message::<BeamParried>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -68,4 +70,25 @@ pub struct DamageableDied {
 #[derive(Message)]
 pub struct CharacterCollision {
     pub loser: Entity,
+}
+
+// Fired when a Shoot press lands inside an incoming beam's parry window.
+#[derive(Message, Debug)]
+pub struct ParryTriggered {
+    pub parrier: Entity,
+    pub beam: Entity,
+}
+
+// Fired when a parry lands.
+#[derive(Message, Debug)]
+pub struct BeamParried {
+    #[allow(dead_code)] // read by ability resolvers in Stage F2
+    pub beam: Entity,
+    pub parrier: Entity,
+    #[allow(dead_code)] // read by ability resolvers in Stage F2
+    pub caster: Entity,
+    #[allow(dead_code)] // read by ability resolvers in Stage F2
+    pub new_direction: GridCoords,
+    #[allow(dead_code)] // read by ability resolvers in Stage F2
+    pub parries: u32,
 }

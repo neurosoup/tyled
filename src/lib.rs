@@ -30,6 +30,7 @@ impl Plugin for AppPlugin {
         app.add_plugins(plugins::inputs::plugin);
         app.add_plugins(plugins::bot::plugin);
         app.add_plugins(plugins::effects::plugin);
+        app.add_plugins(plugins::hitstop::plugin);
         app.add_plugins(plugins::controller::plugin);
         app.add_plugins(plugins::animations::plugin);
         app.add_plugins(plugins::hud::plugin);

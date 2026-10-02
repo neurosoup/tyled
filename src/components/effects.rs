@@ -106,3 +106,7 @@ pub struct PendingDeathBounce;
 /// Marks entities allowed to act as a wave source for `apply_wave_effect`.
 #[derive(Component)]
 pub struct WaveSource;
+
+/// One-shot landed-parry scale punch, inserted on the parrier's root entity.
+#[derive(Component)]
+pub struct ParryScaleEffectTarget;

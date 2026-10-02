@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_tweening::{
     AnimCompletedEvent, AnimTarget, CycleCompletedEvent, Delay, Sequence, Tween, TweenAnim,
     Tweenable,
-    lens::{SpriteColorLens, TransformPositionLens},
+    lens::{SpriteColorLens, TransformPositionLens, TransformScaleLens},
 };
 
 pub(crate) fn plugin(app: &mut App) {
@@ -32,6 +32,8 @@ pub(crate) fn plugin(app: &mut App) {
             on_knockback_tween_completed,
             tick_knockback_lock,
             on_illumination_completed,
+            trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
+            apply_parry_scale_effect.in_set(GameplaySet::Presentation),
         ),
     );
     app.add_systems(OnExit(RoundPhase::Playing), clear_illumination_drivers);
@@ -83,6 +85,17 @@ pub fn create_bounce_tween(
         })
         .reduce(|acc, next| acc.then(next))
         .unwrap()
+}
+
+pub fn create_parry_scale_tween(peak: f32, duration_secs: f32) -> Tween {
+    Tween::new(
+        EaseFunction::CubicIn,
+        Duration::from_secs_f32(duration_secs),
+        TransformScaleLens {
+            start: Vec3::splat(peak),
+            end: Vec3::ONE,
+        },
+    )
 }
 
 pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
@@ -250,6 +263,12 @@ fn sync_resting_translation(
     }
 }
 
+/// The first child entity that actually carries a `Sprite`.
+fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> Option<Entity> {
+    let first_child = children.and_then(|c| c.first()).copied()?;
+    sprite_query.get(first_child).is_ok().then_some(first_child)
+}
+
 fn apply_damage_effect(
     mut commands: Commands,
     config: Res<GameConfig>,
@@ -260,14 +279,12 @@ fn apply_damage_effect(
     sprite_query: Query<&Sprite>,
 ) {
     for (_entity, children) in &damageable_query {
-        if let Some(first_child) = children.and_then(|c| c.first()).copied() {
-            if sprite_query.get(first_child).is_ok() {
-                commands
-                    .entity(first_child)
-                    .insert(TweenAnim::new(create_color_flash_tween(
-                        config.effects.damage_flash_ms,
-                    )));
-            }
+        if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
+            commands
+                .entity(sprite_entity)
+                .insert(TweenAnim::new(create_color_flash_tween(
+                    config.effects.damage_flash_ms,
+                )));
         }
     }
 }
@@ -442,6 +459,32 @@ fn apply_bounce_effect(
                 ActiveTransformEffect(TransformEffectKind::Bounce),
             ))
             .remove::<BounceEffectTarget>();
+    }
+}
+
+fn trigger_parry_scale_effect(
+    mut commands: Commands,
+    mut beam_parried_reader: MessageReader<BeamParried>,
+) {
+    for message in beam_parried_reader.read() {
+        commands.entity(message.parrier).insert(ParryScaleEffectTarget);
+    }
+}
+
+fn apply_parry_scale_effect(
+    mut commands: Commands,
+    config: Res<GameConfig>,
+    parry_query: Query<(Entity, Option<&Children>), Added<ParryScaleEffectTarget>>,
+    sprite_query: Query<&Sprite>,
+) {
+    for (entity, children) in &parry_query {
+        if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
+            commands.entity(sprite_entity).insert(TweenAnim::new(create_parry_scale_tween(
+                config.parry.scale_punch_peak,
+                config.parry.scale_punch_secs,
+            )));
+        }
+        commands.entity(entity).remove::<ParryScaleEffectTarget>();
     }
 }
 

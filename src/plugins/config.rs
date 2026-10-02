@@ -25,6 +25,8 @@ pub struct GameConfig {
     pub controllers: ControllersConfig,
     pub bot: BotConfig,
     pub charge: ChargeConfig,
+    pub parry: ParryConfig,
+    pub hitstop: HitStopConfig,
 }
 
 #[derive(Reflect, Clone, Deserialize)]
@@ -200,6 +202,30 @@ pub struct ChargeConfig {
     pub solar_panels_tick_secs: f32,
     /// Owned tiles required per regenerated charge.
     pub solar_panels_tiles_per_charge: u32,
+}
+
+#[derive(Reflect, Clone, Deserialize)]
+pub struct ParryConfig {
+    /// Fraction (0,1) of the beam's current step duration the parry window stays open.
+    pub window_fraction: f32,
+    /// Per-parry rally speed-up.
+    pub speed_multiplier: f32,
+    /// Hard floor on beam step duration in seconds.
+    pub min_step_secs: f32,
+    /// Peak scale of the parrier's landed-parry scale punch (e.g. 1.3 for +30%).
+    pub scale_punch_peak: f32,
+    /// Duration of the scale-punch.
+    pub scale_punch_secs: f32,
+}
+
+/// Pace-modulation effect.
+#[derive(Reflect, Clone, Deserialize)]
+pub struct HitStopConfig {
+    /// The "how deep" knob for the slowdown. If `factor = 0.1`, the whole game
+    /// world suddenly runs at 10% of normal speed.
+    pub factor: f32,
+    /// Controls how long the recovery takes from the slowdown.
+    pub recovery_secs: f32,
 }
 
 impl GameConfig {

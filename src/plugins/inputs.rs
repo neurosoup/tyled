@@ -65,6 +65,7 @@ fn handle_characters_input(
     config: Res<GameConfig>,
     map_info: Res<MapInfo>,
     claimed_query: Query<&ClaimedTile>,
+    beams: Query<(Entity, &GridCoords, &Beam), Without<Character>>,
     mut characters: Query<
         (
             Entity,
@@ -81,6 +82,7 @@ fn handle_characters_input(
     >,
     mut entity_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,
+    mut parry_triggered_writer: MessageWriter<ParryTriggered>,
 ) {
     for (
         entity,
@@ -101,17 +103,29 @@ fn handle_characters_input(
         }
 
         if action_state.just_pressed(&Action::Shoot) {
-            let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
-            let has_lance = ability_list
-                .is_some_and(|list| list.0.contains(&AbilityDescriptor::Lance));
-            if has_charges
-                && resolve_fire(*grid_coords, has_lance, &map_info, &claimed_query).is_some()
-            {
-                beam_fired_writer.write(BeamFired {
-                    owner: entity,
-                    origin: *grid_coords,
-                    direction: look_direction.to_grid_coords(),
-                });
+            if let Some(beam) = find_parryable_beam(
+                *grid_coords,
+                look_direction.to_grid_coords(),
+                entity,
+                &beams,
+                &map_info,
+                &claimed_query,
+                config.parry.window_fraction,
+            ) {
+                parry_triggered_writer.write(ParryTriggered { parrier: entity, beam });
+            } else {
+                let has_charges = beam_charges.map_or(true, |c| !c.is_empty());
+                let has_lance = ability_list
+                    .is_some_and(|list| list.0.contains(&AbilityDescriptor::Lance));
+                if has_charges
+                    && resolve_fire(*grid_coords, has_lance, &map_info, &claimed_query).is_some()
+                {
+                    beam_fired_writer.write(BeamFired {
+                        owner: entity,
+                        origin: *grid_coords,
+                        direction: look_direction.to_grid_coords(),
+                    });
+                }
             }
         }
 

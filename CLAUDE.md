@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # About this project
 
-Tyled is a 2-player local real-time strategy game built with Bevy 0.18. Players shoot beams to claim tiles; claimed tiles damage opponents who walk on them. See README.md for full gameplay rules.
+Tyled is a 2-player local real-time strategy game built with Bevy 0.19. Players shoot beams to claim tiles; claimed tiles damage opponents who walk on them. See README.md for full gameplay rules.
 
 ## Tooling
 
@@ -103,8 +103,10 @@ Effects are driven by marker components rather than events:
 | Action | Player 1 | Player 2 |
 |--------|----------|----------|
 | Move | WASD | Arrow keys |
-| Lock direction | Q | Right Shift |
-| Shoot | Tab | / |
+| Lock direction | Tab | Right Shift |
+| Shoot / Parry | Q | / |
+
+Shoot doubles as parry when an incoming beam is in its window — no separate input.
 
 Input ticks at 75ms intervals; beam step ticks at 62.5ms (0.0625s).
 
@@ -116,7 +118,7 @@ Each plugin and component has a corresponding doc in `backlog/docs/`. These docs
 
 Every HUD number is a **rolling-odometer digit group**: one `Digit` Tiled object per decimal place (`Digit::position` = 0 for ones, 1 for tens, 2 for hundreds…), all sharing a **marker component** that binds the group to a value source. `initialize_digit_animations` (`hud.rs`) auto-attaches a `SpritesheetAnimation` to *every* `With<Digit>` entity and builds the shared `DigitAnimations` from→to table once; each `animate_*` system just picks a target value and calls `animate_digit`, which is idempotent (no-ops when the shown digit already matches, so it can run every frame without change-detection).
 
-**Reflect / Tiled generation:** marker + custom components derive `#[derive(Component, Reflect, Default)]` + `#[reflect(Component, Default)]`. Bevy 0.18 **auto-registers** `Reflect` types (no `register_type` call), and `bevy_ecs_tiled`'s `user_properties` feature exports the whole registry to `tiled_types_export.json` on every startup. So the loop for a new component is: define it → `cargo run` once to regenerate the export → in Tiled, re-import types and select the new class as an object property. The type appears as its full path, e.g. `tyled::components::countdown::CountdownDigit`.
+**Reflect / Tiled generation:** marker + custom components derive `#[derive(Component, Reflect, Default)]` + `#[reflect(Component, Default)]`. Bevy 0.19 **auto-registers** `Reflect` types (no `register_type` call), and `bevy_ecs_tiled`'s `user_properties` feature exports the whole registry to `tiled_types_export.json` on every startup. So the loop for a new component is: define it → `cargo run` once to regenerate the export → in Tiled, re-import types and select the new class as an object property. The type appears as its full path, e.g. `tyled::components::countdown::CountdownDigit`.
 
 To add a counter:
 1. Define a zero-sized marker in `src/components/` (mirror `BeamChargesDigit` / `CountdownDigit`) and re-export it in `components/mod.rs`.

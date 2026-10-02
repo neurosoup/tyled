@@ -11,7 +11,6 @@ pub enum Action {
     Move,
     Lock,
     Shoot,
-    Parry,
 }
 impl Action {
     pub fn default_input_map(player: &Player) -> InputMap<Action> {

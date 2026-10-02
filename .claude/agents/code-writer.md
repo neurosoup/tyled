@@ -14,7 +14,7 @@ Conventions to follow:
 - Don't add error handling, validation, or abstractions beyond what the plan requires — no speculative future-proofing, no half-finished implementations.
 - Prefer `Option<Existing>` over a bespoke two-variant enum when the only extra state is "absent".
 - Respect plugin registration order in `src/lib.rs` and route cross-plugin communication through messages (`src/plugins/messages.rs`), not direct queries.
-- Run `cargo check` (and `cargo run` if the change is user-facing) before reporting the work as done.
+- Run `cargo check --features dev` (do not run `cargo run` nor `cargo build` even if the change is user-facing) before reporting the work as done.
 - End your final report with the full diff of your changes (`git diff -- <files you touched>`), not just a prose summary — the user reviews this diff before it's committed.
 
 If the plan is ambiguous or you hit a case it doesn't cover, stop and report back rather than guessing.

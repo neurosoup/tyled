@@ -9,36 +9,41 @@ use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::*;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_systems(Startup, setup_beam_step_timer);
     app.add_systems(
         Update,
-        (spawn_beam, beam_step)
+        (spawn_beam, resolve_parry, beam_step)
             .chain()
             .in_set(GameplaySet::Beam)
             .run_if(in_state(RoundPhase::Playing)),
     );
+    // Ordered before `beam_step` — both mutate `Beam` unfiltered, a real ambiguity otherwise.
     #[cfg(feature = "dev")]
-    app.add_systems(Update, resync_beam_step_timer);
+    app.add_systems(Update, resync_beam_step_timers.before(beam_step));
 }
 
-#[derive(Resource)]
-pub struct BeamStepTimer(Timer);
-
-fn setup_beam_step_timer(mut commands: Commands, config: Res<GameConfig>) {
-    commands.insert_resource(BeamStepTimer(Timer::from_seconds(
-        config.timing.beam_step_secs,
-        TimerMode::Repeating,
-    )));
+/// A beam's step duration at a given rally depth.
+fn beam_step_duration(config: &GameConfig, parries: u32) -> f32 {
+    let speed = config.parry.speed_multiplier.powi(parries as i32);
+    (config.timing.beam_step_secs / speed).max(config.parry.min_step_secs)
 }
 
+/// A freshly seeded per-beam step timer, pre-elapsed so the beam steps on its spawn frame.
+fn new_beam_step_timer(duration_secs: f32) -> Timer {
+    let mut timer = Timer::from_seconds(duration_secs, TimerMode::Repeating);
+    timer.set_elapsed(timer.duration());
+    timer
+}
+
+/// Resyncs every live beam's step timer when `game_config.ron` hot-reloads.
 #[cfg(feature = "dev")]
-fn resync_beam_step_timer(config: Res<GameConfig>, timer: Option<ResMut<BeamStepTimer>>) {
-    if config.is_changed()
-        && let Some(mut timer) = timer
-    {
-        timer.0.set_duration(std::time::Duration::from_secs_f32(
-            config.timing.beam_step_secs,
-        ));
+fn resync_beam_step_timers(config: Res<GameConfig>, mut beams: Query<&mut Beam>) {
+    if !config.is_changed() {
+        return;
+    }
+    for mut beam in &mut beams {
+        let duration = beam_step_duration(&config, beam.parries);
+        beam.step_timer
+            .set_duration(std::time::Duration::from_secs_f32(duration));
     }
 }
 
@@ -72,6 +77,7 @@ pub(crate) fn resolve_fire(
 // nothing, but a spawned beam that finds nothing to claim still costs its charge.
 fn spawn_beam(
     mut commands: Commands,
+    config: Res<GameConfig>,
     mut beam_fired_reader: MessageReader<BeamFired>,
     beams_query: Query<(&Beam, &GridCoords)>,
     ability_query: Query<&AbilityList>,
@@ -82,7 +88,7 @@ fn spawn_beam(
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
-            if beam.owner != beam_fired_message.owner {
+            if beam.caster != beam_fired_message.owner {
                 return false;
             }
             // Horizontal new beam: overlapping if existing beam is on same row (Y) and horizontal
@@ -118,9 +124,11 @@ fn spawn_beam(
             beam_fired_message.origin,
             Beam {
                 owner: beam_fired_message.owner,
+                caster: beam_fired_message.owner,
                 direction: beam_fired_message.direction,
-                speed: 1.0,
+                parries: 0,
                 behavior,
+                step_timer: new_beam_step_timer(beam_step_duration(&config, 0)),
             },
         ));
         if !owner_has_active_beam {
@@ -137,14 +145,15 @@ fn spawn_beam(
     }
 }
 
-/// Whether `position` is claimed by an entity other than `owner` and `owner`'s
-/// `AbilityList` contains [`AbilityDescriptor::BorderGrinder`] — i.e. the beam should
-/// punch through this enemy tile instead of stopping short of it.
+/// Whether `position` is claimed by an entity other than `owner` (the beneficiary) and
+/// `caster`'s (the original shooter's) `AbilityList` contains
+/// [`AbilityDescriptor::BorderGrinder`].
 fn border_grinder_flips_tile(
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
     ability_query: &Query<&AbilityList>,
     owner: Entity,
+    caster: Entity,
     position: GridCoords,
 ) -> bool {
     let is_enemy_tile = map_info
@@ -156,41 +165,111 @@ fn border_grinder_flips_tile(
 
     is_enemy_tile
         && ability_query
-            .get(owner)
+            .get(caster)
             .is_ok_and(|list| list.0.contains(&AbilityDescriptor::BorderGrinder))
 }
 
-/// Ends a beam's lifetime: decrements its owner's in-flight count and queues
-/// the despawn. Every despawn in `beam_step` must go through this — a bare
-/// `despawn()` leaks the counter.
+/// Ends a beam's lifetime: decrements `caster`'s in-flight count and despawns it.
 fn end_beam(
     commands: &mut Commands,
     beam_entity: Entity,
-    owner: Entity,
+    caster: Entity,
     in_flight: &mut Query<&mut InFlightBeamCount>,
 ) {
-    if let Ok(mut count) = in_flight.get_mut(owner) {
+    if let Ok(mut count) = in_flight.get_mut(caster) {
         count.current = count.current.saturating_sub(1);
     }
     commands.entity(beam_entity).despawn();
 }
 
+/// Whether a beam immediately in front of `character`, which `character` is
+/// facing, is currently parryable.
+pub(crate) fn find_parryable_beam(
+    coords: GridCoords,
+    facing: GridCoords,
+    character: Entity,
+    beams: &Query<(Entity, &GridCoords, &Beam), Without<Character>>,
+    map_info: &MapInfo,
+    claimed_query: &Query<&ClaimedTile>,
+    window_fraction: f32,
+) -> Option<Entity> {
+    for (entity, beam_coords, beam) in beams {
+        if beam.owner == character {
+            continue;
+        }
+        if *beam_coords + beam.direction != coords {
+            continue;
+        }
+        // Must be facing the incoming beam, not just standing in its path.
+        if facing != GridCoords::new(-beam.direction.x, -beam.direction.y) {
+            continue;
+        }
+        if beam.step_timer.elapsed_secs()
+            >= window_fraction * beam.step_timer.duration().as_secs_f32()
+        {
+            continue;
+        }
+        let threatens = match beam.behavior {
+            BeamBehavior::Straight => !is_position_claimed(map_info, claimed_query, coords),
+            BeamBehavior::Lance => is_position_claimed(map_info, claimed_query, coords),
+        };
+        if threatens {
+            return Some(entity);
+        }
+    }
+    None
+}
+
+// Reads `ParryTriggered`, reversing the beam and flipping its `owner` to the parrier.
+fn resolve_parry(
+    config: Res<GameConfig>,
+    mut parry_triggered_reader: MessageReader<ParryTriggered>,
+    mut beams: Query<&mut Beam>,
+    mut beam_parried_writer: MessageWriter<BeamParried>,
+) {
+    let mut handled = std::collections::HashSet::new();
+    for message in parry_triggered_reader.read() {
+        if !handled.insert(message.beam) {
+            continue;
+        }
+        let Ok(mut beam) = beams.get_mut(message.beam) else {
+            continue;
+        };
+        if beam.owner == message.parrier {
+            continue;
+        }
+
+        beam.direction = GridCoords::new(-beam.direction.x, -beam.direction.y);
+        beam.owner = message.parrier;
+        beam.parries += 1;
+        beam.step_timer = new_beam_step_timer(beam_step_duration(&config, beam.parries));
+
+        beam_parried_writer.write(BeamParried {
+            beam: message.beam,
+            parrier: message.parrier,
+            caster: beam.caster,
+            new_direction: beam.direction,
+            parries: beam.parries,
+        });
+    }
+}
+
 fn beam_step(
     mut commands: Commands,
-    mut beams_query: Query<(Entity, &Beam, &mut GridCoords), Without<Character>>,
+    mut beams_query: Query<(Entity, &mut Beam, &mut GridCoords), Without<Character>>,
     claimed_query: Query<&ClaimedTile>,
     ability_query: Query<&AbilityList>,
     time: Res<Time>,
-    mut beam_step_timer: ResMut<BeamStepTimer>,
     map_info: Res<MapInfo>,
     mut beam_resolved_writer: MessageWriter<BeamResolved>,
     mut in_flight: Query<&mut InFlightBeamCount>,
 ) {
-    beam_step_timer.0.tick(time.delta());
-    if !beam_step_timer.0.is_finished() {
-        return;
-    }
-    for (beam_entity, beam, mut position) in &mut beams_query {
+    for (beam_entity, mut beam, mut position) in &mut beams_query {
+        beam.step_timer.tick(time.delta());
+        if !beam.step_timer.just_finished() {
+            continue;
+        }
+
         let next_position = *position + beam.direction;
 
         match beam.behavior {
@@ -203,7 +282,7 @@ fn beam_step(
                 if !(map_info.on_ground(next_position)
                     || map_info.on_forbidden_areas(next_position))
                 {
-                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
+                    end_beam(&mut commands, beam_entity, beam.caster, &mut in_flight);
                     continue;
                 }
                 let is_next_unclaimed = map_info.on_ground(next_position)
@@ -216,7 +295,7 @@ fn beam_step(
                         position: next_position,
                         owner: beam.owner,
                     });
-                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
+                    end_beam(&mut commands, beam_entity, beam.caster, &mut in_flight);
                     continue;
                 }
                 *position = next_position;
@@ -253,7 +332,7 @@ fn beam_step(
                             owner: beam.owner,
                         });
                     }
-                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
+                    end_beam(&mut commands, beam_entity, beam.caster, &mut in_flight);
                     continue;
                 }
 
@@ -275,6 +354,7 @@ fn beam_step(
                         &claimed_query,
                         &ability_query,
                         beam.owner,
+                        beam.caster,
                         next_position,
                     )
                 {
@@ -282,7 +362,7 @@ fn beam_step(
                         position: next_position,
                         owner: beam.owner,
                     });
-                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
+                    end_beam(&mut commands, beam_entity, beam.caster, &mut in_flight);
                     continue;
                 }
 
@@ -307,7 +387,7 @@ fn beam_step(
                             owner: beam.owner,
                         });
                     }
-                    end_beam(&mut commands, beam_entity, beam.owner, &mut in_flight);
+                    end_beam(&mut commands, beam_entity, beam.caster, &mut in_flight);
                     continue;
                 }
 
