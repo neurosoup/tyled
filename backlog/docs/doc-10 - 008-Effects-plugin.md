@@ -3,11 +3,11 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-09-15 14:00'
+updated_date: '2026-10-03 00:00'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, and a beam-origin illumination telegraph that lights up each tile a beam crosses. Because knockback, death-bounce, movement-settle, and plain translation can all target the same player entity's `Transform` `TweenAnim` slot, this plugin also arbitrates ownership of that slot so a higher-priority effect is never silently overwritten mid-play, and so completion handlers act only on the effect that actually finished.
+Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam-origin illumination telegraph that lights up each tile a beam crosses, and a landed-parry scale punch that briefly enlarges the parrier's sprite. Because knockback, death-bounce, movement-settle, and plain translation can all target the same player entity's `Transform` `TweenAnim` slot, this plugin also arbitrates ownership of that slot so a higher-priority effect is never silently overwritten mid-play, and so completion handlers act only on the effect that actually finished.
 
 ## Transform effect ownership
 
@@ -71,6 +71,15 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
             - Ticks the entity's timer; once it finishes, removes `IsKnockedBack` — the sole removal path during normal play, independent of whatever the visual tween/tag is doing
     - `on_illumination_completed`:
         - Reads `AnimCompletedEvent`; despawns the `IlluminationDriver` entity whose tween finished
+    - `trigger_parry_scale_effect` (tagged `GameplaySet::Presentation`):
+        - Reads `BeamParried` messages
+            - Inserts `ParryScaleEffectTarget` on the parrier's root entity
+    - `apply_parry_scale_effect` (tagged `GameplaySet::Presentation`):
+        - Reacts to `Added<ParryScaleEffectTarget>`
+            - Resolves the entity's first child sprite; if found, despawns any existing `ParryScaleDriver` already targeting that sprite (re-parry dedup), then spawns a fresh driver carrying the scale-punch `TweenAnim` redirected at the sprite's `Transform`
+            - Always removes `ParryScaleEffectTarget`, even when no sprite child is found
+    - `on_parry_scale_completed`:
+        - Reads `AnimCompletedEvent`; despawns the `ParryScaleDriver` entity whose tween finished
 - `OnExit(RoundPhase::Playing)`
     - `clear_illumination_drivers`: force-resets any tile still mid-tint back to `Color::WHITE` and despawns its driver, so a round boundary can't strand a tinted tile
 
@@ -135,6 +144,18 @@ Reads `AnimCompletedEvent` events. For each, despawns the `IlluminationDriver` e
 ### Clear Illumination Drivers
 
 Runs on `OnExit(RoundPhase::Playing)`. For every `IlluminationDriver` still alive (a tint whose tween hadn't finished when the round left `Playing`), force-sets its target tile's `Sprite::color` back to `Color::WHITE` and despawns the driver.
+
+### Trigger Parry Scale Effect
+
+Reads `BeamParried` messages. For each, inserts `ParryScaleEffectTarget` on the parrier's root entity — one marker insert per landed parry, with no dedup of its own (deduplication happens downstream in `apply_parry_scale_effect`). Tagged `.in_set(GameplaySet::Presentation)`, the same position in the shared gameplay chain (`schedule.rs`) as `apply_death_effect`.
+
+### Apply Parry Scale Effect
+
+Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find the first child sprite entity; if found, despawns any existing `ParryScaleDriver` already targeting that same sprite (re-parry dedup — a parrier parried again before their first scale punch finishes gets the tween restarted from peak rather than stacking two drivers on the same sprite), then spawns a fresh driver entity carrying `ParryScaleDriver { sprite }`, `AnimTarget::component::<Transform>(sprite)`, and a `TweenAnim` built by `create_parry_scale_tween` — a `TransformScaleLens` that starts at `config.parry.scale_punch_peak` (default `1.3`) and eases (`EaseFunction::CubicIn`) down to `Vec3::ONE` over `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). `ParryScaleEffectTarget` is removed unconditionally, even when no sprite child is found, so a parrier without a sprite child never strands the marker. Tagged `.in_set(GameplaySet::Presentation)`. See the `ParryScaleDriver` lifecycle section below for why the tween is redirected at a proxy entity rather than living on the sprite directly.
+
+### On Parry Scale Completed
+
+Reads `AnimCompletedEvent` events. For each, despawns the `ParryScaleDriver` entity whose tween just finished — the same completion-cleanup pattern as `on_illumination_completed`, preventing driver entities from leaking one per parry.
 
 ## Components, Resources and Messages CRUD
 
@@ -1033,6 +1054,135 @@ apply_illumination_effect ---> |spawns entity with| nd_anim_target
 apply_illumination_effect ---> |spawns entity with| nd_tween
 ```
 
+### Read BeamParried messages
+
+Used in the following systems:
+- **trigger_parry_scale_effect**: reads `BeamParried` messages and inserts `ParryScaleEffectTarget` on the parrier's root entity
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
+
+update -.-> trigger_parry_scale_effect
+
+message_reader{{"MessageReader#60;BeamParried#62;"}}:::reader
+trigger_parry_scale_effect ---> message_reader
+
+beam_parried_message(["`**BeamParried**`"])
+
+message_reader ---> |reads| beam_parried_message
+
+parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
+pe_target>"`**ParryScaleEffectTarget**`"]
+pe_target --> |inserted on| parrier_entity
+
+trigger_parry_scale_effect ---> |inserts| pe_target
+```
+
+### Query ParryScaleEffectTarget entities and write commands (apply_parry_scale_effect)
+
+Used in the following systems:
+- **apply_parry_scale_effect**: reacts to `Added<ParryScaleEffectTarget>`, resolves the entity's first child sprite, despawns any existing `ParryScaleDriver` targeting that sprite, spawns a replacement driver carrying the scale-punch tween, and always removes `ParryScaleEffectTarget`
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
+
+update -.-> apply_parry_scale_effect
+
+parry_query{{"`parry_query`"}}:::query
+sprite_query{{"`sprite_query`"}}:::query
+driver_query{{"`drivers`"}}:::query
+apply_parry_scale_effect ---> parry_query
+apply_parry_scale_effect ---> sprite_query
+apply_parry_scale_effect ---> driver_query
+
+parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
+pe_target>"`**ParryScaleEffectTarget**`"] --> |belongs to| parrier_entity
+pe_children>"`**Children**`"] --> |"belongs to (optional)"| parrier_entity
+
+parry_query -..-> |filter Added| pe_target
+parry_query ---> |"reads (optional)"| pe_children
+apply_parry_scale_effect ---> |always removes| pe_target
+
+sprite_entity@{ shape: st-rect, label: "Parrier Child (Sprite)" }
+se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
+sprite_query ---> |reads| se_sprite
+
+driver_entity@{ shape: st-rect, label: "ParryScaleDriver (existing)" }
+de_driver>"`**ParryScaleDriver**`"] --> |belongs to| driver_entity
+driver_query ---> |reads .sprite| de_driver
+apply_parry_scale_effect ---> |despawns matching driver| driver_entity
+
+new_driver_entity@{ shape: st-rect, label: "ParryScaleDriver (spawned)" }
+nd_driver>"`**ParryScaleDriver**`"]
+nd_anim_target>"`**AnimTarget#60;Transform#62;**`"]
+nd_tween>"`**TweenAnim**`"]
+
+nd_driver --> |spawned on| new_driver_entity
+nd_anim_target --> |spawned on| new_driver_entity
+nd_tween --> |spawned on| new_driver_entity
+
+apply_parry_scale_effect ---> |spawns entity with| nd_driver
+apply_parry_scale_effect ---> |spawns entity with| nd_anim_target
+apply_parry_scale_effect ---> |spawns entity with| nd_tween
+```
+
+### Read AnimCompletedEvent (on_parry_scale_completed)
+
+Used in the following systems:
+- **on_parry_scale_completed**: despawns the `ParryScaleDriver` entity whose tween just finished
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+on_parry_scale_completed["`**on_parry_scale_completed**`"]
+
+update -.-> on_parry_scale_completed
+
+event_reader{{"EventReader#60;AnimCompletedEvent#62;"}}:::reader
+on_parry_scale_completed ---> event_reader
+
+anim_completed_event(["`**AnimCompletedEvent**`"])
+event_reader ---> |reads| anim_completed_event
+
+driver_query{{"`drivers`"}}:::query
+on_parry_scale_completed ---> driver_query
+
+driver_entity@{ shape: st-rect, label: "ParryScaleDriver" }
+de_driver>"`**ParryScaleDriver**`"] --> |belongs to| driver_entity
+driver_query -..-> |filter With| de_driver
+
+on_parry_scale_completed ---> |despawns| driver_entity
+```
+
 ### IlluminationDriver component lifecycle
 
 `IlluminationDriver { tile: Entity }` (`src/components/effects.rs`) is a transient proxy entity whose `TweenAnim` is redirected at `tile`'s `Sprite` via `AnimTarget::component::<Sprite>(tile)`, rather than living on the tile itself — the tile entity's own `TweenAnim` slot is already occupied by the wave-bounce effect's `Transform` tween, and `bevy_tweening` allows only one `TweenAnim` per `(entity, component)` pair. Its full lifecycle:
@@ -1070,4 +1220,37 @@ apply_illumination_effect ---> |animates via AnimTarget| tile_entity
 on_illumination_completed ---> |despawns on AnimCompletedEvent| driver_entity
 clear_illumination_drivers ---> |force-resets to WHITE| tile_entity
 clear_illumination_drivers ---> |despawns| driver_entity
+```
+
+### ParryScaleDriver component lifecycle
+
+`ParryScaleDriver { sprite: Entity }` (`src/components/effects.rs`) is a transient proxy entity whose `TweenAnim` is redirected at `sprite`'s `Transform` via `AnimTarget::component::<Transform>(sprite)`, rather than living on the sprite itself — `TweenAnim` is a single component per entity, and that same sprite child's `TweenAnim` slot already belongs to `apply_damage_effect`'s color-flash tween (`SpriteColorLens`, built by `create_color_flash_tween`); inserting the scale-punch tween directly on the sprite would let either effect silently overwrite the other's `TweenAnim` whenever both land on the same entity close together. Its full lifecycle:
+- **Spawned** by `apply_parry_scale_effect` (this plugin), one per landed parry, carrying the scale-punch `TweenAnim`.
+- **Despawned pre-emptively** by `apply_parry_scale_effect` itself, for any existing driver already targeting the same sprite, before spawning the replacement — a parrier parrying again before their first scale punch finishes never leaves two competing tweens on their sprite.
+- **Despawned on completion** by `on_parry_scale_completed`, reading `AnimCompletedEvent`; no scale reset needed, since the tween's own final keyframe is already `Vec3::ONE`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+
+apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
+on_parry_scale_completed["`**on_parry_scale_completed**`"]
+
+update -.-> apply_parry_scale_effect
+update -.-> on_parry_scale_completed
+
+driver_entity@{ shape: st-rect, label: "ParryScaleDriver" }
+sprite_entity@{ shape: st-rect, label: "Parrier Child (Sprite, Transform)" }
+
+apply_parry_scale_effect ---> |spawns, targeting| driver_entity
+apply_parry_scale_effect ---> |despawns stale driver for same sprite| driver_entity
+apply_parry_scale_effect ---> |animates via AnimTarget| sprite_entity
+on_parry_scale_completed ---> |despawns on AnimCompletedEvent| driver_entity
 ```

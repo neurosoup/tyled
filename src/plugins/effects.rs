@@ -34,6 +34,8 @@ pub(crate) fn plugin(app: &mut App) {
             on_illumination_completed,
             trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
             apply_parry_scale_effect.in_set(GameplaySet::Presentation),
+            on_parry_scale_completed,
+            on_damage_flash_completed,
         ),
     );
     app.add_systems(OnExit(RoundPhase::Playing), clear_illumination_drivers);
@@ -277,14 +279,33 @@ fn apply_damage_effect(
         (With<DamageEffectTarget>, Changed<Health>),
     >,
     sprite_query: Query<&Sprite>,
+    drivers: Query<(Entity, &DamageFlashDriver)>,
 ) {
     for (_entity, children) in &damageable_query {
         if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
-            commands
-                .entity(sprite_entity)
-                .insert(TweenAnim::new(create_color_flash_tween(
-                    config.effects.damage_flash_ms,
-                )));
+            for (driver_entity, driver) in &drivers {
+                if driver.sprite == sprite_entity {
+                    commands.entity(driver_entity).despawn();
+                }
+            }
+            commands.spawn((
+                Name::new("DamageFlashDriver"),
+                DamageFlashDriver { sprite: sprite_entity },
+                AnimTarget::component::<Sprite>(sprite_entity),
+                TweenAnim::new(create_color_flash_tween(config.effects.damage_flash_ms)),
+            ));
+        }
+    }
+}
+
+fn on_damage_flash_completed(
+    mut commands: Commands,
+    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
+    drivers: Query<Entity, With<DamageFlashDriver>>,
+) {
+    for ev in anim_completed_reader.read() {
+        if let Ok(entity) = drivers.get(ev.anim_entity) {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -476,15 +497,38 @@ fn apply_parry_scale_effect(
     config: Res<GameConfig>,
     parry_query: Query<(Entity, Option<&Children>), Added<ParryScaleEffectTarget>>,
     sprite_query: Query<&Sprite>,
+    drivers: Query<(Entity, &ParryScaleDriver)>,
 ) {
     for (entity, children) in &parry_query {
         if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
-            commands.entity(sprite_entity).insert(TweenAnim::new(create_parry_scale_tween(
-                config.parry.scale_punch_peak,
-                config.parry.scale_punch_secs,
-            )));
+            for (driver_entity, driver) in &drivers {
+                if driver.sprite == sprite_entity {
+                    commands.entity(driver_entity).despawn();
+                }
+            }
+            commands.spawn((
+                Name::new("ParryScaleDriver"),
+                ParryScaleDriver { sprite: sprite_entity },
+                AnimTarget::component::<Transform>(sprite_entity),
+                TweenAnim::new(create_parry_scale_tween(
+                    config.parry.scale_punch_peak,
+                    config.parry.scale_punch_secs,
+                )),
+            ));
         }
         commands.entity(entity).remove::<ParryScaleEffectTarget>();
+    }
+}
+
+fn on_parry_scale_completed(
+    mut commands: Commands,
+    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
+    drivers: Query<Entity, With<ParryScaleDriver>>,
+) {
+    for ev in anim_completed_reader.read() {
+        if let Ok(entity) = drivers.get(ev.anim_entity) {
+            commands.entity(entity).despawn();
+        }
     }
 }
 

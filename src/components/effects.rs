@@ -110,3 +110,15 @@ pub struct WaveSource;
 /// One-shot landed-parry scale punch, inserted on the parrier's root entity.
 #[derive(Component)]
 pub struct ParryScaleEffectTarget;
+
+/// Drives the scale-punch tween on a sprite entity from a separate carrier entity.
+#[derive(Component)]
+pub struct ParryScaleDriver {
+    pub sprite: Entity,
+}
+
+/// Drives the damage color-flash tween on a sprite entity from a separate carrier entity.
+#[derive(Component)]
+pub struct DamageFlashDriver {
+    pub sprite: Entity,
+}
