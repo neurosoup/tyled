@@ -180,6 +180,8 @@ pub struct BotConfig {
     pub hostile_cost: u32,
     /// Maximum Dijkstra cost worth paying to reach a tile from which Border Grinder can flip an enemy tile. Above this, chasing isn't worth it and the bot falls back to ordinary territory claiming instead. Roughly comparable to `hostile_cost` — a low value means it only chases flips reachable without crossing hostile ground at all; a high value lets it tunnel deep through enemy territory to get there.
     pub chase_cost_threshold: u32,
+    /// Chance (0.0-1.0), rolled once per incoming hostile beam, that the bot goes for a parry instead of ignoring/dodging it. Governs both the reflexive in-window catch and whether it breaks off its current goal to turn and brace for one approaching from a distance.
+    pub parry_chance: f32,
     /// Whether player 1 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
     pub player1_strike: bool,
     /// Whether player 2 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
@@ -324,5 +326,16 @@ mod dev {
                 *config = updated.clone();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod scratch_ron_check {
+    use super::GameConfig;
+
+    #[test]
+    fn embedded_config_parses() {
+        let cfg = GameConfig::embedded();
+        assert!((0.0..=1.0).contains(&cfg.bot.parry_chance));
     }
 }

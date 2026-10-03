@@ -12,16 +12,19 @@ Drives a bot-controlled player's synthetic `ActionState<Action>` through the sam
 Each seat runs one of two decision modes, selected per seat by `config.bot.strike_for(player.player_id)`:
 
 - **Striking seat** (strike flag on) — offense-focused; ignores territory. It fires whenever it has a line of fire to the opponent, otherwise chases them via A*.
-- **Territory seat** (strike flag off — the default) — first runs an always-on reactive dodge that steps off the line of an incoming hostile beam; otherwise it claims tiles by firing along runways, repositions via Dijkstra, and (with the Lance ability) strikes aligned opponents.
+- **Territory seat** (strike flag off — the default) — first runs an always-on reactive brace-or-dodge against an incoming hostile beam (turn and hold for a parry if there's a `parry_chance` roll and enough runway, else step off the line); otherwise it claims tiles by firing along runways, repositions via Dijkstra, and (with the Lance ability) strikes aligned opponents.
+
+Both seats share one reflex layer, checked every frame ahead of either mode and ahead of the beat gate described below: whenever `find_parryable_beam` finds a parryable beam right now, the bot either presses `Action::Shoot` (behaviour `"parry"`) or lets it through, per the same per-beam `parry_chance` roll the brace/dodge call consults. This runs at frame rate rather than on the `think_interval_ms` beat because the parry window (`config.parry.window_fraction` of a beam step) is far narrower than the gap between beats — gating it on the beat would mean catching it by luck alone.
 
 ## Concepts
 
 - `Bot` — zero-sized marker component (`src/components/markers.rs`). Attached by the Input plugin's `attach_players_actions` to a bot-controlled player's entity in place of an `InputMap<Action>`; a bare `ActionState<Action>` is inserted alongside it instead. No standalone marker doc exists for it — it is documented here since this plugin is its primary consumer.
-- `BotDecision` — public component mirroring the bot's most recently chosen behaviour: `behaviour` (a short tag, one of `"claim"`, `"aggress"`, `"aim"`, `"reposition"`, `"idle"`, `"lance"`, `"lance_strike"`, `"hunt"`, `"strike_lance"`, `"strike_straight"`, `"dodge"`), `why` (a human-readable reason string), `move_x`/`move_y` (the chosen move axis), and `shoot` (whether it fired this beat). Overwritten only when the value differs from the previous beat, so a cross-module reader — the Telemetry plugin's `record_decisions` — can log strictly on change via `Changed<BotDecision>`.
-- `BotBrain` — private per-bot scratch state: `last_fire_secs` and `shooting` (fire-cooldown bookkeeping), `next_beat_secs` (the paced-deliberation gate), and `target` (a sticky `GridCoords` destination that persists across beats until it is claimed or claimed by the opponent).
+- `BotDecision` — public component mirroring the bot's most recently chosen behaviour: `behaviour` (a short tag, one of `"claim"`, `"aggress"`, `"aim"`, `"reposition"`, `"idle"`, `"lance"`, `"lance_strike"`, `"hunt"`, `"strike_lance"`, `"strike_straight"`, `"dodge"`, `"brace"`, `"parry"`), `why` (a human-readable reason string), `move_x`/`move_y` (the chosen move axis), and `shoot` (whether it fired this beat). Overwritten only when the value differs from the previous beat, so a cross-module reader — the Telemetry plugin's `record_decisions` — can log strictly on change via `Changed<BotDecision>`.
+- `BotBrain` — private per-bot scratch state: `last_fire_secs` and `shooting` (fire-cooldown bookkeeping), `next_beat_secs` (the paced-deliberation gate), `target` (a sticky `GridCoords` destination that persists across beats until it is claimed or claimed by the opponent), and `parry_rolls` (a per-beam-entity `HashMap<Entity, bool>` caching whether the bot committed to parrying that beam, shared between the reflex check and the brace/dodge call so both agree on the same beam; pruned each beat against the beams still in flight).
 - `config.controllers.player1_bot` / `player2_bot` — which seats are bot-driven; read by the Input plugin, not here.
-- `config.bot.fire_cooldown_ms`, `aggression`, `think_interval_ms`, `hostile_cost` — the four numeric tunables `bot_think` reads every beat (see the Config plugin doc for edit-timing tags).
-- `config.bot.player1_strike` / `player2_strike` — per-seat mode flags, read via `strike_for(player.player_id)` to choose the striking vs. territory decision path. The dodge reflex and the territory Lance-strike are always-on, not config toggles.
+- `config.bot.fire_cooldown_ms`, `aggression`, `think_interval_ms`, `hostile_cost`, `chase_cost_threshold`, `parry_chance` — the numeric tunables `bot_think` reads every beat (see the Config plugin doc for edit-timing tags). `parry_chance` is rolled once per incoming beam, not read as a raw threshold, to decide whether the bot goes for that beam's parry at all.
+- `config.parry.window_fraction` — the same human-facing parry-timing knob `handle_characters_input` uses, read here so the bot's reflex check and a human's input share one definition of "parryable."
+- `config.bot.player1_strike` / `player2_strike` — per-seat mode flags, read via `strike_for(player.player_id)` to choose the striking vs. territory decision path. The reflex parry layer and the territory Lance-strike are always-on, not config toggles.
 
 ## Plugin workflow
 
@@ -39,7 +42,9 @@ Runs in `Update`. Query filters `Added<Bot>, Without<BotBrain>` — for every bo
 
 Runs in `Update`, ordered `.after(attach_bot_state)` and tagged `.in_set(GameplaySet::BotThink)` — the shared `GameplaySet` chain (`schedule.rs`) orders `BotThink` before `GameplaySet::Input`, so its synthesized `ActionState` is in place before the Input plugin's `handle_characters_input` reads it that same frame — gated `in_state(RoundPhase::Playing)`.
 
-**Beat gate**: if `time.elapsed_secs()` is still short of `brain.next_beat_secs`, the system zeroes the move axis, releases `Action::Shoot`, and continues to the next bot without deliberating — this paces movement/aim/fire choices to `config.bot.think_interval_ms` rather than re-deciding every frame. Otherwise it schedules the next beat, resolves the opponent's tile (first non-self `Character` player), computes the fireable `behavior` from the current tile (`resolve_fire` with the bot's own `AbilityList`/`Lance`), and picks a branch based on `config.bot.strike_for(player.player_id)`.
+**Reflex parry layer**: runs first, every frame, ahead of the beat gate — `find_parryable_beam` (the same function `handle_characters_input` uses for a human) checks whether a hostile beam is right now inside its `config.parry.window_fraction` window and facing the bot. If so, the bot looks up (or rolls and caches) `brain.parry_rolls[beam]` against `config.bot.parry_chance`; on a hit it zeroes the move axis, presses `Action::Shoot`, mirrors behaviour `"parry"` into `BotDecision`, and skips the rest of the frame for that bot. This bypasses `think_interval_ms` entirely because the window itself (tens of milliseconds) is narrower than the gap between beats, so gating it on the beat would mean catching it by chance alone. A miss (beam not parryable, or the roll came up against it) falls through to the beat-gated logic below.
+
+**Beat gate**: if `time.elapsed_secs()` is still short of `brain.next_beat_secs`, the system zeroes the move axis, releases `Action::Shoot`, and continues to the next bot without deliberating — this paces movement/aim/fire choices to `config.bot.think_interval_ms` rather than re-deciding every frame. Otherwise it schedules the next beat, prunes `brain.parry_rolls` down to beams still in flight, resolves the opponent's tile (first non-self `Character` player), computes the fireable `behavior` from the current tile (`resolve_fire` with the bot's own `AbilityList`/`Lance`), and picks a branch based on `config.bot.strike_for(player.player_id)`.
 
 **Striking seat** (strike flag on, and an opponent exists) — offense-focused; territory is irrelevant.
 
@@ -48,7 +53,7 @@ Runs in `Update`, ordered `.after(attach_bot_state)` and tagged `.in_set(Gamepla
 
 **Territory seat** (strike flag off — the default) — deliberates in priority order:
 
-1. **Dodge** — before any fire/path logic, `incoming_beam_dodge` scans the `beams` query: if a hostile beam is travelling along the bot's row or column toward it, the bot steps perpendicular off the line onto a safe (on-ground, non-hostile) tile — behaviour `"dodge"`.
+1. **Brace or dodge** — before any fire/path logic, `incoming_beam_threat` scans the `beams` query for a hostile beam travelling along the bot's row or column toward it, returning its distance, the facing needed to parry it, and a safe perpendicular dodge step. The bot braces (turns toward it, or holds still if already facing it — behaviour `"brace"`) when it's already facing the right way or the beam is still 2+ tiles out *and* the shared `parry_chance` roll for that beam commits; a beam too close to safely reorient for, or one the roll rejected, gets the plain sideways dodge instead — behaviour `"dodge"`. Falling into the "too close" case also erases that beam's entry from `brain.parry_rolls` even if an earlier beat had already committed to it — abandoning the commitment so the reflex layer (which reads the same cache) doesn't still try to press `Action::Shoot` for a parry the bot is now busy dodging away from. Bracing doesn't throw the shot itself: the reflex layer above lands the actual parry once the window opens.
 2. **Fire** — `best_fire` is the current facing's `reach` if it is at least 1 tile, otherwise whichever `CARDINAL` has the greatest `reach` (≥ 1); for Lance it is instead the direction that lands on the opponent, else the first landing direction (`lance_hits_enemy` / `lance_landing`). Committing to the current facing until its line is exhausted avoids swivelling between two directions of equal reach. If the bot has charges and a shot is available: if it isn't facing the fire direction yet it turns in place — behaviour `"aim"`; once facing (or when no runway exists — firing into a blocked neighbour still claims the bot's own tile), and if the cooldown has elapsed and it isn't mid-shot, it presses `Action::Shoot` — behaviour `"lance_strike"` (Lance beam reaching an aligned opponent), `"lance"` (other Lance shot), `"aggress"` (Straight shot whose line crosses the opponent, `fires_toward_opponent`), or `"claim"`.
 3. **Reposition** — with no charges or no shot, it pathfinds via `dijkstra_first_steps` (4-connected, cost 1 per normal tile and `config.bot.hostile_cost` to enter an opponent-owned tile). It keeps the sticky `brain.target` if still reachable and unclaimed; otherwise picks the reachable unclaimed tile minimizing `reposition_score` (Dijkstra cost, biased toward the opponent once `aggression ≥ 0.5`), ties broken by Manhattan distance; if the whole board is claimed it falls back to the opponent's tile when reachable, so it pressures rather than idles. It steps one tile toward the target — behaviour `"aggress"` if `aggression ≥ 0.5` else `"reposition"` — or reports `"idle"` if nothing is reachable.
 
@@ -74,9 +79,9 @@ Private helper, not a system. Whether a shot of a given `BeamBehavior` fired fro
 
 Private helpers, not systems. `lance_hits_enemy` reports whether a Lance shot from a tile in a direction reaches the opponent — landing on their tile or passing its head over them — before resolving elsewhere or leaving the map. `lance_landing` returns the tile a Lance shot resolves on (pierces claimed/forbidden tiles to the first unclaimed ground tile ahead), or `None` if it leaves the map first. Used by the territory seat's Lance branch (and `shot_hits_enemy`).
 
-### incoming_beam_dodge (helper)
+### incoming_beam_threat (helper)
 
-Private helper, not a system. Scans the `beams` query for a hostile beam (not owned by this bot) travelling along the bot's row or column toward it; if one is found, returns a perpendicular escape step onto a safe (on-ground, non-hostile) tile off the line, else `None`. Drives the territory seat's always-on `"dodge"` reflex.
+Private helper, not a system. Scans the `beams` query for a hostile beam (not owned by this bot) travelling along the bot's row or column toward it with a safe dodge tile available (a beam with nowhere safe to step is skipped, same as the prior dodge-only check); if one is found, returns its distance, the facing needed to parry it, and the perpendicular dodge step, else `None`. Drives the territory seat's always-on brace-or-dodge branch.
 
 ## Components, Resources and Messages CRUD
 
@@ -229,10 +234,10 @@ positions_query -..-> |filter With| pe_player
 positions_query -..-> |filter With| pe_character
 ```
 
-### Query beams (dodge detection)
+### Query beams (parry/dodge detection)
 
 Used in the following systems:
-- **bot_think**: iterates active `Beam` entities (via `incoming_beam_dodge`), reading each beam's `GridCoords` and its `Beam.owner`/`Beam.direction`, to detect a hostile beam bearing down the bot's row or column and pick a perpendicular escape step. The `Without<Character>` filter excludes player entities so only logical beam tracers are scanned
+- **bot_think**: iterates active `Beam` entities — via `find_parryable_beam` in the every-frame reflex layer, and via `incoming_beam_threat` in the beat-gated brace/dodge branch — reading each beam's `GridCoords`, `Beam.owner`/`Beam.direction`, and (reflex layer only) `Beam.step_timer`, to detect a parryable or merely incoming hostile beam and pick a reaction. The `Without<Character>` filter excludes player entities so only logical beam tracers are scanned
 
 ```mermaid
 ---
@@ -266,7 +271,7 @@ beams_query -..-> |filter Without| be_character
 ### Read MapInfo and ClaimedTile (bot pathfinding and fire check)
 
 Used in the following systems:
-- **bot_think**: reads `MapInfo.on_ground`/`on_forbidden_areas`/`claimed_entities` and `ClaimedTile.owner` (via `resolve_fire`, `reach`, `is_position_claimed`, `is_hostile_tile`, `dijkstra_first_steps`, `astar_first_step`, `shot_hits_enemy`, `lance_hits_enemy`, `lance_landing`, and `incoming_beam_dodge`) to decide whether a shot is legal, score candidate firing directions, detect a line of fire to the opponent, and pathfind toward a reachable tile
+- **bot_think**: reads `MapInfo.on_ground`/`on_forbidden_areas`/`claimed_entities` and `ClaimedTile.owner` (via `resolve_fire`, `reach`, `is_position_claimed`, `is_hostile_tile`, `dijkstra_first_steps`, `astar_first_step`, `shot_hits_enemy`, `lance_hits_enemy`, `lance_landing`, `find_parryable_beam`, and `incoming_beam_threat`) to decide whether a shot is legal, score candidate firing directions, detect a line of fire to the opponent or an incoming beam, and pathfind toward a reachable tile
 
 ```mermaid
 ---
@@ -302,7 +307,7 @@ bot_think ---> |reads `claimed_entities`| map_info_res
 ### Read GameConfig (bot tuning)
 
 Used in the following systems:
-- **bot_think**: every beat reads the numeric tunables `config.bot.fire_cooldown_ms`, `config.bot.aggression`, `config.bot.think_interval_ms`, and `config.bot.hostile_cost`, plus the per-seat mode flag `config.bot.player1_strike`/`player2_strike` (via `strike_for`) to choose the striking vs. territory decision path. The dodge reflex and the territory Lance-strike are always-on, not config toggles
+- **bot_think**: every beat reads the numeric tunables `config.bot.fire_cooldown_ms`, `config.bot.aggression`, `config.bot.think_interval_ms`, `config.bot.hostile_cost`, and `config.bot.chase_cost_threshold`, plus the per-seat mode flag `config.bot.player1_strike`/`player2_strike` (via `strike_for`) to choose the striking vs. territory decision path. Every frame (not just on-beat) it also reads `config.bot.parry_chance` and `config.parry.window_fraction` for the reflex parry layer. The reflex parry layer and the territory Lance-strike are always-on, not config toggles
 
 ```mermaid
 ---

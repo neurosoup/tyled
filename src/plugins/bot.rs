@@ -45,6 +45,12 @@ struct BotBrain {
     shooting: bool,
     next_beat_secs: f32,
     target: Option<GridCoords>,
+    /// Per-beam "will I go for the parry" roll, made once when a beam is first recognized as a
+    /// threat and shared from then on between the reflexive in-window catch and the earlier
+    /// brace-vs-dodge call, so both agree on the same beam. A bail-out (too close to reorient
+    /// for, not already facing) removes the entry early rather than keeping it for the beam's
+    /// whole life. Pruned each beat against the beams still in flight.
+    parry_rolls: HashMap<Entity, bool>,
 }
 
 const CARDINALS: [GridCoords; 4] = [
@@ -104,6 +110,42 @@ fn bot_think(
         mut brain,
     ) in &mut bots
     {
+        // Reflex layer: a parry window is tens of milliseconds wide, far narrower than the beat
+        // interval below, so catching it can't wait for the next paced "think" — it's checked
+        // every frame regardless of beat timing. The chance roll (cached per beam, shared with
+        // the brace/dodge call further down) is what makes this "opportunistic" rather than a
+        // deterministic reflex: a beam the bot already decided to ignore stays ignored here too.
+        if let Some(beam) = find_parryable_beam(
+            *coords,
+            look.to_grid_coords(),
+            entity,
+            &beams,
+            &map_info,
+            &claimed_query,
+            config.parry.window_fraction,
+        ) {
+            let wants_to_parry = *brain
+                .parry_rolls
+                .entry(beam)
+                .or_insert_with(|| rand::rng().random_bool(config.bot.parry_chance as f64));
+            if wants_to_parry {
+                action_state.set_axis_pair(&Action::Move, Vec2::ZERO);
+                action_state.press(&Action::Shoot);
+                brain.shooting = true;
+                let next = BotDecision {
+                    behaviour: "parry".to_string(),
+                    why: "parrying incoming beam".to_string(),
+                    move_x: 0.0,
+                    move_y: 0.0,
+                    shoot: true,
+                };
+                if *decision != next {
+                    *decision = next;
+                }
+                continue;
+            }
+        }
+
         if now < brain.next_beat_secs {
             action_state.set_axis_pair(&Action::Move, Vec2::ZERO);
             action_state.release(&Action::Shoot);
@@ -116,6 +158,7 @@ fn bot_think(
             0.0
         };
         brain.next_beat_secs = now + (beat_secs + jitter_secs).max(0.0);
+        brain.parry_rolls.retain(|beam, _| beams.contains(*beam));
 
         let coords = *coords;
         let opponent = all.iter().find(|(e, _)| *e != entity).map(|(_, c)| *c);
@@ -255,27 +298,7 @@ fn bot_think(
             })
             .flatten();
 
-        let (axis, behaviour, why, shoot) = if find_parryable_beam(
-            coords,
-            look.to_grid_coords(),
-            entity,
-            &beams,
-            &map_info,
-            &claimed_query,
-            config.parry.window_fraction,
-        )
-        .is_some()
-        {
-            // Parrying is strictly better than every other decision when it's available: it
-            // removes the threat and returns it to the opponent instead of just displacing the
-            // bot (dodge) or eating the hit while pushing aggressively (strike_mode). Checked
-            // ahead of strike_mode, dodge, chase_target, and can_fire. Free (no charge check),
-            // same as the human input branch. Doesn't touch `last_fire_secs` — parry isn't
-            // gated by the fire cooldown.
-            action_state.press(&Action::Shoot);
-            brain.shooting = true;
-            (Vec2::ZERO, "parry", "parrying incoming beam".to_string(), true)
-        } else if let (true, Some(foe)) = (strike_mode, opponent) {
+        let (axis, behaviour, why, shoot) = if let (true, Some(foe)) = (strike_mode, opponent) {
             // Offense-focused: fire in any direction whose shot geometrically reaches the
             // opponent (line-of-fire, not adjacency); otherwise seek their row/column. Territory
             // is irrelevant here. `behavior` is `None` when firing is blocked (a claimed tile
@@ -360,18 +383,42 @@ fn bot_think(
                     None => (Vec2::ZERO, "idle", "no safe approach to foe".to_string(), false),
                 }
             }
-        } else if let Some(step) =
-            incoming_beam_dodge(coords, &beams, entity, &map_info, &claimed_query)
+        } else if let Some(threat) =
+            incoming_beam_threat(coords, &beams, entity, &map_info, &claimed_query)
         {
-            // A hostile beam is bearing down this row/column: step perpendicular off the line.
+            // A hostile beam is bearing down this row/column. A parry is strictly better than a
+            // dodge (it removes the threat and hands it back), but only worth going for when
+            // there's enough runway to turn and still catch the window — a beam already adjacent
+            // is too close to reorient for. Rolled once per beam and shared with the reflex catch
+            // above, so a beam the bot committed to here is the one it'll actually swing at.
+            let already_facing = look.to_grid_coords() == threat.needed_facing;
+            let wants_to_brace = already_facing || threat.distance >= 2;
+            let commits_to_parry = if wants_to_brace {
+                *brain
+                    .parry_rolls
+                    .entry(threat.beam)
+                    .or_insert_with(|| rand::rng().random_bool(config.bot.parry_chance as f64))
+            } else {
+                // Too close to turn in time and not already facing: abandon any earlier
+                // commitment to this beam so the reflex layer (which shares this cache) doesn't
+                // still try to catch it the instant the window opens while we're busy dodging.
+                brain.parry_rolls.remove(&threat.beam);
+                false
+            };
+
             action_state.release(&Action::Shoot);
             brain.shooting = false;
-            (
-                Vec2::new(step.x as f32, step.y as f32),
-                "dodge",
-                "evading beam".to_string(),
-                false,
-            )
+            if commits_to_parry && already_facing {
+                // Already lined up: hold still rather than dodge away from a parry we're about
+                // to land. The reflex check above fires the instant the window opens.
+                (Vec2::ZERO, "brace", "holding to parry incoming beam".to_string(), false)
+            } else if commits_to_parry {
+                let unit = Vec2::new(threat.needed_facing.x as f32, threat.needed_facing.y as f32);
+                (unit, "brace", "turning to parry incoming beam".to_string(), false)
+            } else {
+                let unit = Vec2::new(threat.dodge_step.x as f32, threat.dodge_step.y as f32);
+                (unit, "dodge", "evading beam".to_string(), false)
+            }
         } else if let Some((t, cost, step)) = chase_target {
             action_state.release(&Action::Shoot);
             brain.shooting = false;
@@ -671,16 +718,28 @@ fn lance_hits_enemy(
     }
 }
 
-/// If a hostile beam is travelling along `coords`' row or column toward it, returns a perpendicular
-/// step onto a safe (on-ground, non-hostile) tile to escape the line, else `None`.
-fn incoming_beam_dodge(
+/// A hostile beam travelling along `coords`' row or column toward it: how far out it is, which
+/// way `coords` would need to face to parry it, and a perpendicular step onto a safe tile to
+/// dodge it instead.
+struct IncomingThreat {
+    beam: Entity,
+    /// Chebyshev distance in tiles from the beam to `coords` along their shared line.
+    distance: i32,
+    needed_facing: GridCoords,
+    dodge_step: GridCoords,
+}
+
+/// `None` if no such beam has a safe (on-ground, non-hostile) dodge tile at all — matching the
+/// prior dodge-only behaviour, this skips a beam with nowhere safe to step rather than reporting
+/// a threat the bot has no response to.
+fn incoming_beam_threat(
     coords: GridCoords,
     beams: &Query<(Entity, &GridCoords, &Beam), Without<Character>>,
     self_entity: Entity,
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
-) -> Option<GridCoords> {
-    for (_, beam_pos, beam) in beams {
+) -> Option<IncomingThreat> {
+    for (beam_entity, beam_pos, beam) in beams {
         if beam.owner == self_entity {
             continue;
         }
@@ -696,12 +755,18 @@ fn incoming_beam_dodge(
         } else {
             [GridCoords::new(1, 0), GridCoords::new(-1, 0)]
         };
-        if let Some(step) = perpendicular.into_iter().find(|&p| {
+        let Some(dodge_step) = perpendicular.into_iter().find(|&p| {
             let dest = coords + p;
             map_info.on_ground(dest) && !is_hostile_tile(map_info, claimed_query, dest, self_entity)
-        }) {
-            return Some(step);
-        }
+        }) else {
+            continue;
+        };
+        return Some(IncomingThreat {
+            beam: beam_entity,
+            distance: (coords.x - beam_pos.x).abs().max((coords.y - beam_pos.y).abs()),
+            needed_facing: GridCoords::new(-dir.x, -dir.y),
+            dodge_step,
+        });
     }
     None
 }
