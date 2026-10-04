@@ -47,7 +47,7 @@ The two tile systems are complementary and chained (entry before poll): on-enter
             - Writes:
                 - Decrements `Health::current` on any entity whose `GridCoords` matches the beam head, excluding the beam's owner
                 - Writes a `DamageableDied` message if `Health::current` drops to zero
-                - Inserts a `KnockbackEffect` (direction = opposite of beam direction) on the hit entity
+                - Inserts a `KnockbackEffect` (direction = opposite of beam direction) on the hit entity; the effects plugin picks it up in `GameplaySet::Displacement` the same frame, so `apply_owned_tile_entry_damage` sees the resulting `GridCoords` change one frame later
 
 ## Plugin Systems
 

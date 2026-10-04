@@ -50,7 +50,7 @@ So `AppState` gates map loading; `RoundPhase::Loading`'s exit gates world bootst
 
 ### Gated by `run_if(in_state(RoundPhase::Playing))`
 
-Every stage of the gameplay pipeline declared in `schedule.rs`'s `GameplaySet` chain gates on `Playing`, with two exceptions (see Asymmetries below):
+Every stage of the gameplay pipeline declared in `schedule.rs`'s `GameplaySet` chain gates on `Playing`, with three exceptions (see Asymmetries below):
 
 - `GameplaySet::BotThink` — `bot.rs`'s `bot_think`
 - `GameplaySet::Input` — `inputs.rs`'s `handle_characters_input` (`tick_turning` shares the same `Playing` gate but is not tagged `GameplaySet::Input`)
@@ -79,6 +79,7 @@ Three other systems gate on phases other than `Playing`:
 ## Asymmetries
 
 - `claim_tile` (`claim.rs`) is gated on `Playing`, matching the rest of the `GameplaySet` pipeline: a `BeamResolved` message is always written and drained within the same frame, while `Playing`.
+- `GameplaySet::Displacement` (`effects.rs`'s `apply_knockback`) is ungated too. It runs after `Damage` and before `Presentation`, so a `KnockbackEffect` inserted by `Movement` or `Damage` is always seen in the same frame.
 - `hud.rs`'s `HudSync` stage and `GameplaySet::Presentation` (`animations.rs`, plus `effects.rs`'s `apply_death_effect`) are both deliberately ungated, not oversights. Neither writes anything round-resolution logic reads back, and both need to keep running past `Playing`: to let a tween or `smooth_nudge` (HP bar, damage flash, death bounce) finish playing out into `Outcome`, or to let a `Starting`-phase system pick up `reset_round`'s `OnExit(Outcome)` mass write — the tile-unclaim cascade, the HUD digit resets — as a visible transition during the intro instead of a snap at "GO!".
 - `round/state.rs`'s `start_countdown` and `round/intro.rs`'s `despawn_go_banner` are similarly ungated by design, for the same reason: continuous state (a resource re-insert, a tween) that must keep evolving right across a phase boundary rather than freezing at it.
 - `maps.rs` is the only plugin coupled to both state machines from opposite layers: `load_maps` hooks `OnEnter(AppState::InRound)`, its bootstrap chain hooks `OnExit(RoundPhase::Loading)`.

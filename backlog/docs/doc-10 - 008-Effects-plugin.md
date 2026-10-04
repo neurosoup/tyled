@@ -13,7 +13,7 @@ Contains systems responsible for all visual effects applied to game entities: sm
 
 Four systems can write a player's `Transform` `TweenAnim`: `apply_bounce_effect`, `apply_knockback`, `apply_movement_settle`, `apply_translate_effect`. Only one tween can occupy the slot at a time, so ownership among them follows a fixed precedence — **Bounce > Knockback > {Settle, Translate}** — enforced structurally through query shape rather than a runtime priority comparison:
 - `apply_bounce_effect` never checks for a competing effect: it fires on `Added<BounceEffectTarget>`, which is only ever inserted once the entity is already committed to bouncing — a death bounce (via `start_deferred_death_bounce` or directly from `apply_death_effect`) on a player, or a tile-claim bounce inserted by the Animations plugin's `animate_claimed_tile` on a claimed tile. This precedence rule matters only for players: a claimed tile has no competing `Transform` effect, so `ActiveTransformEffect(Bounce)` lands on it too but is never read back.
-- `apply_knockback` reads `Has<IsDead>` in the system body rather than filtering the query on it, so `KnockbackEffect` is always removed even when the tween itself is skipped (see Apply Knockback below for why).
+- `apply_knockback` reads `Has<IsDead>` and `Option<&Health>` in the system body rather than filtering the query on them, so `KnockbackEffect` is always removed even when the tween itself is skipped (see Apply Knockback below for why). It is tagged `GameplaySet::Displacement`, which runs after `Movement` and `Damage`, so it always sees a `KnockbackEffect` inserted in the same frame.
 - `apply_movement_settle` reads `Has<IsDead>`, `Has<IsKnockedBack>`, and `Has<KnockbackEffect>` in the system body for the same reason, so `MovementSettle` is always removed even when the tween is skipped (see Apply Movement Settle below for why `KnockbackEffect` is checked alongside the other two).
 - `apply_translate_effect` filters `Without<KnockbackEffect>`, `Without<IsKnockedBack>`, `Without<IsDead>` directly on the query, since it re-runs every frame the entity's `GridCoords` changes and has no request component of its own to strand.
 
@@ -29,10 +29,10 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `sync_resting_translation` (before `apply_bounce_effect` and `apply_wave_effect`):
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities (players)
             - Writes `RestingTranslation` to the new grid position's world translation
-    - `apply_knockback` (before `apply_translate_effect`):
+    - `apply_knockback` (tagged `GameplaySet::Displacement`, before `apply_translate_effect`):
         - Reacts to `Added<KnockbackEffect>`
-            - Reads `Transform`, `GridCoords`, `Has<IsDead>`, and `MapInfo` to validate the target tile and compute the destination
-            - If the target is on ground and the entity is not dead: mutates `GridCoords`, inserts a slide `TweenAnim`, `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`, and `ActiveTransformEffect(Knockback)`
+            - Reads `Transform`, `GridCoords`, `Has<IsDead>`, `Option<&Health>`, and `MapInfo` to validate the target tile and compute the destination
+            - If the target is on ground, the entity is not dead and its `Health.current` is above 0: mutates `GridCoords`, inserts a slide `TweenAnim`, `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`, and `ActiveTransformEffect(Knockback)`
             - Always removes `KnockbackEffect`
     - `apply_translate_effect`:
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities without `KnockbackEffect`, `IsKnockedBack`, or `IsDead`
@@ -94,7 +94,7 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
 
 ### Apply Knockback
 
-Reacts to `Added<KnockbackEffect>`. Computes the knockback target tile (`GridCoords + direction`) and validates it with `MapInfo::on_ground`. If valid and `Has<IsDead>` reads false, mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.knockback_tween_ms`, default `200`) plus `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))` and `ActiveTransformEffect(TransformEffectKind::Knockback)` (see the `IsKnockedBack` lifecycle section below for how the lock is cleared). `KnockbackEffect` is removed unconditionally — even when dead or blocked — because leaving it stranded would permanently block all future `Transform` effects on that entity.
+Reacts to `Added<KnockbackEffect>`. Computes the knockback target tile (`GridCoords + direction`) and validates it with `MapInfo::on_ground`. If valid, `Has<IsDead>` reads false and `Health.current` is above 0 (a lethal hit plays no slide), mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.knockback_tween_ms`, default `200`) plus `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))` and `ActiveTransformEffect(TransformEffectKind::Knockback)` (see the `IsKnockedBack` lifecycle section below for how the lock is cleared). `KnockbackEffect` is removed unconditionally — even when dead, lethal or blocked — because leaving it stranded would permanently block all future `Transform` effects on that entity.
 
 ### Apply Translate Effect
 
@@ -187,7 +187,7 @@ Reads `AnimCompletedEvent` events. For each, despawns the `ParryScaleDriver` ent
 ### Query KnockbackEffect entities (knockback)
 
 Used in the following systems:
-- **apply_knockback**: reads `Transform`, `GridCoords`, `KnockbackEffect`, and `Has<IsDead>` on newly knocked-back entities; mutates `GridCoords`, writes `TweenAnim` + `ActiveTransformEffect`; removes `KnockbackEffect`
+- **apply_knockback**: reads `Transform`, `GridCoords`, `KnockbackEffect`, `Has<IsDead>`, and `Option<&Health>` on newly knocked-back entities; mutates `GridCoords`, writes `TweenAnim` + `ActiveTransformEffect`; removes `KnockbackEffect`
 
 ```mermaid
 ---
@@ -255,7 +255,7 @@ apply_knockback ---> |reads `on_ground` + `to_translation`| map_info_res
 ### Write commands (apply_knockback)
 
 Used in the following systems:
-- **apply_knockback**: inserts a slide `TweenAnim` + `ActiveTransformEffect(Knockback)` + `IsKnockedBack` on the entity when valid and not dead, and always removes `KnockbackEffect`
+- **apply_knockback**: inserts a slide `TweenAnim` + `ActiveTransformEffect(Knockback)` + `IsKnockedBack` on the entity when valid, not dead and with health above 0, and always removes `KnockbackEffect`
 
 ```mermaid
 ---

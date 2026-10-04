@@ -100,7 +100,9 @@ pub(crate) fn plugin(app: &mut App) {
             sync_resting_translation
                 .before(apply_bounce_effect)
                 .before(apply_wave_effect),
-            apply_knockback.before(apply_translate_effect),
+            apply_knockback
+                .in_set(GameplaySet::Displacement)
+                .before(apply_translate_effect),
             apply_translate_effect,
             apply_movement_settle,
             apply_death_effect.after(apply_knockback).in_set(GameplaySet::Presentation),
@@ -251,14 +253,15 @@ fn apply_knockback(
     mut commands: Commands,
     config: Res<GameConfig>,
     mut query: Query<
-        (Entity, &Transform, &mut GridCoords, &KnockbackEffect, Has<IsDead>),
+        (Entity, &Transform, &mut GridCoords, &KnockbackEffect, Has<IsDead>, Option<&Health>),
         Added<KnockbackEffect>,
     >,
     map_info: Res<MapInfo>,
 ) {
-    for (entity, transform, mut coords, knockback, is_dead) in &mut query {
+    for (entity, transform, mut coords, knockback, is_dead, health) in &mut query {
         let target = *coords + knockback.direction;
-        if !is_dead && map_info.on_ground(target) {
+        let is_lethal = health.is_some_and(|health| health.current <= 0.0);
+        if !is_dead && !is_lethal && map_info.on_ground(target) {
             let start = transform.translation;
             let destination = target.to_translation(&map_info);
             *coords = target;

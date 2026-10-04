@@ -1,10 +1,12 @@
 ---
 id: TASK-11
 title: Effect drivers and resolver refactor
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-10-04 18:00'
+updated_date: '2026-10-04 17:11'
 labels: []
+milestone: m-5
 dependencies: []
 references:
   - src/plugins/effects.rs
@@ -12,6 +14,7 @@ references:
   - src/plugins/schedule.rs
   - src/plugins/round/state.rs
   - backlog/docs/doc-10 - 008-Effects-plugin.md
+ordinal: 1000
 ---
 
 ## Description
