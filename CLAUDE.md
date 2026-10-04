@@ -19,12 +19,25 @@ Prefer the `rust-analyzer` LSP (via the `LSP` tool) over `grep` when navigating 
 ## Commands
 
 ```bash
-cargo run          # Run the game (with hot reloading via file_watcher feature)
-cargo build        # Debug build
-cargo check        # Type-check without building
+cargo run --features dev          # Run the game (with hot reloading via file_watcher feature)
+cargo build --features dev        # Debug build
+cargo check                       # Type-check without building
+cargo test --features dev         # Run tests
 ```
 
+**Never run the game yourself** (`cargo run` or any other way of launching it). `cargo check`, `cargo build` and `cargo test` are fine. When a change needs to be seen in the running game, stop after those checks and ask the user to run it and report back.
+
+Use the commands exactly as listed above. When a change is only a rename, run `cargo check` and skip the tests.
+
 The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured to link with `clang`/`lld` for faster compile times (`.cargo/config.toml`).
+
+## Code comments and explanations
+
+- Doc comments (`///` and `//`) are one short, plain sentence that says what the thing *is*. Do not explain why it is designed that way, the math behind it, or which other systems it interacts with (e.g. "Rally depth.", not a sentence about how it also derives speed).
+- Add more only when the comment guards a non-obvious trap that a future edit could reintroduce, and even then keep it to one sentence.
+- Every config knob (`assets/game_config.ron` comment and `config.rs` doc comment) says what a higher or lower value does, unless it is obvious (e.g. "higher = snappier", "0 = off").
+- Depth goes in chat, not in comments: when asked to explain something, give the full explanation in the conversation.
+- The user is not a native English speaker. In comments and in chat, use plain English: short sentences, common words, no idioms, no compressed clauses.
 
 ## Architecture
 
