@@ -25,21 +25,59 @@ pub struct BounceEffectTarget;
 #[derive(Component)]
 pub struct WaveEffectTarget;
 
-/*
- * Marks tiles that can receive the beam-origin illumination.
- * Permanent, like WaveEffectTarget.
- */
+/// Marks a tile that glows when a beam crosses it.
 #[derive(Component)]
-pub struct IlluminationEffectTarget;
+pub struct GlowEffectTarget;
 
-/*
- * Marks a transient driver entity whose TweenAnim is redirected at `tile`'s
- * Sprite, because the tile entity's own TweenAnim slot is occupied by the
- * bounce effect.
- */
+/// Points a sprite entity or a tilemap cell entity at its lit overlay.
 #[derive(Component)]
-pub struct IlluminationDriver {
-    pub tile: Entity,
+pub struct LitOverlayLink(pub Entity);
+
+/// Marks the lit overlay that is a child of the tile sprite it lights.
+#[derive(Component)]
+pub struct SpriteLitOverlay;
+
+/// Marks the lit overlay drawn over a tilemap cell.
+#[derive(Component)]
+pub struct TilemapLitOverlay;
+
+/// The glow pulses currently active on an overlay.
+#[derive(Component, Default)]
+pub struct GlowPulses(pub Vec<GlowPulse>);
+
+/// One glow pulse with a delay, a fade-in, a hold and a fade-out, in seconds.
+#[derive(Clone, Copy, Debug)]
+pub struct GlowPulse {
+    pub elapsed: f32,
+    pub delay: f32,
+    pub peak: f32,
+    pub fade_in: f32,
+    pub hold: f32,
+    pub fade_out: f32,
+}
+
+impl GlowPulse {
+    /// The current strength, or `None` once the pulse has finished.
+    pub fn alpha(&self) -> Option<f32> {
+        let fade_in = self.fade_in.max(0.001);
+        let fade_out = self.fade_out.max(0.001);
+        let t = self.elapsed - self.delay;
+        if t < 0.0 {
+            return Some(0.0);
+        }
+        if t < fade_in {
+            return Some(self.peak * EaseFunction::QuadraticOut.sample_clamped(t / fade_in));
+        }
+        let t = t - fade_in;
+        if t < self.hold {
+            return Some(self.peak);
+        }
+        let t = t - self.hold;
+        if t < fade_out {
+            return Some(self.peak * (1.0 - EaseFunction::QuadraticIn.sample_clamped(t / fade_out)));
+        }
+        None
+    }
 }
 
 /*

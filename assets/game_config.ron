@@ -60,14 +60,13 @@
     effects: (
         knockback_tween_ms: 200,   // [live] ms for the knockback slide tween
         damage_flash_ms: 150,      // [live] ms for the damage colour-flash tween
-        beam_illumination_fade_in_ms: 10,   // [live] ms for the beam-origin illumination fade-in
-        beam_illumination_hold_ms: 10,     // [live] ms the beam-origin illumination holds at full tint
-        beam_illumination_fade_out_ms: 300, // [live] ms for the beam-origin illumination fade-out
-        // [live] per-player tint (P1 blue, P2 red), rgba. Sprite.color is multiplicative on RGB
-        // (>1.0 brightens, <=1.0 only darkens/hue-shifts) and alpha-blended (lower alpha = more
-        // translucent). Tune the dominant channel or alpha directly if it reads too dim/opaque.
-        beam_illumination_color_p1: (0.55, 0.78, 0.95, 0.55),
-        beam_illumination_color_p2: (0.97, 0.55, 0.58, 0.55),
+        beam_glow_fade_in_ms: 10,        // [live] ms for the glow fade-in; higher = softer, slower start
+        beam_glow_hold_ms: 10,           // [live] ms the glow stays at full strength; higher = longer flash
+        beam_glow_fade_out_ms: 150,      // [live] ms for the glow fade-out; higher = longer trail behind the beam
+        beam_glow_lightness: 0.40,       // [live] 0-1; higher = lit colours closer to white, 0 = no lightening
+        beam_glow_chroma: 0.60,          // [live] 0-1; higher = lit colours keep more of their saturation, lower = greyer
+        beam_glow_neighbor_peak: 0.15,   // [live] 0-1; higher = brighter neighbor and lookahead glow, 0 = off
+        beam_glow_neighbor_delay_ms: 20, // [live] ms; higher = neighbor and lookahead glow start later than the beam tile
     ),
     telemetry: (
         enabled: true,             // [live] write play-telemetry records to play_trace.jsonl

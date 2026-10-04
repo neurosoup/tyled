@@ -24,7 +24,7 @@ Contains systems related to map loading and entity-related initializations. This
             - Inserts `Anchor` on the first child sprite entity of each player
         - `initialize_claimed_tiles`:
             - Reads `MapInfo::ground_entities` directly
-            - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, `Transform`
+            - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `GlowEffectTarget`, `GridCoords`, `Transform`
             - Stores each spawned entity in `MapInfo::claimed_entities`
         - `initialize_hud_bars`:
             - Queries every entity in the world matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` directly, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`
@@ -56,7 +56,7 @@ Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain(
 
 ### Initialize Claimed Tiles
 
-Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_hud_bars`. Reads `MapInfo::ground_entities` directly (already populated by `initialize_map_info` earlier in the chain) and for each ground tile spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `IlluminationEffectTarget`, `GridCoords`, and `Transform`. `IlluminationEffectTarget` is the permanent marker that lets the Effects plugin's beam-origin illumination telegraph light up the tile as a beam crosses it. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
+Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_hud_bars`. Reads `MapInfo::ground_entities` directly (already populated by `initialize_map_info` earlier in the chain) and for each ground tile spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `GlowEffectTarget`, `GridCoords`, and `Transform`. `GlowEffectTarget` is the permanent marker that lets the Effects plugin's beam glow telegraph light up the tile as a beam crosses it. The Effects plugin later adds a lit overlay child (`SpriteLitOverlay`) to each such tile and a `LitOverlayLink` on the tile once its `Sprite` exists; this plugin does not spawn them. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
 
 ### Initialize HUD Bars
 
@@ -342,19 +342,19 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 
 ct_claimed_tile>"`**ClaimedTile**`"]
 ct_wave_effect>"`**WaveEffectTarget**`"]
-ct_illumination_effect>"`**IlluminationEffectTarget**`"]
+ct_glow_effect>"`**GlowEffectTarget**`"]
 ct_grid_coords>"`**GridCoords**`"]
 ct_transform>"`**Transform**`"]
 
 ct_claimed_tile --> |spawned on| claimed_tile_entity
 ct_wave_effect --> |spawned on| claimed_tile_entity
-ct_illumination_effect --> |spawned on| claimed_tile_entity
+ct_glow_effect --> |spawned on| claimed_tile_entity
 ct_grid_coords --> |spawned on| claimed_tile_entity
 ct_transform --> |spawned on| claimed_tile_entity
 
 initialize_claimed_tiles ---> |spawns entity with| ct_claimed_tile
 initialize_claimed_tiles ---> |spawns entity with| ct_wave_effect
-initialize_claimed_tiles ---> |spawns entity with| ct_illumination_effect
+initialize_claimed_tiles ---> |spawns entity with| ct_glow_effect
 initialize_claimed_tiles ---> |spawns entity with| ct_grid_coords
 initialize_claimed_tiles ---> |spawns entity with| ct_transform
 initialize_claimed_tiles ---> |stores entity in claimed_entities| map_info_res

@@ -293,7 +293,7 @@ fn initialize_claimed_tiles(mut commands: Commands, mut map_info: ResMut<MapInfo
                 Name::new("Tiles"),
                 ClaimedTile { owner: None },
                 WaveEffectTarget,
-                IlluminationEffectTarget,
+                GlowEffectTarget,
                 grid_coords,
                 Transform::from_translation(tile_transform),
                 // Anchor::from(Vec2::new(-0.02, 0.18)),

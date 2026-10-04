@@ -75,6 +75,10 @@ Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader wh
 
 Runs every frame. For each `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the descendant with a `Sprite` and `SpritesheetAnimation`, then switches the active animation clip. While the player carries an active `IsTurning` state, it selects the 3/4 pose from `IsTurning::pose()` (`diag_front` for the front-facing turn, `diag_back` for the back-facing one, with `flip_x` choosing the mirrored side); otherwise it picks the idle clip for the current `LookDirection`. It also sets `Sprite::flip_x` to mirror the horizontal idle sprite when the player faces left. A turn whose waypoint queue is already empty is treated as not turning, so the idle clip shows on the frame the turn completes.
 
+### Lit overlay frame sync (PostUpdate)
+
+The tile's `SpritesheetAnimation` only advances the `TextureAtlas.index` on the tile entity's own `Sprite`. The Effects plugin's `sync_lit_overlay_frames` runs in `PostUpdate`, ordered `.after(bevy_spritesheet_animation::plugin::AnimationSystemSet)`, and copies that index onto each visible lit overlay child so the overlay always shows the same frame as the tile. This plugin does not touch the overlay and has no code dependency on it.
+
 ### Initialize Claimed Tile Animations
 
 Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed tile entity — and reads `Res<GameConfig>` for the flip per-frame duration `config.animation.tile_flip_frame_ms` (20). Builds the `ClaimedTileAnimations` resource (if not already present) containing animation clip handles for each player color variant. Inserts `SpritesheetAnimation` (with the neutral/default clip), `Sprite`, and `BounceEffect` on the claimed tile entity so it is ready to display ownership animations.

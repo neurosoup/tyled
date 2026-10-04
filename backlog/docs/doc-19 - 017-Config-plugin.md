@@ -47,11 +47,13 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
 - `effects` (`EffectsConfig`) — read by the Effects plugin (see the Effects plugin doc):
     - `knockback_tween_ms` `[live]` — milliseconds for the knockback slide tween.
     - `damage_flash_ms` `[live]` — milliseconds for the damage colour-flash tween.
-    - `beam_illumination_fade_in_ms` `[live]` — milliseconds for the beam-origin illumination fade-in.
-    - `beam_illumination_hold_ms` `[live]` — milliseconds the beam-origin illumination holds at full tint.
-    - `beam_illumination_fade_out_ms` `[live]` — milliseconds for the beam-origin illumination fade-out.
-    - `beam_illumination_color_p1` `[live]` — srgba tint (`[f32; 4]`) applied to P1's beam-origin illumination. `Sprite::color` is a *multiplicative* tint, so values ≤ 1.0 can only darken or hue-shift the tile's existing color, while values > 1.0 are what actually brighten it (subject to the render target's dynamic range). The 4th component is alpha, which blends the tile against whatever's beneath — lower alpha makes the illumination more translucent.
-    - `beam_illumination_color_p2` `[live]` — srgba tint (`[f32; 4]`) applied to P2's beam-origin illumination. Same multiplicative-tint and alpha-translucency behavior as `beam_illumination_color_p1`.
+    - `beam_glow_fade_in_ms` `[live]` — milliseconds for the glow fade-in. Higher gives a softer, slower start.
+    - `beam_glow_hold_ms` `[live]` — milliseconds the glow stays at full strength. Higher gives a longer flash.
+    - `beam_glow_fade_out_ms` `[live]` — milliseconds for the glow fade-out. Higher gives a longer trail behind the beam.
+    - `beam_glow_lightness` `[live]` — how far lit colours move toward white (Oklch lightness `L += (1 - L) * k`), from 0 (no change) to 1 (white). Changing it rebuilds the lit atlas.
+    - `beam_glow_chroma` `[live]` — fraction of each pixel's Oklch chroma the lit colours keep, from 0 (grey) to 1 (unchanged). Changing it rebuilds the lit atlas.
+    - `beam_glow_neighbor_peak` `[live]` — peak strength (overlay alpha) of the glow on the four orthogonal neighbors and the lookahead tile, from 0 (off) to 1 (as bright as the beam tile).
+    - `beam_glow_neighbor_delay_ms` `[live]` — milliseconds the neighbor and lookahead glow wait before starting. Higher starts them later.
 
 - `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
     - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.

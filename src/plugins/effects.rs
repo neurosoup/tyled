@@ -5,14 +5,95 @@
 use std::time::Duration;
 
 use crate::prelude::*;
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages,
+    image::Image,
+    prelude::*,
+    render::render_resource::TextureFormat,
+};
+use bevy_ecs_tiled::prelude::{TilePos, TileTextureIndex, TilemapId, TilemapTexture};
+use bevy_spritesheet_animation::plugin::AnimationSystemSet;
 use bevy_tweening::{
-    AnimCompletedEvent, AnimTarget, CycleCompletedEvent, Delay, Sequence, Tween, TweenAnim,
-    Tweenable,
+    AnimCompletedEvent, AnimTarget, CycleCompletedEvent, Tween, TweenAnim, Tweenable,
     lens::{SpriteColorLens, TransformPositionLens, TransformScaleLens},
 };
 
+/// Local z of the sprite lit overlay; must stay below 1.0 so it never covers the next tile row.
+const SPRITE_LIT_OVERLAY_Z: f32 = 0.5;
+
+/// Z of the tilemap lit overlay, above the floor and below the claimed tiles.
+const TILEMAP_LIT_OVERLAY_Z: f32 = 0.5;
+
+/// The ground atlas is a 12 by 12 grid of cells.
+const GROUND_ATLAS_COLUMNS: u32 = 12;
+
+/// A lit copy of one source atlas and the settings it was last built with.
+struct LitAtlas {
+    lit: Handle<Image>,
+    source: Option<Handle<Image>>,
+    built_with: Option<(f32, f32)>,
+}
+
+impl LitAtlas {
+    fn new(images: &Assets<Image>) -> Self {
+        Self {
+            lit: images.reserve_handle(),
+            source: None,
+            built_with: None,
+        }
+    }
+
+    fn rebuild(
+        &mut self,
+        wanted: (f32, f32),
+        images: &mut Assets<Image>,
+        events: &[AssetEvent<Image>],
+        name: &str,
+    ) {
+        let Some(source) = self.source.clone() else {
+            return;
+        };
+        let source_changed = events
+            .iter()
+            .any(|event| event.is_modified(source.id()) || event.is_loaded_with_dependencies(source.id()));
+        if !source_changed && self.built_with == Some(wanted) {
+            return;
+        }
+        let Some(source_image) = images.get(source.id()) else {
+            return;
+        };
+        self.built_with = Some(wanted);
+        let Some(image) = make_lit_image(source_image, wanted.0, wanted.1) else {
+            warn!("The {name} atlas has an unsupported format, so its glow is disabled");
+            return;
+        };
+        if let Err(error) = images.insert(self.lit.id(), image) {
+            error!("Failed to store the lit {name} atlas: {error}");
+        }
+    }
+}
+
+/// The lit atlases for the claimed tiles and the ground, plus the shared ground cell layout.
+#[derive(Resource)]
+struct LitAtlases {
+    tiles: LitAtlas,
+    ground: LitAtlas,
+    ground_layout: Option<Handle<TextureAtlasLayout>>,
+}
+
+impl FromWorld for LitAtlases {
+    fn from_world(world: &mut World) -> Self {
+        let images = world.resource::<Assets<Image>>();
+        Self {
+            tiles: LitAtlas::new(images),
+            ground: LitAtlas::new(images),
+            ground_layout: None,
+        }
+    }
+}
+
 pub(crate) fn plugin(app: &mut App) {
+    app.init_resource::<LitAtlases>();
     app.add_systems(
         Update,
         (
@@ -27,18 +108,30 @@ pub(crate) fn plugin(app: &mut App) {
             apply_wave_effect,
             apply_bounce_effect,
             apply_damage_effect,
-            apply_illumination_effect,
+            spawn_sprite_lit_overlays,
+            build_lit_atlas,
+            apply_glow_effect
+                .after(spawn_sprite_lit_overlays)
+                .after(spawn_tilemap_lit_overlays),
+            update_lit_overlays.after(apply_glow_effect),
             on_death_effect_completed,
             on_knockback_tween_completed,
             tick_knockback_lock,
-            on_illumination_completed,
             trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
             apply_parry_scale_effect.in_set(GameplaySet::Presentation),
             on_parry_scale_completed,
             on_damage_flash_completed,
         ),
     );
-    app.add_systems(OnExit(RoundPhase::Playing), clear_illumination_drivers);
+    app.add_systems(
+        Update,
+        spawn_tilemap_lit_overlays.run_if(resource_changed::<MapInfo>),
+    );
+    app.add_systems(
+        PostUpdate,
+        sync_lit_overlay_frames.after(AnimationSystemSet),
+    );
+    app.add_systems(OnExit(RoundPhase::Playing), clear_glow);
 }
 
 pub fn create_movement_tween(
@@ -119,35 +212,39 @@ pub fn create_color_flash_tween(duration_ms: u64) -> impl Tweenable {
     ))
 }
 
-pub fn create_illumination_tween(
-    from: Color,
-    tint: Color,
-    fade_in_ms: u64,
-    hold_ms: u64,
-    fade_out_ms: u64,
-) -> Sequence {
-    let fade_in = Tween::new(
-        EaseFunction::QuadraticOut,
-        Duration::from_millis(fade_in_ms.max(1)),
-        SpriteColorLens {
-            start: from,
-            end: tint,
-        },
-    );
-    let fade_out = Tween::new(
-        EaseFunction::QuadraticIn,
-        Duration::from_millis(fade_out_ms.max(1)),
-        SpriteColorLens {
-            start: tint,
-            end: Color::WHITE,
-        },
-    );
-
-    let mut seq = Sequence::with_capacity(2).then(fade_in);
-    if hold_ms > 0 {
-        seq = seq.then(Delay::new(Duration::from_millis(hold_ms)));
+/// Returns a lighter, less saturated copy of `source`, keeping alpha.
+fn make_lit_image(source: &Image, lightness: f32, chroma: f32) -> Option<Image> {
+    if !matches!(
+        source.texture_descriptor.format,
+        TextureFormat::Rgba8UnormSrgb | TextureFormat::Rgba8Unorm
+    ) || source.data.is_none()
+    {
+        return None;
     }
-    seq.then(fade_out)
+    let mut image = source.clone();
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let Ok(color) = image.get_color_at(x, y) else {
+                continue;
+            };
+            let alpha = color.alpha();
+            if alpha == 0.0 {
+                continue;
+            }
+            let mut oklch = Oklcha::from(color);
+            oklch.lightness += (1.0 - oklch.lightness) * lightness;
+            oklch.chroma *= chroma;
+            let srgba = Srgba::from(oklch);
+            let lit = Color::srgba(
+                srgba.red.clamp(0.0, 1.0),
+                srgba.green.clamp(0.0, 1.0),
+                srgba.blue.clamp(0.0, 1.0),
+                alpha,
+            );
+            let _ = image.set_color_at(x, y, lit);
+        }
+    }
+    Some(image)
 }
 
 fn apply_knockback(
@@ -532,75 +629,302 @@ fn on_parry_scale_completed(
     }
 }
 
-fn apply_illumination_effect(
+fn spawn_sprite_lit_overlays(
     mut commands: Commands,
+    mut atlases: ResMut<LitAtlases>,
+    tiles: Query<
+        (Entity, &Sprite),
+        (With<GlowEffectTarget>, Without<LitOverlayLink>),
+    >,
+) {
+    for (tile, sprite) in &tiles {
+        if atlases.tiles.source.is_none() {
+            atlases.tiles.source = Some(sprite.image.clone());
+        }
+        let overlay = commands
+            .spawn((
+                Name::new("SpriteLitOverlay"),
+                SpriteLitOverlay,
+                GlowPulses::default(),
+                Sprite {
+                    image: atlases.tiles.lit.clone(),
+                    texture_atlas: sprite.texture_atlas.clone(),
+                    color: Color::WHITE.with_alpha(0.0),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, SPRITE_LIT_OVERLAY_Z),
+                Visibility::Hidden,
+                ChildOf(tile),
+            ))
+            .id();
+        commands.entity(tile).insert(LitOverlayLink(overlay));
+    }
+}
+
+fn spawn_tilemap_lit_overlays(
+    mut commands: Commands,
+    mut atlases: ResMut<LitAtlases>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+    map_info: Res<MapInfo>,
+    cells: Query<(&TilePos, &TilemapId, &TileTextureIndex), Without<LitOverlayLink>>,
+    tilemap_textures: Query<&TilemapTexture>,
+) {
+    for cell in map_info
+        .ground_entities
+        .values()
+        .chain(map_info.forbidden_areas.values())
+        .copied()
+    {
+        let Ok((tile_pos, tilemap_id, texture_index)) = cells.get(cell) else {
+            continue;
+        };
+        let Ok(TilemapTexture::Single(source)) = tilemap_textures.get(tilemap_id.0) else {
+            warn_once!("The ground tilemap does not use a single texture, so its glow is disabled");
+            continue;
+        };
+        if atlases.ground.source.is_none() {
+            atlases.ground.source = Some(source.clone());
+        }
+        let layout = atlases
+            .ground_layout
+            .get_or_insert_with(|| {
+                layouts.add(TextureAtlasLayout::from_grid(
+                    UVec2::new(map_info.tile_size.x as u32, map_info.tile_size.y as u32),
+                    GROUND_ATLAS_COLUMNS,
+                    GROUND_ATLAS_COLUMNS,
+                    None,
+                    None,
+                ))
+            })
+            .clone();
+        let position = GridCoords::from(*tile_pos).to_world_pos(&map_info);
+        let overlay = commands
+            .spawn((
+                Name::new("TilemapLitOverlay"),
+                TilemapLitOverlay,
+                GlowPulses::default(),
+                Sprite {
+                    image: atlases.ground.lit.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout,
+                        index: texture_index.0 as usize,
+                    }),
+                    color: Color::WHITE.with_alpha(0.0),
+                    ..default()
+                },
+                Transform::from_translation(position.extend(TILEMAP_LIT_OVERLAY_Z)),
+                Visibility::Hidden,
+                ChildOf(tilemap_id.0),
+            ))
+            .id();
+        commands.entity(cell).insert(LitOverlayLink(overlay));
+    }
+}
+
+fn build_lit_atlas(
+    mut atlases: ResMut<LitAtlases>,
+    config: Res<GameConfig>,
+    mut images: ResMut<Assets<Image>>,
+    mut image_events: MessageReader<AssetEvent<Image>>,
+) {
+    let events: Vec<_> = image_events.read().copied().collect();
+    let wanted = (
+        config.effects.beam_glow_lightness,
+        config.effects.beam_glow_chroma,
+    );
+    atlases.tiles.rebuild(wanted, &mut images, &events, "tile");
+    atlases.ground.rebuild(wanted, &mut images, &events, "ground");
+}
+
+fn apply_glow_effect(
     config: Res<GameConfig>,
     beams: Query<(&GridCoords, &Beam), Changed<GridCoords>>,
-    players: Query<&Player>,
     map_info: Res<MapInfo>,
-    tile_sprites: Query<&Sprite, With<IlluminationEffectTarget>>,
-    drivers: Query<(Entity, &IlluminationDriver)>,
+    links: Query<&LitOverlayLink>,
+    mut overlays: Query<&mut GlowPulses>,
 ) {
-    for (grid_coords, beam) in &beams {
-        let Ok(owner) = players.get(beam.owner) else {
-            continue;
-        };
-        let Some(tile) = map_info.get_claimed_entity_by_position(*grid_coords) else {
-            continue;
-        };
-        let Ok(sprite) = tile_sprites.get(tile) else {
-            continue;
-        };
+    let effects_config = &config.effects;
+    let fade_in = effects_config.beam_glow_fade_in_ms as f32 / 1000.0;
+    let hold = effects_config.beam_glow_hold_ms as f32 / 1000.0;
+    let fade_out = effects_config.beam_glow_fade_out_ms as f32 / 1000.0;
+    let neighbor_delay = effects_config.beam_glow_neighbor_delay_ms as f32 / 1000.0;
 
-        for (driver_entity, driver) in &drivers {
-            if driver.tile == tile {
-                commands.entity(driver_entity).despawn();
+    let mut push = |position: GridCoords, peak: f32, delay: f32| {
+        let claimed = map_info.get_claimed_entity_by_position(position);
+        let ground = map_info
+            .ground_entities
+            .get(&position)
+            .or(map_info.forbidden_areas.get(&position))
+            .copied();
+        for entity in [claimed, ground].into_iter().flatten() {
+            let Ok(link) = links.get(entity) else {
+                continue;
+            };
+            let Ok(mut pulses) = overlays.get_mut(link.0) else {
+                continue;
+            };
+            pulses.0.push(GlowPulse {
+                elapsed: 0.0,
+                delay,
+                peak,
+                fade_in,
+                hold,
+                fade_out,
+            });
+        }
+    };
+
+    for (grid_coords, beam) in &beams {
+        push(*grid_coords, 1.0, 0.0);
+        for direction in [
+            GridCoords::new(1, 0),
+            GridCoords::new(-1, 0),
+            GridCoords::new(0, 1),
+            GridCoords::new(0, -1),
+        ] {
+            push(
+                *grid_coords + direction,
+                effects_config.beam_glow_neighbor_peak,
+                neighbor_delay,
+            );
+        }
+        if beam.direction.x != 0 || beam.direction.y != 0 {
+            push(
+                *grid_coords + beam.direction + beam.direction,
+                effects_config.beam_glow_neighbor_peak,
+                neighbor_delay,
+            );
+        }
+    }
+}
+
+fn update_lit_overlays(
+    time: Res<Time>,
+    mut overlays: Query<(&mut GlowPulses, &mut Sprite, &mut Visibility)>,
+) {
+    let delta = time.delta_secs();
+    for (mut pulses, mut sprite, mut visibility) in &mut overlays {
+        if pulses.0.is_empty() && *visibility == Visibility::Hidden {
+            continue;
+        }
+        let mut strength = 0.0_f32;
+        pulses.0.retain_mut(|pulse| {
+            pulse.elapsed += delta;
+            match pulse.alpha() {
+                Some(alpha) => {
+                    strength = strength.max(alpha);
+                    true
+                }
+                None => false,
+            }
+        });
+        let color = Color::WHITE.with_alpha(strength);
+        if sprite.color != color {
+            sprite.color = color;
+        }
+        visibility.set_if_neq(if strength > 0.0 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+    }
+}
+
+fn sync_lit_overlay_frames(
+    tiles: Query<&Sprite, (With<GlowEffectTarget>, Without<SpriteLitOverlay>)>,
+    mut overlays: Query<(&ChildOf, &mut Sprite, &Visibility), With<SpriteLitOverlay>>,
+) {
+    for (child_of, mut sprite, visibility) in &mut overlays {
+        if *visibility == Visibility::Hidden {
+            continue;
+        }
+        let Ok(tile_sprite) = tiles.get(child_of.parent()) else {
+            continue;
+        };
+        let (Some(tile_atlas), Some(overlay_atlas)) =
+            (&tile_sprite.texture_atlas, &sprite.texture_atlas)
+        else {
+            continue;
+        };
+        if tile_atlas.index != overlay_atlas.index {
+            let index = tile_atlas.index;
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                atlas.index = index;
             }
         }
-
-        let effects_config = &config.effects;
-        let color = match owner.player_id {
-            0 => effects_config.beam_illumination_color_p1,
-            1 => effects_config.beam_illumination_color_p2,
-            _ => effects_config.beam_illumination_color_p1,
-        };
-        let tint = Color::srgba(color[0], color[1], color[2], color[3]);
-        commands.spawn((
-            Name::new("IlluminationDriver"),
-            IlluminationDriver { tile },
-            AnimTarget::component::<Sprite>(tile),
-            TweenAnim::new(create_illumination_tween(
-                sprite.color,
-                tint,
-                effects_config.beam_illumination_fade_in_ms,
-                effects_config.beam_illumination_hold_ms,
-                effects_config.beam_illumination_fade_out_ms,
-            )),
-        ));
     }
 }
 
-fn on_illumination_completed(
-    mut commands: Commands,
-    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    drivers: Query<Entity, With<IlluminationDriver>>,
+fn clear_glow(
+    mut overlays: Query<(&mut GlowPulses, &mut Sprite, &mut Visibility)>,
 ) {
-    for ev in anim_completed_reader.read() {
-        if let Ok(entity) = drivers.get(ev.anim_entity) {
-            commands.entity(entity).despawn();
-        }
+    for (mut pulses, mut sprite, mut visibility) in &mut overlays {
+        pulses.0.clear();
+        sprite.color = Color::WHITE.with_alpha(0.0);
+        *visibility = Visibility::Hidden;
     }
 }
 
-fn clear_illumination_drivers(
-    mut commands: Commands,
-    drivers: Query<(Entity, &IlluminationDriver)>,
-    mut tiles: Query<&mut Sprite, With<IlluminationEffectTarget>>,
-) {
-    for (driver_entity, driver) in &drivers {
-        if let Ok(mut sprite) = tiles.get_mut(driver.tile) {
-            sprite.color = Color::WHITE;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::render::render_resource::{Extent3d, TextureDimension};
+
+    fn image_from(pixels: &[[u8; 4]]) -> Image {
+        Image::new(
+            Extent3d {
+                width: pixels.len() as u32,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            pixels.iter().flatten().copied().collect(),
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::default(),
+        )
+    }
+
+    #[test]
+    fn identity_at_zero_lightness_full_chroma() {
+        let source = image_from(&[[200, 40, 90, 255], [10, 120, 250, 128]]);
+        let lit = make_lit_image(&source, 0.0, 1.0).unwrap();
+        for x in 0..2 {
+            let a = source.get_color_at(x, 0).unwrap().to_srgba();
+            let b = lit.get_color_at(x, 0).unwrap().to_srgba();
+            assert!((a.red - b.red).abs() < 0.01);
+            assert!((a.green - b.green).abs() < 0.01);
+            assert!((a.blue - b.blue).abs() < 0.01);
         }
-        commands.entity(driver_entity).despawn();
+    }
+
+    #[test]
+    fn alpha_is_preserved() {
+        let source = image_from(&[[200, 40, 90, 77]]);
+        let lit = make_lit_image(&source, 0.5, 0.5).unwrap();
+        assert_eq!(lit.data.as_ref().unwrap()[3], 77);
+    }
+
+    #[test]
+    fn red_gets_lighter_and_less_saturated() {
+        let source = image_from(&[[255, 0, 0, 255]]);
+        let lit = make_lit_image(&source, 0.4, 0.6).unwrap();
+        let before = Oklcha::from(source.get_color_at(0, 0).unwrap());
+        let after = Oklcha::from(lit.get_color_at(0, 0).unwrap());
+        assert!(after.lightness > before.lightness);
+        assert!(after.chroma < before.chroma);
+    }
+
+    #[test]
+    fn transparent_pixels_stay_transparent() {
+        let source = image_from(&[[12, 34, 56, 0]]);
+        let lit = make_lit_image(&source, 0.5, 0.5).unwrap();
+        assert_eq!(lit.data.as_ref().unwrap(), &vec![12, 34, 56, 0]);
+    }
+
+    #[test]
+    fn unsupported_format_returns_none() {
+        let mut source = image_from(&[[0, 0, 0, 255]]);
+        source.texture_descriptor.format = TextureFormat::R8Unorm;
+        assert!(make_lit_image(&source, 0.5, 0.5).is_none());
     }
 }

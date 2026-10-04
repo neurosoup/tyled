@@ -3,11 +3,11 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-10-03 00:00'
+updated_date: '2026-10-04 00:00'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam-origin illumination telegraph that lights up each tile a beam crosses, and a landed-parry scale punch that briefly enlarges the parrier's sprite. Because knockback, death-bounce, movement-settle, and plain translation can all target the same player entity's `Transform` `TweenAnim` slot, this plugin also arbitrates ownership of that slot so a higher-priority effect is never silently overwritten mid-play, and so completion handlers act only on the effect that actually finished.
+Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a landed-parry scale punch that briefly enlarges the parrier's sprite. Because knockback, death-bounce, movement-settle, and plain translation can all target the same player entity's `Transform` `TweenAnim` slot, this plugin also arbitrates ownership of that slot so a higher-priority effect is never silently overwritten mid-play, and so completion handlers act only on the effect that actually finished.
 
 ## Transform effect ownership
 
@@ -58,10 +58,17 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `apply_damage_effect`:
         - Reacts to `Changed<Health>` on `DamageEffectTarget` entities
             - Plays a red color-flash tween on the first child sprite entity
-    - `apply_illumination_effect`:
+    - `spawn_sprite_lit_overlays`:
+        - For every `GlowEffectTarget` tile that has a `Sprite` but no `LitOverlayLink`, spawns a persistent `SpriteLitOverlay` child (lit image, the tile's atlas, local z `SPRITE_LIT_OVERLAY_Z` = 0.5, `Visibility::Hidden`) and inserts the link on the tile; records the first tile's image as the `LitAtlases::tiles` source
+    - `spawn_tilemap_lit_overlays` (Update, `run_if(resource_changed::<MapInfo>)`):
+        - For every cell in `MapInfo::ground_entities` and `MapInfo::forbidden_areas` that has no `LitOverlayLink`, spawns a `TilemapLitOverlay` child of the cell's tilemap (ground lit image, one shared `TextureAtlasLayout`, the cell's `TileTextureIndex`, local z `TILEMAP_LIT_OVERLAY_Z` = 0.5, `Visibility::Hidden`) and inserts the link on the cell; records the tilemap's `TilemapTexture::Single` image as the `LitAtlases::ground` source
+    - `build_lit_atlas`:
+        - Rebuilds both the tile and the ground lit atlas images when the config lightness/chroma pair changes or an `AssetEvent<Image>` fires for the source image
+    - `apply_glow_effect` (after `spawn_sprite_lit_overlays` and `spawn_tilemap_lit_overlays`):
         - Reacts to `Changed<GridCoords>` on `Beam` entities (every step of the beam's travel, not just its origin)
-            - Resolves the beam's position to an `IlluminationEffectTarget` tile via `MapInfo::get_claimed_entity_by_position`
-            - Despawns any existing `IlluminationDriver` already targeting that tile (re-fire dedup), then spawns a fresh driver carrying a fade-in → hold → fade-out `TweenAnim` redirected at the tile's `Sprite`
+            - Pushes a peak-1.0 `GlowPulse` onto the overlay of the tile under the beam, and a `beam_glow_neighbor_peak` pulse (delayed by `beam_glow_neighbor_delay_ms`) onto each orthogonal neighbor and onto the tile two steps ahead along `Beam::direction` (skipped when the direction is zero); each pulse goes to both the claimed tile's overlay and the ground cell's overlay, even when the beam's own position has no claimed tile
+    - `update_lit_overlays` (after `apply_glow_effect`):
+        - Advances every overlay's pulses by the frame delta, sets the overlay alpha to the maximum pulse strength, prunes finished pulses, and toggles the overlay's visibility
     - `on_death_effect_completed`:
         - Reads `AnimCompletedEvent`; for entities with `IsDead` + `BounceEffect` whose `ActiveTransformEffect` reads `Bounce`, hides the entity and removes `BounceEffect` + `ActiveTransformEffect`
     - `on_knockback_tween_completed`:
@@ -69,8 +76,6 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `tick_knockback_lock` (no ordering dependency; placed by registration order):
         - Runs every frame against every entity carrying `IsKnockedBack`
             - Ticks the entity's timer; once it finishes, removes `IsKnockedBack` — the sole removal path during normal play, independent of whatever the visual tween/tag is doing
-    - `on_illumination_completed`:
-        - Reads `AnimCompletedEvent`; despawns the `IlluminationDriver` entity whose tween finished
     - `trigger_parry_scale_effect` (tagged `GameplaySet::Presentation`):
         - Reads `BeamParried` messages
             - Inserts `ParryScaleEffectTarget` on the parrier's root entity
@@ -80,8 +85,10 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
             - Always removes `ParryScaleEffectTarget`, even when no sprite child is found
     - `on_parry_scale_completed`:
         - Reads `AnimCompletedEvent`; despawns the `ParryScaleDriver` entity whose tween finished
+- `PostUpdate` (after `AnimationSystemSet`)
+    - `sync_lit_overlay_frames`: copies each visible overlay's atlas index from its tile's sprite (it queries only `SpriteLitOverlay`, so the `TilemapLitOverlay` floor overlays are never touched; floor cells do not animate)
 - `OnExit(RoundPhase::Playing)`
-    - `clear_illumination_drivers`: force-resets any tile still mid-tint back to `Color::WHITE` and despawns its driver, so a round boundary can't strand a tinted tile
+    - `clear_glow`: empties every overlay's pulses, sets alpha to 0 and hides it, so a round boundary can't strand a lit tile
 
 ## Plugin Systems
 
@@ -103,7 +110,7 @@ Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities — only pla
 
 ### Apply Wave Effect
 
-Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers illumination (`apply_illumination_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile — no `ActiveTransformEffect` tag. This causes the tile underneath the beam to "ripple" as the beam passes over it.
+Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers glow (`apply_glow_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile — no `ActiveTransformEffect` tag. This causes the tile underneath the beam to "ripple" as the beam passes over it.
 
 ### Apply Bounce Effect
 
@@ -133,17 +140,35 @@ Reads `AnimCompletedEvent` events. For each, checks whether the completed animat
 
 Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack` — releasing the entity back to normal movement, and, if a death bounce was parked behind it, letting `start_deferred_death_bounce` promote it the same or next frame.
 
-### Apply Illumination Effect
+### Spawn Sprite Lit Overlays
 
-Reacts to `Changed<GridCoords>` on `Beam` entities — every tile a beam crosses, not only its spawn position. Also reads `&Beam` (for `owner`) and a `Query<&Player>` to resolve the firing player: looks up `owner.player_id` and selects `config.effects.beam_illumination_color_p1` for `0`, `beam_illumination_color_p2` for `1`, falling back to `beam_illumination_color_p1` for any other value rather than panicking, since this runs every frame on live beams. Resolves the beam's current `GridCoords` to a tile entity via `MapInfo::get_claimed_entity_by_position`, requiring that tile to carry both `IlluminationEffectTarget` and a `Sprite`. Despawns any existing `IlluminationDriver` already targeting that same tile (re-fire dedup), then spawns a new driver entity carrying `IlluminationDriver { tile }`, `AnimTarget::component::<Sprite>(tile)`, and a `TweenAnim` built by `create_illumination_tween` from the tile's live `sprite.color` to the resolved per-player color and back to `Color::WHITE`, over `beam_illumination_fade_in_ms` / `beam_illumination_hold_ms` / `beam_illumination_fade_out_ms`. `create_illumination_tween` clamps the fade-in/fade-out durations to a minimum of 1 ms (`bevy_tweening`'s `Tween` cannot have a zero duration) and omits the hold `Delay` stage entirely when `beam_illumination_hold_ms` is `0` (`Delay::new` panics on a zero duration), so a fully-zeroed hold plays as a direct fade-in-to-fade-out with no pause. See the `IlluminationDriver` lifecycle section below for why the tween is redirected at a proxy entity rather than living on the tile.
+Runs every frame over `GlowEffectTarget` tiles that have a `Sprite` and no `LitOverlayLink`. For each, spawns one persistent child (`ChildOf(tile)`) carrying the `SpriteLitOverlay` marker, an empty `GlowPulses`, and a `Sprite` that uses the `LitAtlases::tiles` lit image handle and a clone of the tile's `TextureAtlas`, with a fully transparent color, a local `Transform` at z `SPRITE_LIT_OVERLAY_Z` (0.5, which must stay below 1.0, the spacing between tile rows), and `Visibility::Hidden`. Inserts `LitOverlayLink(overlay)` on the tile. Because the overlay is a child, it inherits the bounce and wave transforms of the tile. The first tile's `Sprite::image` becomes `LitAtlases::tiles.source`.
 
-### On Illumination Completed
+### Spawn Tilemap Lit Overlays
 
-Reads `AnimCompletedEvent` events. For each, despawns the `IlluminationDriver` entity whose tween just finished. `bevy_tweening` removes the `TweenAnim` component on completion but not the entity itself, so this prevents driver entities from leaking indefinitely, one per beam tile-step.
+Runs when the `MapInfo` resource changed. For each entity in `MapInfo::ground_entities` and `MapInfo::forbidden_areas` without a `LitOverlayLink`, reads its `TilePos`, `TilemapId` and `TileTextureIndex`, and takes the image from the tilemap's `TilemapTexture::Single` (any other variant logs one warning and skips the cell). The first image becomes `LitAtlases::ground.source`. A single 12 by 12 `TextureAtlasLayout` (cell size from `MapInfo::tile_size`) is built once and stored in the resource. The overlay is a `ChildOf` the tilemap entity, with the `TilemapLitOverlay` marker, empty `GlowPulses`, a transparent `Sprite` using the ground lit image, the cell's atlas index, `Visibility::Hidden`, and a `Transform` at `GridCoords::to_world_pos` with z `TILEMAP_LIT_OVERLAY_Z` (0.5). The tilemap's own translation is only the tileset offset (zero for this map), so the world-space tile centre is also the tilemap-local position, the same assumption the `ClaimedTile` sprites rely on. Z of 0.5 sits above the floor and below the claimed tiles, because the layers are spaced 100 apart by `TiledMapLayerZOffset`.
 
-### Clear Illumination Drivers
+### Build Lit Atlas
 
-Runs on `OnExit(RoundPhase::Playing)`. For every `IlluminationDriver` still alive (a tint whose tween hadn't finished when the round left `Playing`), force-sets its target tile's `Sprite::color` back to `Color::WHITE` and despawns the driver.
+Runs every frame but only works when needed. For each of the tile and ground atlases (`LitAtlas::rebuild`), once `source` is known and the source image has loaded, it builds the lit image with `make_lit_image` whenever `built_with` differs from the current `(beam_glow_lightness, beam_glow_chroma)` pair, or an `AssetEvent<Image>` (modified or loaded) names the source image, which keeps RON tuning and `tiles.png` edits live. The result is stored with `Assets<Image>::insert` at the reserved lit handle id (an `Err` is logged). If the format is not `Rgba8UnormSrgb`/`Rgba8Unorm` or has no pixel data, it logs one warning and the overlay never shows.
+
+`make_lit_image(&Image, lightness, chroma) -> Option<Image>` is a pure function: it clones the source (keeping sampler, format and usage), and for every pixel with non-zero alpha converts to `Oklcha`, applies `L += (1 - L) * lightness` and `C *= chroma`, converts back to `Srgba`, clamps the channels to 0..1 and restores the original alpha.
+
+### Apply Glow Effect
+
+Reacts to `Changed<GridCoords>` on `Beam` entities — every tile a beam crosses, not only its spawn position. For each beam, pushes a `GlowPulse` with peak `1.0` and no delay onto the overlay of the tile at the beam's position, and a pulse with peak `beam_glow_neighbor_peak` and delay `beam_glow_neighbor_delay_ms` onto each of the four orthogonal neighbors and onto the tile at `position + 2 * direction` (the lookahead, same peak and delay; skipped when `Beam::direction` is zero). Each position is resolved to the claimed tile (`MapInfo::get_claimed_entity_by_position`) and to the ground cell (`ground_entities`, else `forbidden_areas`), and the pulse goes onto the overlay linked from each; forbidden cells have no claimed tile but their floor still glows. A position with neither is skipped, but the neighbor pulses are still pushed when the beam's own position has none. The pulse timings come from `beam_glow_fade_in_ms` / `beam_glow_hold_ms` / `beam_glow_fade_out_ms`. There is no per-player tint: the effect is purely the lit crossfade.
+
+### Update Lit Overlays
+
+Runs every frame after `apply_glow_effect`. For each overlay with pulses (or one still visible), advances every pulse by `Time::delta_secs()` (virtual time, so hitstop slows it), computes each pulse's strength with `GlowPulse::alpha` (delay, then fade-in `QuadraticOut`, hold, fade-out `1 - QuadraticIn`; fades are clamped to at least 0.001 s; `None` means finished), prunes finished pulses, sets `Sprite::color` to white with the maximum strength as alpha, and sets the visibility to `Inherited` when the strength is above zero and `Hidden` otherwise. Both are written only when the value differs (`set_if_neq` for `Visibility`, a compare for the color), so idle values do not trigger change detection. Pulses never add up: a strong pulse fading below a weak one lets the weak one show again.
+
+### Sync Lit Overlay Frames
+
+Runs in `PostUpdate`, `.after(AnimationSystemSet)`. For each visible `SpriteLitOverlay` (the `TilemapLitOverlay` floor overlays are not queried, because floor cells do not animate), reads the tile through the overlay's `ChildOf` parent and copies its `TextureAtlas.index` to the overlay's atlas so the overlay matches the current flip-animation frame. The two `Sprite` queries are kept disjoint with `Without<SpriteLitOverlay>` on the tile side.
+
+### Clear Glow
+
+Runs on `OnExit(RoundPhase::Playing)`. Empties every overlay's `GlowPulses`, sets its sprite color alpha to 0 and sets it `Visibility::Hidden`.
 
 ### Trigger Parry Scale Effect
 
@@ -155,7 +180,7 @@ Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find t
 
 ### On Parry Scale Completed
 
-Reads `AnimCompletedEvent` events. For each, despawns the `ParryScaleDriver` entity whose tween just finished — the same completion-cleanup pattern as `on_illumination_completed`, preventing driver entities from leaking one per parry.
+Reads `AnimCompletedEvent` events. For each, despawns the `ParryScaleDriver` entity whose tween just finished — the same completion-cleanup pattern as `on_damage_flash_completed`, preventing driver entities from leaking one per parry.
 
 ## Components, Resources and Messages CRUD
 
@@ -965,10 +990,10 @@ reset_round ---> |always removes| is_knocked_back
 is_knocked_back --> |belongs to| player_entity
 ```
 
-### Query Beam entities (illumination)
+### Query Beam entities (glow)
 
 Used in the following systems:
-- **apply_illumination_effect**: reacts to `Changed<GridCoords>` on `Beam` entities to resolve the current tile and (re)start its illumination tween
+- **apply_glow_effect**: reacts to `Changed<GridCoords>` on `Beam` entities to find the tile under the beam, its four orthogonal neighbors and the tile two steps ahead, and pushes pulses onto their overlays
 
 ```mermaid
 ---
@@ -981,12 +1006,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_illumination_effect["`**apply_illumination_effect**`"]
+apply_glow_effect["`**apply_glow_effect**`"]
 
-update -.-> apply_illumination_effect
+update -.-> apply_glow_effect
 
 beams_query{{"`beams`"}}:::query
-apply_illumination_effect ---> beams_query
+apply_glow_effect ---> beams_query
 
 beam_entity@{ shape: st-rect, label: "Beam Entity" }
 
@@ -1000,13 +1025,13 @@ beams_query ---> |reads| be_grid_coords
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
 map_info_res --> |belongs to| world
-apply_illumination_effect ---> |resolves via `get_claimed_entity_by_position`| map_info_res
+apply_glow_effect ---> |resolves tile, neighbors and lookahead via `get_claimed_entity_by_position` and the ground maps| map_info_res
 ```
 
-### Write commands (apply_illumination_effect)
+### Write GlowPulses (apply_glow_effect)
 
 Used in the following systems:
-- **apply_illumination_effect**: reads the target tile's `Sprite` and `IlluminationEffectTarget`, despawns any existing `IlluminationDriver` for that tile, then spawns a new driver carrying `AnimTarget::component::<Sprite>(tile)` and the fade tween
+- **apply_glow_effect**: reads `LitOverlayLink` on the resolved claimed tile and ground cell and pushes `GlowPulse` values onto the linked overlay's `GlowPulses`
 
 ```mermaid
 ---
@@ -1019,39 +1044,22 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_illumination_effect["`**apply_illumination_effect**`"]
+apply_glow_effect["`**apply_glow_effect**`"]
 
-update -.-> apply_illumination_effect
+update -.-> apply_glow_effect
 
-tile_query{{"`tile_sprites`"}}:::query
-driver_query{{"`drivers`"}}:::query
-apply_illumination_effect ---> tile_query
-apply_illumination_effect ---> driver_query
+links_query{{"`links`"}}:::query
+overlays_query{{"`overlays`"}}:::query
+apply_glow_effect ---> links_query
+apply_glow_effect ---> overlays_query
 
 tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
-te_sprite>"`**Sprite**`"] --> |belongs to| tile_entity
-te_marker>"`**IlluminationEffectTarget**`"] --> |belongs to| tile_entity
+te_link>"`**LitOverlayLink**`"] --> |belongs to| tile_entity
+links_query ---> |reads| te_link
 
-tile_query -..-> |filter With| te_marker
-tile_query ---> |reads| te_sprite
-
-driver_entity@{ shape: st-rect, label: "IlluminationDriver (existing)" }
-de_driver>"`**IlluminationDriver**`"] --> |belongs to| driver_entity
-driver_query ---> |reads .tile| de_driver
-apply_illumination_effect ---> |despawns matching driver| driver_entity
-
-new_driver_entity@{ shape: st-rect, label: "IlluminationDriver (spawned)" }
-nd_driver>"`**IlluminationDriver**`"]
-nd_anim_target>"`**AnimTarget#60;Sprite#62;**`"]
-nd_tween>"`**TweenAnim**`"]
-
-nd_driver --> |spawned on| new_driver_entity
-nd_anim_target --> |spawned on| new_driver_entity
-nd_tween --> |spawned on| new_driver_entity
-
-apply_illumination_effect ---> |spawns entity with| nd_driver
-apply_illumination_effect ---> |spawns entity with| nd_anim_target
-apply_illumination_effect ---> |spawns entity with| nd_tween
+overlay_entity@{ shape: st-rect, label: "Lit Overlay Entity" }
+oe_pulses>"`**GlowPulses**`"] --> |belongs to| overlay_entity
+overlays_query ---> |pushes into| oe_pulses
 ```
 
 ### Read BeamParried messages
@@ -1183,13 +1191,17 @@ driver_query -..-> |filter With| de_driver
 on_parry_scale_completed ---> |despawns| driver_entity
 ```
 
-### IlluminationDriver component lifecycle
+### SpriteLitOverlay and TilemapLitOverlay lifecycle
 
-`IlluminationDriver { tile: Entity }` (`src/components/effects.rs`) is a transient proxy entity whose `TweenAnim` is redirected at `tile`'s `Sprite` via `AnimTarget::component::<Sprite>(tile)`, rather than living on the tile itself — the tile entity's own `TweenAnim` slot is already occupied by the wave-bounce effect's `Transform` tween, and `bevy_tweening` allows only one `TweenAnim` per `(entity, component)` pair. Its full lifecycle:
-- **Spawned** by `apply_illumination_effect` (this plugin), one per beam grid-step, carrying a fade-in → hold → fade-out `TweenAnim`.
-- **Despawned pre-emptively** by `apply_illumination_effect` itself, for any existing driver already targeting the same tile, before spawning the replacement — a beam re-crossing a tile (or two beams sharing one) never leaves two competing tweens on it.
-- **Despawned on completion** by `on_illumination_completed`, reading `AnimCompletedEvent`; no color reset needed, since the tween's own final keyframe is already `Color::WHITE`.
-- **Despawned on round boundary** by `clear_illumination_drivers`, on `OnExit(RoundPhase::Playing)`; this path does force-reset the tile's `Sprite::color` to `Color::WHITE`, since a driver caught mid-flight has not reached the tween's white end keyframe.
+`SpriteLitOverlay` marks the lit overlay child of a claimed tile, and `TilemapLitOverlay` marks the lit overlay of a floor cell, spawned as a child of the ground tilemap (both in `src/components/effects.rs`). They exist because `Sprite::color` is multiplicative and cannot make a tile lit; the overlay shows a lit copy of the tile atlas on top of the tile instead. Its full lifecycle:
+- **Spawned** once per tile by `spawn_sprite_lit_overlays`, with `GlowPulses` empty and `Visibility::Hidden`; the tile gets a `LitOverlayLink(overlay)`.
+- **Fed** by `apply_glow_effect`, which pushes `GlowPulse { elapsed, delay, peak, fade_in, hold, fade_out }` values.
+- **Driven** by `update_lit_overlays`, which advances pulses, sets alpha to the maximum strength, prunes finished pulses and toggles visibility; `sync_lit_overlay_frames` copies the tile's atlas index in `PostUpdate`.
+- **Reset** on `OnExit(RoundPhase::Playing)` by `clear_glow` (pulses cleared, alpha 0, hidden). The overlay itself is never despawned.
+
+`LitAtlases` (resource, private to the Effects plugin) holds two `LitAtlas` values, `tiles` and `ground`, and the shared `ground_layout` handle. Each `LitAtlas` holds the reserved `lit` image handle (created in `FromWorld`), the `source` image handle, and `built_with`, the `(lightness, chroma)` pair the current lit image was built with.
+
+`TilemapLitOverlay` overlays follow the same lifecycle but are spawned by `spawn_tilemap_lit_overlays` as children of the ground tilemap, and are never frame-synced.
 
 ```mermaid
 ---
@@ -1201,25 +1213,37 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+post_update(("`PostUpdate`")):::system-group
 state_transition(("`OnExit(Playing)`")):::system-group
 
-apply_illumination_effect["`**apply_illumination_effect**`"]
-on_illumination_completed["`**on_illumination_completed**`"]
-clear_illumination_drivers["`**clear_illumination_drivers**`"]
+spawn_sprite_lit_overlays["`**spawn_sprite_lit_overlays**`"]
+spawn_tilemap_lit_overlays["`**spawn_tilemap_lit_overlays**`"]
+build_lit_atlas["`**build_lit_atlas**`"]
+apply_glow_effect["`**apply_glow_effect**`"]
+update_lit_overlays["`**update_lit_overlays**`"]
+sync_lit_overlay_frames["`**sync_lit_overlay_frames**`"]
+clear_glow["`**clear_glow**`"]
 
-update -.-> apply_illumination_effect
-update -.-> on_illumination_completed
-state_transition -.-> clear_illumination_drivers
+update -.-> spawn_sprite_lit_overlays
+update -.-> spawn_tilemap_lit_overlays
+update -.-> build_lit_atlas
+update -.-> apply_glow_effect
+update -.-> update_lit_overlays
+post_update -.-> sync_lit_overlay_frames
+state_transition -.-> clear_glow
 
-driver_entity@{ shape: st-rect, label: "IlluminationDriver" }
+overlay_entity@{ shape: st-rect, label: "Lit Overlay" }
 tile_entity@{ shape: st-rect, label: "ClaimedTile (Sprite)" }
+lit_image@{ shape: doc, label: "Lit Image" }
 
-apply_illumination_effect ---> |spawns, targeting| driver_entity
-apply_illumination_effect ---> |despawns stale driver for same tile| driver_entity
-apply_illumination_effect ---> |animates via AnimTarget| tile_entity
-on_illumination_completed ---> |despawns on AnimCompletedEvent| driver_entity
-clear_illumination_drivers ---> |force-resets to WHITE| tile_entity
-clear_illumination_drivers ---> |despawns| driver_entity
+spawn_sprite_lit_overlays ---> |spawns child, links| overlay_entity
+spawn_tilemap_lit_overlays ---> |spawns tilemap child, links| overlay_entity
+build_lit_atlas ---> |inserts lit pixels| lit_image
+apply_glow_effect ---> |pushes pulses| overlay_entity
+update_lit_overlays ---> |sets alpha, visibility| overlay_entity
+sync_lit_overlay_frames ---> |copies atlas index from| tile_entity
+sync_lit_overlay_frames ---> |writes index| overlay_entity
+clear_glow ---> |clears pulses, hides| overlay_entity
 ```
 
 ### ParryScaleDriver component lifecycle

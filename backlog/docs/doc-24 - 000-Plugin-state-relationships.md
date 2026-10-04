@@ -74,7 +74,7 @@ Three other systems gate on phases other than `Playing`:
 - `OnEnter(RoundPhase::Outcome)`: `round/outcome.rs`'s `show_outcome_banner` spawns the win banner; `telemetry.rs`'s `record_outcome` (also gated `telemetry_enabled`) writes the round's outcome record.
 - `OnExit(RoundPhase::Outcome)`: `round/state.rs`'s `reset_round` wipes tile ownership, health, charges, and positions back to spawn; `round/outcome.rs`'s `despawn_outcome_banner` removes the win banner.
 - `OnExit(RoundPhase::Loading)`: the Maps plugin's bootstrap chain (see above).
-- `OnExit(RoundPhase::Playing)`: `effects.rs`'s `clear_illumination_drivers` clears any beam-illumination tint still applied to a tile.
+- `OnExit(RoundPhase::Playing)`: `effects.rs`'s `clear_glow` empties every lit overlay's pulses and hides the overlay.
 
 ## Asymmetries
 
