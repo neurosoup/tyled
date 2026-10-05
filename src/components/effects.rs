@@ -149,14 +149,77 @@ pub struct WaveSource;
 #[derive(Component)]
 pub struct ParryScaleEffectTarget;
 
-/// Drives the scale-punch tween on a sprite entity from a separate carrier entity.
-#[derive(Component)]
-pub struct ParryScaleDriver {
-    pub sprite: Entity,
+/// The animated value an effect writes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum EffectChannel {
+    RootTranslation,
+    SpriteScale,
+    SpriteColor,
 }
 
-/// Drives the damage color-flash tween on a sprite entity from a separate carrier entity.
-#[derive(Component)]
-pub struct DamageFlashDriver {
-    pub sprite: Entity,
+/// One effect request or running effect, with the data needed to build its tween.
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum EffectKind {
+    Translate { ms: u64 },
+    Settle { ms: u64 },
+    Knockback { ms: u64 },
+    DeathBounce { intensity: f32, bounce_count: usize, decay: f32 },
+    ParryPunch { sprite: Entity, peak: f32, secs: f32 },
+    DamageFlash { sprite: Entity, ms: u64 },
 }
+
+impl EffectKind {
+    /// The channel this effect writes.
+    pub fn channel(&self) -> EffectChannel {
+        match self {
+            Self::Translate { .. }
+            | Self::Settle { .. }
+            | Self::Knockback { .. }
+            | Self::DeathBounce { .. } => EffectChannel::RootTranslation,
+            Self::ParryPunch { .. } => EffectChannel::SpriteScale,
+            Self::DamageFlash { .. } => EffectChannel::SpriteColor,
+        }
+    }
+
+    /// The priority of this effect inside its channel, higher wins.
+    pub fn rank(&self) -> u8 {
+        match self {
+            Self::Translate { .. } => 0,
+            Self::Settle { .. } => 1,
+            Self::Knockback { .. } => 2,
+            Self::DeathBounce { .. } => 3,
+            Self::ParryPunch { .. } | Self::DamageFlash { .. } => 0,
+        }
+    }
+
+    /// The short name used for the driver entity.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Translate { .. } => "Fx:Translate",
+            Self::Settle { .. } => "Fx:Settle",
+            Self::Knockback { .. } => "Fx:Knockback",
+            Self::DeathBounce { .. } => "Fx:DeathBounce",
+            Self::ParryPunch { .. } => "Fx:ParryPunch",
+            Self::DamageFlash { .. } => "Fx:DamageFlash",
+        }
+    }
+}
+
+/// A carrier entity that runs one effect tween on its owner's channel.
+#[derive(Component, Debug)]
+pub struct EffectDriver {
+    pub owner: Entity,
+    pub kind: EffectKind,
+    pub then: Option<EffectKind>,
+}
+
+/// Links a driver to the entity whose effect it runs.
+#[derive(Component)]
+#[relationship(relationship_target = EffectDrivers)]
+pub struct DriverOf(pub Entity);
+
+/// The live effect drivers of an entity.
+#[derive(Component, Default)]
+#[relationship_target(relationship = DriverOf, linked_spawn)]
+pub struct EffectDrivers(Vec<Entity>);

@@ -55,9 +55,9 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `apply_bounce_effect`:
         - Reacts to `Added<BounceEffectTarget>` on any entity
             - Inserts a bounce `TweenAnim` and `ActiveTransformEffect(Bounce)`, removes `BounceEffectTarget`
-    - `apply_damage_effect`:
+    - `apply_damage_effect` (`EffectsSet::Request`):
         - Reacts to `Changed<Health>` on `DamageEffectTarget` entities
-            - Plays a red color-flash tween on the first child sprite entity
+            - Writes `EffectRequest { owner, kind: DamageFlash { sprite, ms } }` for the first child sprite entity
     - `spawn_sprite_lit_overlays`:
         - For every `GlowEffectTarget` tile that has a `Sprite` but no `LitOverlayLink`, spawns a persistent `SpriteLitOverlay` child (lit image, the tile's atlas, local z `SPRITE_LIT_OVERLAY_Z` = 0.5, `Visibility::Hidden`) and inserts the link on the tile; records the first tile's image as the `LitAtlases::tiles` source
     - `spawn_tilemap_lit_overlays` (Update, `run_if(resource_changed::<MapInfo>)`):
@@ -79,12 +79,15 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `trigger_parry_scale_effect` (tagged `GameplaySet::Presentation`):
         - Reads `BeamParried` messages
             - Inserts `ParryScaleEffectTarget` on the parrier's root entity
-    - `apply_parry_scale_effect` (tagged `GameplaySet::Presentation`):
+    - `apply_parry_scale_effect` (`EffectsSet::Request`):
         - Reacts to `Added<ParryScaleEffectTarget>`
-            - Resolves the entity's first child sprite; if found, despawns any existing `ParryScaleDriver` already targeting that sprite (re-parry dedup), then spawns a fresh driver carrying the scale-punch `TweenAnim` redirected at the sprite's `Transform`
+            - Resolves the entity's first child sprite; if found, writes `EffectRequest { owner, kind: ParryPunch { sprite, peak, secs } }`
             - Always removes `ParryScaleEffectTarget`, even when no sprite child is found
-    - `on_parry_scale_completed`:
-        - Reads `AnimCompletedEvent`; despawns the `ParryScaleDriver` entity whose tween finished
+    - `on_effect_completed` (`EffectsSet::Complete`):
+        - Reads `AnimCompletedEvent`; despawns the `EffectDriver` entity whose tween finished and starts its queued `then` effect, if any
+    - `resolve_effect_requests` (`EffectsSet::Resolve`, before `AnimationSystem::AnimationUpdate`):
+        - Reads every `EffectRequest`, drops non-death position requests on `IsDead` owners, groups by (owner, channel) and folds each group against the live driver with `fold_requests`
+            - Spawns at most one new `EffectDriver` per owner and channel (despawning the old one), or updates the live driver's `then` in place
 - `PostUpdate` (after `AnimationSystemSet`)
     - `sync_lit_overlay_frames`: copies each visible overlay's atlas index from its tile's sprite (it queries only `SpriteLitOverlay`, so the `TilemapLitOverlay` floor overlays are never touched; floor cells do not animate)
 - `OnExit(RoundPhase::Playing)`
@@ -118,7 +121,7 @@ Reacts to `Added<BounceEffectTarget>` — fires once whenever any entity receive
 
 ### Apply Damage Effect
 
-Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker. Walks the entity's children to find the first child sprite entity and plays a short red color-flash tween on it (interpolating `Sprite::color` to red and back over `config.effects.damage_flash_ms`, default `150`). Provides immediate visual feedback whenever a player loses health.
+Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker. Walks the entity's children to find the first child sprite entity and writes an `EffectRequest` with `EffectKind::DamageFlash { sprite, ms }` (`ms` is `config.effects.damage_flash_ms`, default `150`). The resolver then runs the red color-flash tween (`create_color_flash_tween`: `Sprite::color` to red over a quarter of `ms`, then back to white over `ms`). Runs in `EffectsSet::Request`. A second hit before the flash ends restarts it.
 
 ### Apply Death Effect
 
@@ -176,11 +179,34 @@ Reads `BeamParried` messages. For each, inserts `ParryScaleEffectTarget` on the 
 
 ### Apply Parry Scale Effect
 
-Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find the first child sprite entity; if found, despawns any existing `ParryScaleDriver` already targeting that same sprite (re-parry dedup — a parrier parried again before their first scale punch finishes gets the tween restarted from peak rather than stacking two drivers on the same sprite), then spawns a fresh driver entity carrying `ParryScaleDriver { sprite }`, `AnimTarget::component::<Transform>(sprite)`, and a `TweenAnim` built by `create_parry_scale_tween` — a `TransformScaleLens` that starts at `config.parry.scale_punch_peak` (default `1.3`) and eases (`EaseFunction::CubicIn`) down to `Vec3::ONE` over `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). `ParryScaleEffectTarget` is removed unconditionally, even when no sprite child is found, so a parrier without a sprite child never strands the marker. Tagged `.in_set(GameplaySet::Presentation)`. See the `ParryScaleDriver` lifecycle section below for why the tween is redirected at a proxy entity rather than living on the sprite directly.
+Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find the first child sprite entity; if found, writes an `EffectRequest` with `EffectKind::ParryPunch { sprite, peak, secs }`, taken from `config.parry.scale_punch_peak` (default `1.3`) and `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). The resolver builds the tween with `create_parry_scale_tween`: a `TransformScaleLens` from the peak down to `Vec3::ONE` with `EaseFunction::CubicIn`. `ParryScaleEffectTarget` is removed unconditionally, even when no sprite child is found, so a parrier without a sprite child never strands the marker. Runs in `EffectsSet::Request`. A second parry before the punch ends restarts it.
 
-### On Parry Scale Completed
+### Effect drivers and resolver
 
-Reads `AnimCompletedEvent` events. For each, despawns the `ParryScaleDriver` entity whose tween just finished — the same completion-cleanup pattern as `on_damage_flash_completed`, preventing driver entities from leaking one per parry.
+An effect driver is a carrier entity that runs one effect tween on an owner's channel. It carries `EffectDriver { owner, kind, then }`, `DriverOf(owner)`, an `AnimTarget` pointing at the animated component, and the `TweenAnim`. The owner holds the matching `EffectDrivers` relationship target (`linked_spawn`, so despawning the owner despawns its drivers). The link does not use `ChildOf`, because `sprite_child` reads `Children::first()`.
+
+Each driver owns one `EffectChannel`: `RootTranslation`, `SpriteScale` or `SpriteColor`. A driver exists so two effects on the same sprite (a punch and a flash) never fight over one `TweenAnim` slot. In this stage only the sprite kinds `ParryPunch` (`SpriteScale`, targets the sprite `Transform`) and `DamageFlash` (`SpriteColor`, targets the sprite `Sprite`) are requested. `Translate`, `Settle`, `Knockback` and `DeathBounce` exist in `EffectKind` with their policy but no system writes them yet, and `start_effect` does nothing for them.
+
+The three `EffectsSet` sets are chained inside `GameplaySet::Presentation`: `Request` (writers), `Complete`, `Resolve`. `Resolve` runs before `bevy_tweening::AnimationSystem::AnimationUpdate`. A sync point sits between `Complete` and `Resolve`, so the resolver sees drivers spawned by `on_effect_completed`.
+
+`EffectRequest { owner, kind }` is a message internal to the effects plugin. It is registered in `effects::plugin` and declared in `src/plugins/effects.rs`, not in `messages.rs`.
+
+Pure functions (unit-tested):
+- `decide(incoming, current) -> Decision` (`Start`, `Replace`, `Queue`, `Drop`) implements the policy table below. The sprite channels are always `Start` or `Replace`.
+- `merge_queued(existing, incoming)` keeps one queued slot; a new item replaces the old one when its rank is higher or equal.
+- `fold_requests(live, requests) -> ChannelPlan` stable-sorts the requests by rank, folds them through `decide` from the live (kind, then), and returns at most one spawn or one in-place `then` update. On `Replace`, the old `then` survives only if `decide(old_then, Some(new_kind))` is `Queue`.
+
+| Incoming / current | none | Translate or Settle | Knockback | DeathBounce |
+|---|---|---|---|---|
+| Translate or Settle | Start | Replace | Queue | Drop |
+| Knockback | Start | Replace | Replace | Drop |
+| DeathBounce | Start | Replace | Queue | Drop |
+
+Rank: Translate 0, Settle 1, Knockback 2, DeathBounce 3, sprite kinds 0.
+
+`resolve_effect_requests` drops every `RootTranslation` request except `DeathBounce` for owners with `IsDead` (sprite flashes still play), then groups by (owner, channel), finds the live driver through `EffectDrivers`, and applies the plan: despawn the old driver and `start_effect` the new one, or update `then` in place. `start_effect` spawns `(Name::new("Fx:<Kind>"), EffectDriver, DriverOf(owner), AnimTarget, TweenAnim)`. `on_effect_completed` reads `AnimCompletedEvent`, despawns the finished driver and starts its `then`.
+
+Sprite drivers are not cleared on round reset: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
 
 ## Components, Resources and Messages CRUD
 
@@ -534,7 +560,7 @@ apply_bounce_effect ---> |removes| be_target
 ### Query DamageEffectTarget entities (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: detects entities whose `Health` has changed and that carry `DamageEffectTarget`, then plays a color-flash tween on the first child sprite
+- **apply_damage_effect**: detects entities whose `Health` has changed and that carry `DamageEffectTarget`, then requests a color-flash on the first child sprite
 
 ```mermaid
 ---
@@ -567,7 +593,7 @@ damage_query ---> |reads| pe_health
 ### Query Children hierarchy (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: walks descendants to find the first child entity carrying a `Sprite` on which to play the color-flash tween
+- **apply_damage_effect**: walks descendants to find the first child entity carrying a `Sprite` for the color-flash request
 
 ```mermaid
 ---
@@ -594,10 +620,10 @@ ch_children>"`**Children**`"] --> |belongs to| child_entity
 children_query ---> |reads| ch_children
 ```
 
-### Query child Sprite (damage effect)
+### Query child Sprite and write EffectRequest (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: mutably accesses the `Sprite` on the first child entity to insert the red color-flash `TweenAnim`
+- **apply_damage_effect**: reads the `Sprite` on the first child entity to confirm it is a sprite, and writes an `EffectRequest` with `DamageFlash { sprite, ms }`
 
 ```mermaid
 ---
@@ -614,16 +640,17 @@ apply_damage_effect["`**apply_damage_effect**`"]
 
 update -.-> apply_damage_effect
 
-sprites_query{{"`sprites_query (mutable)`"}}:::query
+sprites_query{{"`sprite_query`"}}:::query
 apply_damage_effect ---> sprites_query
 
 child_entity@{ shape: st-rect, label: "Player Child (Sprite)" }
 
 ce_sprite>"`**Sprite**`"] --> |belongs to| child_entity
-ce_tween>"`**TweenAnim**`"] --> |belongs to| child_entity
 
 sprites_query ---> |reads| ce_sprite
-sprites_query ---> |writes| ce_tween
+
+effect_request(["`**EffectRequest**`"])
+apply_damage_effect ---> |writes DamageFlash| effect_request
 ```
 
 ### Read DamageableDied messages
@@ -1096,10 +1123,10 @@ pe_target --> |inserted on| parrier_entity
 trigger_parry_scale_effect ---> |inserts| pe_target
 ```
 
-### Query ParryScaleEffectTarget entities and write commands (apply_parry_scale_effect)
+### Query ParryScaleEffectTarget entities and write EffectRequest (apply_parry_scale_effect)
 
 Used in the following systems:
-- **apply_parry_scale_effect**: reacts to `Added<ParryScaleEffectTarget>`, resolves the entity's first child sprite, despawns any existing `ParryScaleDriver` targeting that sprite, spawns a replacement driver carrying the scale-punch tween, and always removes `ParryScaleEffectTarget`
+- **apply_parry_scale_effect**: reacts to `Added<ParryScaleEffectTarget>`, resolves the entity's first child sprite, writes an `EffectRequest` with `ParryPunch`, and always removes `ParryScaleEffectTarget`
 
 ```mermaid
 ---
@@ -1118,10 +1145,8 @@ update -.-> apply_parry_scale_effect
 
 parry_query{{"`parry_query`"}}:::query
 sprite_query{{"`sprite_query`"}}:::query
-driver_query{{"`drivers`"}}:::query
 apply_parry_scale_effect ---> parry_query
 apply_parry_scale_effect ---> sprite_query
-apply_parry_scale_effect ---> driver_query
 
 parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
 pe_target>"`**ParryScaleEffectTarget**`"] --> |belongs to| parrier_entity
@@ -1135,29 +1160,14 @@ sprite_entity@{ shape: st-rect, label: "Parrier Child (Sprite)" }
 se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
 sprite_query ---> |reads| se_sprite
 
-driver_entity@{ shape: st-rect, label: "ParryScaleDriver (existing)" }
-de_driver>"`**ParryScaleDriver**`"] --> |belongs to| driver_entity
-driver_query ---> |reads .sprite| de_driver
-apply_parry_scale_effect ---> |despawns matching driver| driver_entity
-
-new_driver_entity@{ shape: st-rect, label: "ParryScaleDriver (spawned)" }
-nd_driver>"`**ParryScaleDriver**`"]
-nd_anim_target>"`**AnimTarget#60;Transform#62;**`"]
-nd_tween>"`**TweenAnim**`"]
-
-nd_driver --> |spawned on| new_driver_entity
-nd_anim_target --> |spawned on| new_driver_entity
-nd_tween --> |spawned on| new_driver_entity
-
-apply_parry_scale_effect ---> |spawns entity with| nd_driver
-apply_parry_scale_effect ---> |spawns entity with| nd_anim_target
-apply_parry_scale_effect ---> |spawns entity with| nd_tween
+effect_request(["`**EffectRequest**`"])
+apply_parry_scale_effect ---> |writes ParryPunch| effect_request
 ```
 
-### Read AnimCompletedEvent (on_parry_scale_completed)
+### Read EffectRequest and spawn drivers (resolve_effect_requests)
 
 Used in the following systems:
-- **on_parry_scale_completed**: despawns the `ParryScaleDriver` entity whose tween just finished
+- **resolve_effect_requests**: reads every `EffectRequest`, finds the live driver per (owner, channel) through `EffectDrivers`, and spawns, replaces or updates drivers
 
 ```mermaid
 ---
@@ -1171,24 +1181,71 @@ classDef reader stroke-dasharray: 3 3
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-on_parry_scale_completed["`**on_parry_scale_completed**`"]
+resolve_effect_requests["`**resolve_effect_requests**`"]
 
-update -.-> on_parry_scale_completed
+update -.-> resolve_effect_requests
 
-event_reader{{"EventReader#60;AnimCompletedEvent#62;"}}:::reader
-on_parry_scale_completed ---> event_reader
+request_reader{{"MessageReader#60;EffectRequest#62;"}}:::reader
+resolve_effect_requests ---> request_reader
+
+effect_request(["`**EffectRequest**`"])
+request_reader ---> |reads| effect_request
+
+owner_query{{"`owners and drivers`"}}:::query
+resolve_effect_requests ---> owner_query
+
+owner_entity@{ shape: st-rect, label: "Owner Entity" }
+oe_drivers>"`**EffectDrivers**`"] --> |belongs to| owner_entity
+oe_dead>"`**IsDead**`"] --> |belongs to| owner_entity
+owner_query ---> |reads| oe_drivers
+owner_query ---> |reads Has| oe_dead
+
+driver_entity@{ shape: st-rect, label: "Effect Driver" }
+de_driver>"`**EffectDriver**`"] --> |belongs to| driver_entity
+de_link>"`**DriverOf**`"] --> |belongs to| driver_entity
+de_tween>"`**TweenAnim**`"] --> |belongs to| driver_entity
+
+owner_query ---> |reads, writes then| de_driver
+resolve_effect_requests ---> |despawns replaced driver| driver_entity
+resolve_effect_requests ---> |spawns with DriverOf, AnimTarget, TweenAnim| driver_entity
+```
+
+### Read AnimCompletedEvent (on_effect_completed)
+
+Used in the following systems:
+- **on_effect_completed**: despawns the `EffectDriver` entity whose tween just finished and starts its queued `then` effect
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+on_effect_completed["`**on_effect_completed**`"]
+
+update -.-> on_effect_completed
+
+event_reader{{"MessageReader#60;AnimCompletedEvent#62;"}}:::reader
+on_effect_completed ---> event_reader
 
 anim_completed_event(["`**AnimCompletedEvent**`"])
 event_reader ---> |reads| anim_completed_event
 
 driver_query{{"`drivers`"}}:::query
-on_parry_scale_completed ---> driver_query
+on_effect_completed ---> driver_query
 
-driver_entity@{ shape: st-rect, label: "ParryScaleDriver" }
-de_driver>"`**ParryScaleDriver**`"] --> |belongs to| driver_entity
-driver_query -..-> |filter With| de_driver
+driver_entity@{ shape: st-rect, label: "Effect Driver" }
+de_driver>"`**EffectDriver**`"] --> |belongs to| driver_entity
+driver_query ---> |reads| de_driver
 
-on_parry_scale_completed ---> |despawns| driver_entity
+on_effect_completed ---> |despawns| driver_entity
+on_effect_completed ---> |spawns driver for then| driver_entity
 ```
 
 ### SpriteLitOverlay and TilemapLitOverlay lifecycle
@@ -1246,12 +1303,13 @@ sync_lit_overlay_frames ---> |writes index| overlay_entity
 clear_glow ---> |clears pulses, hides| overlay_entity
 ```
 
-### ParryScaleDriver component lifecycle
+### EffectDriver component lifecycle
 
-`ParryScaleDriver { sprite: Entity }` (`src/components/effects.rs`) is a transient proxy entity whose `TweenAnim` is redirected at `sprite`'s `Transform` via `AnimTarget::component::<Transform>(sprite)`, rather than living on the sprite itself — `TweenAnim` is a single component per entity, and that same sprite child's `TweenAnim` slot already belongs to `apply_damage_effect`'s color-flash tween (`SpriteColorLens`, built by `create_color_flash_tween`); inserting the scale-punch tween directly on the sprite would let either effect silently overwrite the other's `TweenAnim` whenever both land on the same entity close together. Its full lifecycle:
-- **Spawned** by `apply_parry_scale_effect` (this plugin), one per landed parry, carrying the scale-punch `TweenAnim`.
-- **Despawned pre-emptively** by `apply_parry_scale_effect` itself, for any existing driver already targeting the same sprite, before spawning the replacement — a parrier parrying again before their first scale punch finishes never leaves two competing tweens on their sprite.
-- **Despawned on completion** by `on_parry_scale_completed`, reading `AnimCompletedEvent`; no scale reset needed, since the tween's own final keyframe is already `Vec3::ONE`.
+`EffectDriver { owner, kind, then }` (`src/components/effects.rs`) is a transient carrier entity whose `TweenAnim` is redirected at the animated component through `AnimTarget`, so several effects can run on one sprite without sharing a `TweenAnim` slot. Its full lifecycle:
+- **Spawned** by `resolve_effect_requests` (or by `on_effect_completed` for a queued `then`) through `start_effect`, linked to its owner with `DriverOf`.
+- **Replaced** by `resolve_effect_requests` when a new effect on the same channel wins `decide` with `Replace`: the old driver is despawned and the new one spawned in the same frame, so a repeated hit or parry restarts its tween from the start.
+- **Despawned on completion** by `on_effect_completed`, reading `AnimCompletedEvent`; no reset is needed, since the tweens end at white color and `Vec3::ONE`.
+- **Not cleared on round reset** for sprite drivers.
 
 ```mermaid
 ---
@@ -1265,16 +1323,23 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 
 apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
-on_parry_scale_completed["`**on_parry_scale_completed**`"]
+apply_damage_effect["`**apply_damage_effect**`"]
+on_effect_completed["`**on_effect_completed**`"]
+resolve_effect_requests["`**resolve_effect_requests**`"]
 
 update -.-> apply_parry_scale_effect
-update -.-> on_parry_scale_completed
+update -.-> apply_damage_effect
+update -.-> on_effect_completed
+update -.-> resolve_effect_requests
 
-driver_entity@{ shape: st-rect, label: "ParryScaleDriver" }
-sprite_entity@{ shape: st-rect, label: "Parrier Child (Sprite, Transform)" }
+effect_request(["`**EffectRequest**`"])
+driver_entity@{ shape: st-rect, label: "Effect Driver" }
+sprite_entity@{ shape: st-rect, label: "Owner Child (Sprite, Transform)" }
 
-apply_parry_scale_effect ---> |spawns, targeting| driver_entity
-apply_parry_scale_effect ---> |despawns stale driver for same sprite| driver_entity
-apply_parry_scale_effect ---> |animates via AnimTarget| sprite_entity
-on_parry_scale_completed ---> |despawns on AnimCompletedEvent| driver_entity
+apply_parry_scale_effect ---> |writes ParryPunch| effect_request
+apply_damage_effect ---> |writes DamageFlash| effect_request
+effect_request ---> |read by| resolve_effect_requests
+resolve_effect_requests ---> |spawns or replaces| driver_entity
+driver_entity ---> |animates via AnimTarget| sprite_entity
+on_effect_completed ---> |despawns on AnimCompletedEvent| driver_entity
 ```

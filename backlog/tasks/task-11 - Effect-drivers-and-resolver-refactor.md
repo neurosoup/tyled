@@ -105,7 +105,7 @@ fn fold_requests(live: Option<(EffectKind, Option<EffectKind>)>, requests: &[Eff
 ```
 
 Systems:
-- `resolve_effect_requests` (Resolve): read every `EffectRequest`; drop non-DeathBounce requests on owners with `IsDead`; group by (owner, channel); call `fold_requests` against the live driver (found via `EffectDrivers` + `EffectDriver::kind.channel()`); apply the plan (despawn old + spawn new, or update `then` in place, or nothing).
+- `resolve_effect_requests` (Resolve): read every `EffectRequest`; drop non-DeathBounce RootTranslation requests on owners with `IsDead` (sprite flashes still play); group by (owner, channel); call `fold_requests` against the live driver (found via `EffectDrivers` + `EffectDriver::kind.channel()`); apply the plan (despawn old + spawn new, or update `then` in place, or nothing).
 - `start_effect` (helper): build the `TweenAnim` and spawn `(Name::new("Fx:<Kind>"), EffectDriver, DriverOf(owner), AnimTarget::component::<Transform|Sprite>(target), TweenAnim)`. Target is the owner for RootTranslation, the sprite for the sprite channels.
 - `on_effect_completed` (Complete): read `AnimCompletedEvent`, look up `EffectDriver` from `anim_entity`, despawn it, call the per-kind completion hook (no-op in this stage), and if `then` is set call `start_effect(then)`. Runs before Resolve with a sync point between.
 

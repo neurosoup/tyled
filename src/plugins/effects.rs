@@ -2,6 +2,7 @@
  * This plugin handles effects applied to entities on the map.
  * For example, movement effects are applied to entities based on their current position and a target position when their GridCoords component changed.
  */
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -92,8 +93,68 @@ impl FromWorld for LitAtlases {
     }
 }
 
+/// Ordering of the effect driver pipeline inside `GameplaySet::Presentation`.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum EffectsSet {
+    /// Systems that write `EffectRequest` messages.
+    Request,
+    /// Finishes completed drivers and starts their queued follow-ups.
+    Complete,
+    /// Turns this frame's requests into drivers.
+    Resolve,
+}
+
+/// A request to run one effect on an owner entity.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct EffectRequest {
+    pub owner: Entity,
+    pub kind: EffectKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Decision {
+    Start,
+    Replace,
+    Queue,
+    Drop,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+struct ChannelPlan {
+    spawn: Option<(EffectKind, Option<EffectKind>)>,
+    new_then: Option<Option<EffectKind>>,
+}
+
+type LiveEffect = (EffectKind, Option<EffectKind>);
+
 pub(crate) fn plugin(app: &mut App) {
     app.init_resource::<LitAtlases>();
+    app.add_message::<EffectRequest>();
+    app.configure_sets(
+        Update,
+        (
+            EffectsSet::Request,
+            EffectsSet::Complete,
+            EffectsSet::Resolve,
+        )
+            .chain()
+            .in_set(GameplaySet::Presentation),
+    );
+    app.configure_sets(
+        Update,
+        EffectsSet::Resolve.before(bevy_tweening::AnimationSystem::AnimationUpdate),
+    );
+    app.add_systems(
+        Update,
+        (
+            apply_damage_effect.in_set(EffectsSet::Request),
+            apply_parry_scale_effect.in_set(EffectsSet::Request),
+            on_effect_completed.in_set(EffectsSet::Complete),
+            resolve_effect_requests.in_set(EffectsSet::Resolve),
+        ),
+    );
+    #[cfg(feature = "dev")]
+    app.add_systems(Update, warn_duplicate_channel_drivers.after(EffectsSet::Resolve));
     app.add_systems(
         Update,
         (
@@ -109,7 +170,6 @@ pub(crate) fn plugin(app: &mut App) {
             start_deferred_death_bounce,
             apply_wave_effect,
             apply_bounce_effect,
-            apply_damage_effect,
             spawn_sprite_lit_overlays,
             build_lit_atlas,
             apply_glow_effect
@@ -120,9 +180,6 @@ pub(crate) fn plugin(app: &mut App) {
             on_knockback_tween_completed,
             tick_knockback_lock,
             trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
-            apply_parry_scale_effect.in_set(GameplaySet::Presentation),
-            on_parry_scale_completed,
-            on_damage_flash_completed,
         ),
     );
     app.add_systems(
@@ -365,49 +422,213 @@ fn sync_resting_translation(
     }
 }
 
-/// The first child entity that actually carries a `Sprite`.
-fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> Option<Entity> {
-    let first_child = children.and_then(|c| c.first()).copied()?;
-    sprite_query.get(first_child).is_ok().then_some(first_child)
+/// Decides what an incoming effect does given the effect currently running on its channel.
+fn decide(incoming: &EffectKind, current: Option<&EffectKind>) -> Decision {
+    use EffectKind::*;
+    let Some(current) = current else {
+        return Decision::Start;
+    };
+    if incoming.channel() != current.channel() {
+        return Decision::Start;
+    }
+    match (incoming, current) {
+        (_, DeathBounce { .. }) => Decision::Drop,
+        (Translate { .. } | Settle { .. } | DeathBounce { .. }, Knockback { .. }) => {
+            Decision::Queue
+        }
+        _ => Decision::Replace,
+    }
+}
+
+/// Merges a new queued effect into the single queued slot.
+fn merge_queued(existing: Option<EffectKind>, incoming: EffectKind) -> Option<EffectKind> {
+    match existing {
+        Some(existing) if existing.rank() > incoming.rank() => Some(existing),
+        _ => Some(incoming),
+    }
+}
+
+/// Folds one frame of requests for one channel into at most one spawn or one queue update.
+fn fold_requests(live: Option<LiveEffect>, requests: &[EffectKind]) -> ChannelPlan {
+    let mut sorted = requests.to_vec();
+    sorted.sort_by_key(|kind| kind.rank());
+    let mut state = live;
+    let mut spawned = false;
+    for incoming in &sorted {
+        match decide(incoming, state.as_ref().map(|(kind, _)| kind)) {
+            Decision::Start => {
+                state = Some((*incoming, None));
+                spawned = true;
+            }
+            Decision::Replace => {
+                let then = state
+                    .and_then(|(_, then)| then)
+                    .filter(|then| decide(then, Some(incoming)) == Decision::Queue);
+                state = Some((*incoming, then));
+                spawned = true;
+            }
+            Decision::Queue => {
+                if let Some((_, then)) = &mut state {
+                    *then = merge_queued(*then, *incoming);
+                }
+            }
+            Decision::Drop => {}
+        }
+    }
+    if spawned {
+        return ChannelPlan {
+            spawn: state,
+            new_then: None,
+        };
+    }
+    let new_then = state
+        .zip(live)
+        .filter(|((_, then), (_, live_then))| then != live_then)
+        .map(|((_, then), _)| then);
+    ChannelPlan {
+        spawn: None,
+        new_then,
+    }
+}
+
+/// Spawns the driver entity that runs one effect tween.
+fn start_effect(
+    commands: &mut Commands,
+    owner: Entity,
+    kind: EffectKind,
+    then: Option<EffectKind>,
+) {
+    let driver = (
+        Name::new(kind.name()),
+        EffectDriver { owner, kind, then },
+        DriverOf(owner),
+    );
+    match kind {
+        EffectKind::ParryPunch { sprite, peak, secs } => {
+            commands.spawn((
+                driver,
+                AnimTarget::component::<Transform>(sprite),
+                TweenAnim::new(create_parry_scale_tween(peak, secs)),
+            ));
+        }
+        EffectKind::DamageFlash { sprite, ms } => {
+            commands.spawn((
+                driver,
+                AnimTarget::component::<Sprite>(sprite),
+                TweenAnim::new(create_color_flash_tween(ms)),
+            ));
+        }
+        EffectKind::Translate { .. }
+        | EffectKind::Settle { .. }
+        | EffectKind::Knockback { .. }
+        | EffectKind::DeathBounce { .. } => {}
+    }
+}
+
+fn resolve_effect_requests(
+    mut commands: Commands,
+    mut requests: MessageReader<EffectRequest>,
+    dead: Query<(), With<IsDead>>,
+    owners: Query<&EffectDrivers>,
+    mut drivers: Query<&mut EffectDriver>,
+) {
+    let mut grouped: HashMap<(Entity, EffectChannel), Vec<EffectKind>> = HashMap::new();
+    for request in requests.read() {
+        if request.kind.channel() == EffectChannel::RootTranslation
+            && dead.contains(request.owner)
+            && !matches!(request.kind, EffectKind::DeathBounce { .. })
+        {
+            continue;
+        }
+        grouped
+            .entry((request.owner, request.kind.channel()))
+            .or_default()
+            .push(request.kind);
+    }
+    for ((owner, channel), kinds) in grouped {
+        let live_driver = owners.get(owner).ok().and_then(|live| {
+            live.iter().find(|driver| {
+                drivers
+                    .get(*driver)
+                    .is_ok_and(|driver| driver.kind.channel() == channel)
+            })
+        });
+        let live = live_driver.and_then(|driver| {
+            drivers
+                .get(driver)
+                .ok()
+                .map(|driver| (driver.kind, driver.then))
+        });
+        let plan = fold_requests(live, &kinds);
+        if let Some((kind, then)) = plan.spawn {
+            if let Some(driver) = live_driver {
+                commands.entity(driver).despawn();
+            }
+            start_effect(&mut commands, owner, kind, then);
+        } else if let (Some(then), Some(driver)) = (plan.new_then, live_driver) {
+            if let Ok(mut driver) = drivers.get_mut(driver) {
+                driver.then = then;
+            }
+        }
+    }
+}
+
+fn on_effect_completed(
+    mut commands: Commands,
+    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
+    drivers: Query<&EffectDriver>,
+) {
+    for event in anim_completed_reader.read() {
+        let Ok(driver) = drivers.get(event.anim_entity) else {
+            continue;
+        };
+        commands.entity(event.anim_entity).despawn();
+        if let Some(then) = driver.then {
+            start_effect(&mut commands, driver.owner, then, None);
+        }
+    }
+}
+
+#[cfg(feature = "dev")]
+fn warn_duplicate_channel_drivers(owners: Query<(Entity, &EffectDrivers)>, drivers: Query<&EffectDriver>) {
+    for (owner, owned) in &owners {
+        let mut seen: Vec<EffectChannel> = Vec::new();
+        for driver in owned.iter().filter_map(|driver| drivers.get(driver).ok()) {
+            let channel = driver.kind.channel();
+            if seen.contains(&channel) {
+                warn!("Entity {owner} has two effect drivers on {channel:?}");
+            }
+            seen.push(channel);
+        }
+    }
 }
 
 fn apply_damage_effect(
-    mut commands: Commands,
+    mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     damageable_query: Query<
         (Entity, Option<&Children>),
         (With<DamageEffectTarget>, Changed<Health>),
     >,
     sprite_query: Query<&Sprite>,
-    drivers: Query<(Entity, &DamageFlashDriver)>,
 ) {
-    for (_entity, children) in &damageable_query {
-        if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
-            for (driver_entity, driver) in &drivers {
-                if driver.sprite == sprite_entity {
-                    commands.entity(driver_entity).despawn();
-                }
-            }
-            commands.spawn((
-                Name::new("DamageFlashDriver"),
-                DamageFlashDriver { sprite: sprite_entity },
-                AnimTarget::component::<Sprite>(sprite_entity),
-                TweenAnim::new(create_color_flash_tween(config.effects.damage_flash_ms)),
-            ));
+    for (entity, children) in &damageable_query {
+        if let Some(sprite) = sprite_child(children, &sprite_query) {
+            requests.write(EffectRequest {
+                owner: entity,
+                kind: EffectKind::DamageFlash {
+                    sprite,
+                    ms: config.effects.damage_flash_ms,
+                },
+            });
         }
     }
 }
 
-fn on_damage_flash_completed(
-    mut commands: Commands,
-    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    drivers: Query<Entity, With<DamageFlashDriver>>,
-) {
-    for ev in anim_completed_reader.read() {
-        if let Ok(entity) = drivers.get(ev.anim_entity) {
-            commands.entity(entity).despawn();
-        }
-    }
+/// The first child entity that actually carries a `Sprite`.
+fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> Option<Entity> {
+    let first_child = children.and_then(|c| c.first()).copied()?;
+    sprite_query.get(first_child).is_ok().then_some(first_child)
 }
 
 // Reacts to DamageableDied event. Defers the bounce if knocked back — see
@@ -593,42 +814,24 @@ fn trigger_parry_scale_effect(
 }
 
 fn apply_parry_scale_effect(
+    mut requests: MessageWriter<EffectRequest>,
     mut commands: Commands,
     config: Res<GameConfig>,
     parry_query: Query<(Entity, Option<&Children>), Added<ParryScaleEffectTarget>>,
     sprite_query: Query<&Sprite>,
-    drivers: Query<(Entity, &ParryScaleDriver)>,
 ) {
     for (entity, children) in &parry_query {
-        if let Some(sprite_entity) = sprite_child(children, &sprite_query) {
-            for (driver_entity, driver) in &drivers {
-                if driver.sprite == sprite_entity {
-                    commands.entity(driver_entity).despawn();
-                }
-            }
-            commands.spawn((
-                Name::new("ParryScaleDriver"),
-                ParryScaleDriver { sprite: sprite_entity },
-                AnimTarget::component::<Transform>(sprite_entity),
-                TweenAnim::new(create_parry_scale_tween(
-                    config.parry.scale_punch_peak,
-                    config.parry.scale_punch_secs,
-                )),
-            ));
+        if let Some(sprite) = sprite_child(children, &sprite_query) {
+            requests.write(EffectRequest {
+                owner: entity,
+                kind: EffectKind::ParryPunch {
+                    sprite,
+                    peak: config.parry.scale_punch_peak,
+                    secs: config.parry.scale_punch_secs,
+                },
+            });
         }
         commands.entity(entity).remove::<ParryScaleEffectTarget>();
-    }
-}
-
-fn on_parry_scale_completed(
-    mut commands: Commands,
-    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    drivers: Query<Entity, With<ParryScaleDriver>>,
-) {
-    for ev in anim_completed_reader.read() {
-        if let Ok(entity) = drivers.get(ev.anim_entity) {
-            commands.entity(entity).despawn();
-        }
     }
 }
 
@@ -872,6 +1075,144 @@ fn clear_glow(
 mod tests {
     use super::*;
     use bevy::render::render_resource::{Extent3d, TextureDimension};
+    use bevy_tweening::TweeningPlugin;
+
+    const T: EffectKind = EffectKind::Translate { ms: 10 };
+    const S: EffectKind = EffectKind::Settle { ms: 10 };
+    const K: EffectKind = EffectKind::Knockback { ms: 10 };
+    const D: EffectKind = EffectKind::DeathBounce {
+        intensity: 8.0,
+        bounce_count: 3,
+        decay: 0.33,
+    };
+
+    fn punch() -> EffectKind {
+        EffectKind::ParryPunch {
+            sprite: Entity::PLACEHOLDER,
+            peak: 1.5,
+            secs: 0.2,
+        }
+    }
+
+    fn flash(ms: u64) -> EffectKind {
+        EffectKind::DamageFlash {
+            sprite: Entity::PLACEHOLDER,
+            ms,
+        }
+    }
+
+    #[test]
+    fn decide_root_table() {
+        use Decision::*;
+        let rows = [
+            (T, [Start, Replace, Queue, Drop]),
+            (S, [Start, Replace, Queue, Drop]),
+            (K, [Start, Replace, Replace, Drop]),
+            (D, [Start, Replace, Queue, Drop]),
+        ];
+        for (incoming, expected) in rows {
+            assert_eq!(decide(&incoming, None), expected[0], "{incoming:?} none");
+            assert_eq!(decide(&incoming, Some(&T)), expected[1], "{incoming:?} T");
+            assert_eq!(decide(&incoming, Some(&S)), expected[1], "{incoming:?} S");
+            assert_eq!(decide(&incoming, Some(&K)), expected[2], "{incoming:?} K");
+            assert_eq!(decide(&incoming, Some(&D)), expected[3], "{incoming:?} D");
+        }
+    }
+
+    #[test]
+    fn decide_sprite_channels_always_replace() {
+        assert_eq!(decide(&punch(), None), Decision::Start);
+        assert_eq!(decide(&punch(), Some(&punch())), Decision::Replace);
+        assert_eq!(decide(&flash(1), None), Decision::Start);
+        assert_eq!(decide(&flash(1), Some(&flash(2))), Decision::Replace);
+    }
+
+    #[test]
+    fn merge_queued_keeps_higher_rank() {
+        assert_eq!(merge_queued(None, T), Some(T));
+        assert_eq!(merge_queued(Some(T), S), Some(S));
+        assert_eq!(merge_queued(Some(S), T), Some(S));
+        assert_eq!(merge_queued(Some(T), D), Some(D));
+        assert_eq!(merge_queued(Some(D), S), Some(D));
+        assert_eq!(merge_queued(Some(S), S), Some(S));
+    }
+
+    #[test]
+    fn fold_translate_and_knockback_gives_knockback() {
+        let plan = fold_requests(None, &[K, T]);
+        assert_eq!(plan.spawn, Some((K, None)));
+        assert_eq!(plan.new_then, None);
+    }
+
+    #[test]
+    fn fold_knockback_and_death_queues_death() {
+        let plan = fold_requests(None, &[D, K]);
+        assert_eq!(plan.spawn, Some((K, Some(D))));
+    }
+
+    #[test]
+    fn fold_settle_and_translate_gives_settle() {
+        let plan = fold_requests(None, &[S, T]);
+        assert_eq!(plan.spawn, Some((S, None)));
+    }
+
+    #[test]
+    fn fold_drag_replace_carries_queued_death() {
+        let plan = fold_requests(Some((K, Some(D))), &[K]);
+        assert_eq!(plan.spawn, Some((K, Some(D))));
+    }
+
+    #[test]
+    fn fold_replace_discards_dropped_then() {
+        let plan = fold_requests(Some((T, Some(T))), &[S]);
+        assert_eq!(plan.spawn, Some((S, None)));
+    }
+
+    #[test]
+    fn fold_death_drops_translate() {
+        let plan = fold_requests(Some((D, None)), &[T]);
+        assert_eq!(plan, ChannelPlan::default());
+    }
+
+    #[test]
+    fn fold_queue_updates_then_in_place() {
+        let plan = fold_requests(Some((K, None)), &[T]);
+        assert_eq!(plan.spawn, None);
+        assert_eq!(plan.new_then, Some(Some(T)));
+        let plan = fold_requests(Some((K, Some(D))), &[T]);
+        assert_eq!(plan, ChannelPlan::default());
+    }
+
+    #[test]
+    fn fold_same_frame_sprite_requests_give_one_spawn() {
+        let plan = fold_requests(None, &[flash(1), flash(2)]);
+        assert_eq!(plan.spawn, Some((flash(2), None)));
+    }
+
+    #[test]
+    fn two_flash_requests_in_one_frame_give_one_driver() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TweeningPlugin));
+        app.add_message::<EffectRequest>();
+        app.add_systems(Update, resolve_effect_requests);
+        let sprite = app.world_mut().spawn(Sprite::default()).id();
+        let owner = app.world_mut().spawn_empty().id();
+        for ms in [100, 200] {
+            app.world_mut().write_message(EffectRequest {
+                owner,
+                kind: EffectKind::DamageFlash { sprite, ms },
+            });
+        }
+        app.update();
+        let linked = app.world().get::<EffectDrivers>(owner).unwrap().iter().count();
+        assert_eq!(linked, 1);
+        let drivers = app
+            .world_mut()
+            .query::<&EffectDriver>()
+            .iter(app.world())
+            .count();
+        assert_eq!(drivers, 1);
+    }
 
     fn image_from(pixels: &[[u8; 4]]) -> Image {
         Image::new(
