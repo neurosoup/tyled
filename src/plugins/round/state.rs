@@ -33,7 +33,6 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
-use bevy_tweening::TweenAnim;
 
 use crate::prelude::*;
 
@@ -369,10 +368,7 @@ fn reset_round(
                 KnockbackEffect,
                 BounceEffect,
                 BounceEffectTarget,
-                PendingDeathBounce,
                 MovementSettle,
-                ActiveTransformEffect,
-                TweenAnim,
             )>();
     }
 

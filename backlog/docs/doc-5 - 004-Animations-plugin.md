@@ -85,7 +85,7 @@ Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed til
 
 ### Animate Claimed Tile
 
-Reads `BeamResolved` messages. For each message, resolves the claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position. Reads the `ClaimedTileAnimations` resource to select the correct player-color clip based on the owning player id, then switches the `SpritesheetAnimation` clip on the claimed tile entity. Also inserts `BounceEffectTarget` on the claimed tile entity to trigger the bounce visual effect.
+Reads `BeamResolved` messages. For each message, resolves the claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position. Reads the `ClaimedTileAnimations` resource to select the correct player-color clip based on the owning player id, then switches the `SpritesheetAnimation` clip on the claimed tile entity. Also inserts `BounceEffectTarget` on the claimed tile entity to trigger the bounce visual effect. The Effects plugin's `apply_bounce_effect` then inserts the bounce `TweenAnim` directly on the tile and removes the marker. The claim bounce has no tag and no effect driver.
 
 ### Animate Unclaimed Tile
 

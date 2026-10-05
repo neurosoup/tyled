@@ -106,10 +106,12 @@ Render layers have named consts in `camera.rs`: `HUD_RENDER_LAYER` (1), `LEVEL_R
 ### Effect components
 
 Effects are driven by marker components rather than events:
-- `TranslateEffectTarget` — any entity with this + `GridCoords` gets a slide tween when `GridCoords` changes
+- `TranslateEffectTarget` — players; a slide is requested when `GridCoords` changes
 - `WaveEffectTarget` — `ClaimedTile` entities; bounce when a `BounceEffect` source moves onto their tile
-- `BounceEffectTarget` — one-shot bounce; removed after tween starts
+- `BounceEffectTarget` — one-shot claim bounce on tiles; removed after tween starts
 - `DamageEffectTarget` — color flash on child sprite when `Health` changes; death bounce + `IsDead` on `DamageableDied`
+
+Player effects (slide, settle, knockback, death bounce, damage flash, parry punch) never insert `TweenAnim` directly: they write an `EffectRequest`, and `resolve_effect_requests` runs each one as a driver entity, one per owner and channel (see doc-10 "Transform effect ownership"). Tiles keep direct `TweenAnim`.
 
 ### Controls (hardcoded)
 

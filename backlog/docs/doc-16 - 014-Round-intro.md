@@ -49,7 +49,7 @@ Runs every frame **only `in_state(RoundPhase::Starting)`**. Ticks the fixed one-
 
 ### Despawn Go Banner
 
-Runs every frame and is **deliberately ungated** — by the time the "GO!" tween finishes, the state is already `Playing`, so gating it on `Starting` would strand the banner on screen (`TweenAnim` auto-removes only its own component on completion, not the entity). Reads `AnimCompletedEvent` and, when the completed animation belongs to a `GoBanner` entity, despawns it (recursively removing its glyph children). Mirrors the Effects plugin's death-effect cleanup.
+Runs every frame and is **deliberately ungated** — by the time the "GO!" tween finishes, the state is already `Playing`, so gating it on `Starting` would strand the banner on screen (`TweenAnim` auto-removes only its own component on completion, not the entity). Reads `AnimCompletedEvent` and, when the completed animation belongs to a `GoBanner` entity, despawns it (recursively removing its glyph children). Mirrors the Effects plugin's `on_effect_completed`, which despawns finished effect drivers.
 
 ## Components and Resources CRUD
 

@@ -3,25 +3,37 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-10-04 00:00'
+updated_date: '2026-10-05 00:00'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a landed-parry scale punch that briefly enlarges the parrier's sprite. Because knockback, death-bounce, movement-settle, and plain translation can all target the same player entity's `Transform` `TweenAnim` slot, this plugin also arbitrates ownership of that slot so a higher-priority effect is never silently overwritten mid-play, and so completion handlers act only on the effect that actually finished.
+Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a landed-parry scale punch that briefly enlarges the parrier's sprite. Every player effect tween (translate, settle, knockback, death bounce, damage flash, parry punch) runs as a driver entity, and one resolver decides which effect owns each animated channel. Claimed tiles keep direct `TweenAnim` inserts for their wave and claim bounces.
 
 ## Transform effect ownership
 
-Four systems can write a player's `Transform` `TweenAnim`: `apply_bounce_effect`, `apply_knockback`, `apply_movement_settle`, `apply_translate_effect`. Only one tween can occupy the slot at a time, so ownership among them follows a fixed precedence — **Bounce > Knockback > {Settle, Translate}** — enforced structurally through query shape rather than a runtime priority comparison:
-- `apply_bounce_effect` never checks for a competing effect: it fires on `Added<BounceEffectTarget>`, which is only ever inserted once the entity is already committed to bouncing — a death bounce (via `start_deferred_death_bounce` or directly from `apply_death_effect`) on a player, or a tile-claim bounce inserted by the Animations plugin's `animate_claimed_tile` on a claimed tile. This precedence rule matters only for players: a claimed tile has no competing `Transform` effect, so `ActiveTransformEffect(Bounce)` lands on it too but is never read back.
-- `apply_knockback` reads `Has<IsDead>` and `Option<&Health>` in the system body rather than filtering the query on them, so `KnockbackEffect` is always removed even when the tween itself is skipped (see Apply Knockback below for why). It is tagged `GameplaySet::Displacement`, which runs after `Movement` and `Damage`, so it always sees a `KnockbackEffect` inserted in the same frame.
-- `apply_movement_settle` reads `Has<IsDead>`, `Has<IsKnockedBack>`, and `Has<KnockbackEffect>` in the system body for the same reason, so `MovementSettle` is always removed even when the tween is skipped (see Apply Movement Settle below for why `KnockbackEffect` is checked alongside the other two).
-- `apply_translate_effect` filters `Without<KnockbackEffect>`, `Without<IsKnockedBack>`, `Without<IsDead>` directly on the query, since it re-runs every frame the entity's `GridCoords` changes and has no request component of its own to strand.
+All player root-translation effects (Translate, Settle, Knockback, DeathBounce) are requests (`EffectRequest`) that `resolve_effect_requests` turns into driver entities. The resolver is the only writer of a player's position tween. It follows this policy table. The rows are the incoming effect. The columns are the effect that runs now on the `RootTranslation` channel.
 
-Settle and Translate are not ordered against each other and nothing arbitrates between them; whichever system's `Commands` are applied later wins that frame.
+| Incoming / current | none | Translate or Settle | Knockback | DeathBounce |
+|---|---|---|---|---|
+| Translate or Settle | Start | Replace | Queue | Drop |
+| Knockback | Start | Replace | Replace | Drop |
+| DeathBounce | Start | Replace | Queue | Drop |
 
-Every system that wins the slot also tags the entity with `ActiveTransformEffect(TransformEffectKind)`, where `TransformEffectKind` is one of `Translate`, `Settle`, `Knockback`, `Bounce`. `AnimCompletedEvent` carries no identity of which tween finished, so `on_death_effect_completed` and `on_knockback_tween_completed` each read this tag before acting, only running their own cleanup when the tag names their own effect — an entity's tween completing no longer implies any specific effect finished; the tag is what confirms it. The tag itself is removed only by whichever completion handler consumes it, or by `reset_round`; an entity at rest otherwise keeps its most recent effect's tag until the next transform effect overwrites it.
+- `Start`: spawn a driver.
+- `Replace`: despawn the running driver and spawn the new one.
+- `Queue`: keep the running driver and store the new effect as its `then`. It starts when the running driver completes.
+- `Drop`: ignore the request.
 
-Death and knockback cooperate rather than race for the slot: `apply_death_effect` checks whether a knockback is already in flight (`Has<IsKnockedBack>`) or about to start (a `KnockbackEffect` still pending resolution) and, if so, inserts `PendingDeathBounce` instead of `BounceEffectTarget` — parking the death bounce so the knockback slide is allowed to finish naturally instead of being clobbered mid-flight. `start_deferred_death_bounce` runs every frame and promotes any `PendingDeathBounce` entity to `BounceEffectTarget` the moment both `IsKnockedBack` and `KnockbackEffect` are absent, regardless of why they cleared — the knockback lock timer expiring via `tick_knockback_lock`, or the knockback never starting at all because the target tile was off the ground — which is what makes the deferral safe rather than a potential permanent stall.
+`ParryPunch` and `DamageFlash` have their own channels and are always `Start` or `Replace`.
+
+Fold rules (how the requests of one frame are combined):
+- One queued slot per driver (`then`). `merge_queued` replaces the old queued effect when the new one has a higher or equal rank. A DeathBounce beats any queued movement. A later Translate or Settle replaces an earlier one.
+- On `Replace`, the old `then` goes through `decide(old_then, Some(new_kind))`. `Queue` keeps it on the new driver. `Drop` discards it. So a DeathBounce queued behind a drag survives every drag step.
+- Same frame: requests are grouped by (owner, channel) and stable-sorted by rank, lowest first. Requests of equal rank keep their write order, so the latest one wins. They are folded through `decide`, starting from the live (kind, then). At most one spawn happens per channel per frame. Examples: Translate and Knockback give Knockback. Knockback and DeathBounce give Knockback with DeathBounce queued. Settle and Translate give Settle.
+- Owners with `IsDead`: every `RootTranslation` request except `DeathBounce` is dropped before the fold. Sprite flashes still play.
+- Translate under Knockback is `Queue`, not `Drop`. The input lock timer and the knockback tween are not ordered, so input can unlock one frame before the slide ends. The queued Translate builds its tween from the current position when it starts. It does nothing visible if the player has not moved.
+
+Death and knockback follow the same rules. A death bounce that arrives during a knockback is queued, so the slide finishes first. A lethal hit plays no slide, because `apply_knockback` skips it. `IsKnockedBack` is only the input lock and plays no part in these rules.
 
 ## Plugin workflow
 
@@ -29,32 +41,29 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
     - `sync_resting_translation` (before `apply_bounce_effect` and `apply_wave_effect`):
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities (players)
             - Writes `RestingTranslation` to the new grid position's world translation
-    - `apply_knockback` (tagged `GameplaySet::Displacement`, before `apply_translate_effect`):
+    - `apply_knockback` (tagged `GameplaySet::Displacement`, before `apply_death_effect`):
         - Reacts to `Added<KnockbackEffect>`
-            - Reads `Transform`, `GridCoords`, `Has<IsDead>`, `Option<&Health>`, and `MapInfo` to validate the target tile and compute the destination
-            - If the target is on ground, the entity is not dead and its `Health.current` is above 0: mutates `GridCoords`, inserts a slide `TweenAnim`, `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`, and `ActiveTransformEffect(Knockback)`
+            - Reads `Has<IsDead>`, `Option<&Health>`, and `MapInfo` to validate the target tile
+            - If the target is on ground, the entity is not dead and its `Health.current` is above 0: mutates `GridCoords`, writes `EffectRequest { owner, kind: Knockback { ms } }`, and inserts `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`
             - Always removes `KnockbackEffect`
-    - `apply_translate_effect`:
-        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities without `KnockbackEffect`, `IsKnockedBack`, or `IsDead`
-            - Inserts a `TweenAnim` sized from the entity's `MovementSlide` (or `config.timing.move_repeat_rate_ms` if absent) and `ActiveTransformEffect(Translate)`
-    - `apply_movement_settle`:
+    - `apply_translate_effect` (`EffectsSet::Request`):
+        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities
+            - Writes `EffectRequest { owner, kind: Translate { ms } }`, with `ms` from the entity's `MovementSlide` (or `config.timing.move_repeat_rate_ms` if absent)
+    - `apply_movement_settle` (`EffectsSet::Request`):
         - Reacts to `Added<MovementSettle>`
-            - If not dead, not knocked back, and no `KnockbackEffect` pending: inserts an ease-out `TweenAnim` and `ActiveTransformEffect(Settle)`
+            - Writes `EffectRequest { owner, kind: Settle { ms } }` with `ms` from `config.timing.move_repeat_rate_ms`
             - Always removes `MovementSettle`
-    - `apply_death_effect` (after `apply_knockback`, tagged `GameplaySet::Presentation`):
-        - Reads `DamageableDied` messages, matched against entities without `IsDead`
-            - Always inserts `BounceEffect` + `IsDead`
-            - Inserts `PendingDeathBounce` if a knockback is in flight or about to start on that entity, otherwise inserts `BounceEffectTarget` directly
-    - `start_deferred_death_bounce`:
-        - Reacts every frame to `PendingDeathBounce` + `BounceEffect` entities without `IsKnockedBack`/`KnockbackEffect`
-            - Promotes to `BounceEffectTarget`, removes `PendingDeathBounce`
+    - `apply_death_effect` (`EffectsSet::Request`, after `apply_knockback`):
+        - Reads `DamageableDied` messages, matched against entities with `DamageEffectTarget` and `Health` but without `IsDead`
+            - Inserts `IsDead`
+            - Writes `EffectRequest { owner, kind: DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 } }`
     - `apply_wave_effect`:
         - Reacts to `Changed<GridCoords>` on entities carrying both `WaveSource` and `BounceEffect` (in practice, beams that are not lane-suppressed — see the Beam plugin doc)
             - Resolves the source's `GridCoords` to a `WaveEffectTarget` claimed-tile entity via `MapInfo::claimed_entities`
-            - Inserts a bounce `TweenAnim` directly on that tile — no `ActiveTransformEffect` tag
-    - `apply_bounce_effect`:
-        - Reacts to `Added<BounceEffectTarget>` on any entity
-            - Inserts a bounce `TweenAnim` and `ActiveTransformEffect(Bounce)`, removes `BounceEffectTarget`
+            - Inserts a bounce `TweenAnim` directly on that tile
+    - `apply_bounce_effect` (claim bounce, tiles only):
+        - Reacts to `Added<BounceEffectTarget>`
+            - Inserts a bounce `TweenAnim` directly on the tile and removes `BounceEffectTarget`
     - `apply_damage_effect` (`EffectsSet::Request`):
         - Reacts to `Changed<Health>` on `DamageEffectTarget` entities
             - Writes `EffectRequest { owner, kind: DamageFlash { sprite, ms } }` for the first child sprite entity
@@ -69,13 +78,9 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
             - Pushes a peak-1.0 `GlowPulse` onto the overlay of the tile under the beam, and a `beam_glow_neighbor_peak` pulse (delayed by `beam_glow_neighbor_delay_ms`) onto each orthogonal neighbor and onto the tile two steps ahead along `Beam::direction` (skipped when the direction is zero); each pulse goes to both the claimed tile's overlay and the ground cell's overlay, even when the beam's own position has no claimed tile
     - `update_lit_overlays` (after `apply_glow_effect`):
         - Advances every overlay's pulses by the frame delta, sets the overlay alpha to the maximum pulse strength, prunes finished pulses, and toggles the overlay's visibility
-    - `on_death_effect_completed`:
-        - Reads `AnimCompletedEvent`; for entities with `IsDead` + `BounceEffect` whose `ActiveTransformEffect` reads `Bounce`, hides the entity and removes `BounceEffect` + `ActiveTransformEffect`
-    - `on_knockback_tween_completed`:
-        - Reads `AnimCompletedEvent`; for `IsKnockedBack` entities whose `ActiveTransformEffect` reads `Knockback`, removes only `ActiveTransformEffect` — cosmetic tag cleanup, since `IsKnockedBack` is no longer tied to tween completion
     - `tick_knockback_lock` (no ordering dependency; placed by registration order):
         - Runs every frame against every entity carrying `IsKnockedBack`
-            - Ticks the entity's timer; once it finishes, removes `IsKnockedBack` — the sole removal path during normal play, independent of whatever the visual tween/tag is doing
+            - Ticks the entity's timer; once it finishes, removes `IsKnockedBack`. This is the only removal path during normal play, and it is only the input lock
     - `trigger_parry_scale_effect` (tagged `GameplaySet::Presentation`):
         - Reads `BeamParried` messages
             - Inserts `ParryScaleEffectTarget` on the parrier's root entity
@@ -85,27 +90,31 @@ Death and knockback cooperate rather than race for the slot: `apply_death_effect
             - Always removes `ParryScaleEffectTarget`, even when no sprite child is found
     - `on_effect_completed` (`EffectsSet::Complete`):
         - Reads `AnimCompletedEvent`; despawns the `EffectDriver` entity whose tween finished and starts its queued `then` effect, if any
+            - When the finished effect was a `DeathBounce`, inserts `Visibility::Hidden` on the owner
     - `resolve_effect_requests` (`EffectsSet::Resolve`, before `AnimationSystem::AnimationUpdate`):
-        - Reads every `EffectRequest`, drops non-death position requests on `IsDead` owners, groups by (owner, channel) and folds each group against the live driver with `fold_requests`
+        - Reads every `EffectRequest`, drops `RootTranslation` requests except `DeathBounce` on `IsDead` owners, groups by (owner, channel) and folds each group against the live driver with `fold_requests`
             - Spawns at most one new `EffectDriver` per owner and channel (despawning the old one), or updates the live driver's `then` in place
+            - Builds root tweens when the driver starts, from the owner's `Transform`, `GridCoords`, `RestingTranslation` and `MapInfo`
 - `PostUpdate` (after `AnimationSystemSet`)
     - `sync_lit_overlay_frames`: copies each visible overlay's atlas index from its tile's sprite (it queries only `SpriteLitOverlay`, so the `TilemapLitOverlay` floor overlays are never touched; floor cells do not animate)
 - `OnExit(RoundPhase::Playing)`
     - `clear_glow`: empties every overlay's pulses, sets alpha to 0 and hides it, so a round boundary can't strand a lit tile
+- `OnExit(RoundPhase::Outcome)`
+    - `clear_root_effect_drivers`: despawns every `EffectDriver` on the `RootTranslation` channel, including any queued `then`, so no position tween or death bounce carries into the next round
 
 ## Plugin Systems
 
 ### Apply Knockback
 
-Reacts to `Added<KnockbackEffect>`. Computes the knockback target tile (`GridCoords + direction`) and validates it with `MapInfo::on_ground`. If valid, `Has<IsDead>` reads false and `Health.current` is above 0 (a lethal hit plays no slide), mutates `GridCoords` to the target and inserts a slide `TweenAnim` (`TransformPositionLens`, built by the `create_movement_tween` helper over `config.effects.knockback_tween_ms`, default `200`) plus `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))` and `ActiveTransformEffect(TransformEffectKind::Knockback)` (see the `IsKnockedBack` lifecycle section below for how the lock is cleared). `KnockbackEffect` is removed unconditionally — even when dead, lethal or blocked — because leaving it stranded would permanently block all future `Transform` effects on that entity.
+Runs in `GameplaySet::Displacement`, so it sees a `KnockbackEffect` inserted in the same frame by `Movement` or `Damage`. It is ordered before `apply_death_effect`. Reacts to `Added<KnockbackEffect>`. This system is the gameplay half of knockback. It computes the target tile (`GridCoords + direction`) and checks it with `MapInfo::on_ground`. If the target is on ground, `Has<IsDead>` reads false and `Health.current` is above 0 (a lethal hit plays no slide), it does three things. It mutates `GridCoords` to the target. It writes a `Knockback { ms: config.effects.knockback_tween_ms }` `EffectRequest` (default `200`). It inserts `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))`, the input lock (see the `IsKnockedBack` lifecycle section below). The tween itself is built later by the driver, not here. `KnockbackEffect` is removed unconditionally, even when dead, lethal or blocked, so the marker never strands.
 
 ### Apply Translate Effect
 
-Reacts to `Changed<GridCoords>` on entities that carry `TranslateEffectTarget` and none of `KnockbackEffect`, `IsKnockedBack`, `IsDead`. Computes the world-space destination via `MapInfo`, and sizes the tween's duration from the entity's `MovementSlide` component if present, otherwise `config.timing.move_repeat_rate_ms`. Sets a `TransformPositionLens` tween (`EaseFunction::Linear`, built by `create_movement_tween`) and `ActiveTransformEffect(TransformEffectKind::Translate)`. Provides smooth movement interpolation for players and beams without any coupling to the input or controller plugins.
+Runs in `EffectsSet::Request`. Reacts to `Changed<GridCoords>` on entities that carry `TranslateEffectTarget`. The query has no `Without` filters. The resolver decides what happens when a knockback or a death bounce is running. Writes a `Translate { ms }` `EffectRequest`, where `ms` is the entity's `MovementSlide` duration if present, otherwise `config.timing.move_repeat_rate_ms`. The driver builds a linear tween (`EaseFunction::Linear`, `create_movement_tween`) from the current `Transform` to the `GridCoords` position. This gives smooth movement for players without any coupling to the input or controller plugins.
 
 ### Apply Movement Settle
 
-Reacts to `Added<MovementSettle>`. Reads `Has<IsKnockedBack>`, `Has<IsDead>`, and `Has<KnockbackEffect>` in the system body rather than filtering the query on them: if all three are false, inserts an ease-out `TweenAnim` (`EaseFunction::QuadraticOut`, over `config.timing.move_repeat_rate_ms`) toward the entity's current `GridCoords`, plus `ActiveTransformEffect(TransformEffectKind::Settle)`. `KnockbackEffect` is checked alongside the other two as a body-check for the same reason: a fresh knockback's `IsKnockedBack` insert can be one frame behind its `KnockbackEffect` marker becoming visible, and filtering the query on it instead would let a `MovementSettle` inserted in that window strand — this system only matches `Added<MovementSettle>`, so a filtered-out entity never gets a second chance to be picked up. `MovementSettle` is removed unconditionally in every case, since a filtered-out entity would never re-trigger this `Added<MovementSettle>`-gated system on its next release.
+Runs in `EffectsSet::Request`. Reacts to `Added<MovementSettle>`. Writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` and removes `MovementSettle`. The system does not check `IsKnockedBack`, `IsDead` or `KnockbackEffect`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. `MovementSettle` is removed every time, so the marker never strands. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
 
 ### Sync Resting Translation
 
@@ -113,11 +122,11 @@ Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities — only pla
 
 ### Apply Wave Effect
 
-Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers glow (`apply_glow_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile — no `ActiveTransformEffect` tag. This causes the tile underneath the beam to "ripple" as the beam passes over it.
+Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers glow (`apply_glow_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile. This causes the tile underneath the beam to "ripple" as the beam passes over it.
 
 ### Apply Bounce Effect
 
-Reacts to `Added<BounceEffectTarget>` — fires once whenever any entity receives the `BounceEffectTarget` marker. Reads the entity's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation`) as the bounce origin, inserts a bounce `TweenAnim` and `ActiveTransformEffect(TransformEffectKind::Bounce)`, then removes `BounceEffectTarget` so the effect fires exactly once per insertion. Shared by multiple upstream systems: tile claiming and death animations both trigger bounces by inserting `BounceEffectTarget` (directly, or via `start_deferred_death_bounce`).
+Reacts to `Added<BounceEffectTarget>`. This is the claim bounce for tiles only. Players do not use it, because their death bounce goes through the resolver. Reads the entity's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation`) as the bounce origin, inserts a bounce `TweenAnim` directly on the tile, then removes `BounceEffectTarget` so the effect fires once per insertion. The Animations plugin inserts the marker when a tile is claimed. No tag is added to the tile.
 
 ### Apply Damage Effect
 
@@ -125,23 +134,11 @@ Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker
 
 ### Apply Death Effect
 
-Reads `DamageableDied` messages, matched against a query filtered to entities without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, always inserts `BounceEffect` and `IsDead` on the dying entity. Then reads `Has<IsKnockedBack>` on the entity and a separate `Query<(), With<KnockbackEffect>>` to check whether a knockback is already playing or about to start: if either is true, inserts `PendingDeathBounce` instead of triggering the bounce immediately; otherwise inserts `BounceEffectTarget` directly, which `apply_bounce_effect` picks up the same frame. It is tagged `.in_set(GameplaySet::Presentation)`, purely for its position relative to `GameplaySet::Damage`/`GameplaySet::RoundResolution` in the shared chain (`schedule.rs`) — the tag carries no `RoundPhase` gate of its own, so `apply_death_effect` remains as ungated as the rest of this plugin, letting it still catch and animate a `DamageableDied` message written on the last `Playing` frame before a kill ends the round, after the phase has already flipped to `Outcome`.
-
-### Start Deferred Death Bounce
-
-Runs every frame against entities with `PendingDeathBounce` + `BounceEffect` and neither `IsKnockedBack` nor `KnockbackEffect`. Promotes each match to `BounceEffectTarget` and removes `PendingDeathBounce` — the self-healing arm of the knockback-to-death-bounce handoff described under Transform effect ownership above.
-
-### On Death Effect Completed
-
-Reads `AnimCompletedEvent` events. For each, checks whether the completed animation's target entity carries both `IsDead` and `BounceEffect`; if so, reads its `ActiveTransformEffect` and only proceeds when the tag reads `TransformEffectKind::Bounce` (confirming the tween that just finished was actually the death bounce, not some other transform effect that happened to complete around the same time). On a match, hides the entity (`Visibility::Hidden`) and removes `BounceEffect` + `ActiveTransformEffect`, keeping it alive and still marked `IsDead` so the round reset can revive it. Only players carry `DamageEffectTarget`, so this only ever hides players.
-
-### On Knockback Tween Completed
-
-Reads `AnimCompletedEvent` events. For each, checks whether the completed animation's target entity carries `IsKnockedBack`; if so, reads its `ActiveTransformEffect` and only proceeds when the tag reads `TransformEffectKind::Knockback`. On a match, removes only `ActiveTransformEffect` — pure cosmetic bookkeeping so a completed Knockback-tagged tween doesn't leave a stale tag claiming ownership of the `Transform` channel. It no longer removes `IsKnockedBack`, which is timer-driven (see `tick_knockback_lock` and the `IsKnockedBack` lifecycle section below).
+Runs in `EffectsSet::Request`, after `apply_knockback`. Reads `DamageableDied` messages, matched against a query filtered to entities with `DamageEffectTarget` and `Health` but without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, inserts `IsDead` on the dying entity and writes a `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }` `EffectRequest`. The system does not check for a running knockback. The resolver queues the death bounce behind a knockback, so the slide finishes first. It has no `RoundPhase` gate, so it can still catch a `DamageableDied` message written on the last `Playing` frame, after the phase has changed to `Outcome`.
 
 ### Tick Knockback Lock
 
-Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack` — releasing the entity back to normal movement, and, if a death bounce was parked behind it, letting `start_deferred_death_bounce` promote it the same or next frame.
+Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack`. This releases the entity back to normal movement. The lock does not affect any driver.
 
 ### Spawn Sprite Lit Overlays
 
@@ -185,35 +182,46 @@ Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find t
 
 An effect driver is a carrier entity that runs one effect tween on an owner's channel. It carries `EffectDriver { owner, kind, then }`, `DriverOf(owner)`, an `AnimTarget` pointing at the animated component, and the `TweenAnim`. The owner holds the matching `EffectDrivers` relationship target (`linked_spawn`, so despawning the owner despawns its drivers). The link does not use `ChildOf`, because `sprite_child` reads `Children::first()`.
 
-Each driver owns one `EffectChannel`: `RootTranslation`, `SpriteScale` or `SpriteColor`. A driver exists so two effects on the same sprite (a punch and a flash) never fight over one `TweenAnim` slot. In this stage only the sprite kinds `ParryPunch` (`SpriteScale`, targets the sprite `Transform`) and `DamageFlash` (`SpriteColor`, targets the sprite `Sprite`) are requested. `Translate`, `Settle`, `Knockback` and `DeathBounce` exist in `EffectKind` with their policy but no system writes them yet, and `start_effect` does nothing for them.
+Each driver owns one `EffectChannel`: `RootTranslation`, `SpriteScale` or `SpriteColor`. Two effects on the same sprite (a punch and a flash) run together, because they use different channels and different drivers. The channel of each kind:
+- `RootTranslation`: `Translate`, `Settle`, `Knockback`, `DeathBounce`. The driver targets the owner `Transform`.
+- `SpriteScale`: `ParryPunch`. The driver targets the sprite child `Transform`.
+- `SpriteColor`: `DamageFlash`. The driver targets the sprite child `Sprite`.
+
+Every write to a player's position tween goes through a driver. No other system inserts a `TweenAnim` on a player root. Tiles are the exception: `apply_wave_effect` and `apply_bounce_effect` insert `TweenAnim` directly on a claimed tile. A tile has one channel and every new bounce replaces the old one.
 
 The three `EffectsSet` sets are chained inside `GameplaySet::Presentation`: `Request` (writers), `Complete`, `Resolve`. `Resolve` runs before `bevy_tweening::AnimationSystem::AnimationUpdate`. A sync point sits between `Complete` and `Resolve`, so the resolver sees drivers spawned by `on_effect_completed`.
 
 `EffectRequest { owner, kind }` is a message internal to the effects plugin. It is registered in `effects::plugin` and declared in `src/plugins/effects.rs`, not in `messages.rs`.
 
 Pure functions (unit-tested):
-- `decide(incoming, current) -> Decision` (`Start`, `Replace`, `Queue`, `Drop`) implements the policy table below. The sprite channels are always `Start` or `Replace`.
+- `decide(incoming, current) -> Decision` (`Start`, `Replace`, `Queue`, `Drop`) implements the policy table in "Transform effect ownership" above. The sprite channels are always `Start` or `Replace`.
 - `merge_queued(existing, incoming)` keeps one queued slot; a new item replaces the old one when its rank is higher or equal.
 - `fold_requests(live, requests) -> ChannelPlan` stable-sorts the requests by rank, folds them through `decide` from the live (kind, then), and returns at most one spawn or one in-place `then` update. On `Replace`, the old `then` survives only if `decide(old_then, Some(new_kind))` is `Queue`.
 
-| Incoming / current | none | Translate or Settle | Knockback | DeathBounce |
-|---|---|---|---|---|
-| Translate or Settle | Start | Replace | Queue | Drop |
-| Knockback | Start | Replace | Replace | Drop |
-| DeathBounce | Start | Replace | Queue | Drop |
-
 Rank: Translate 0, Settle 1, Knockback 2, DeathBounce 3, sprite kinds 0.
 
-`resolve_effect_requests` drops every `RootTranslation` request except `DeathBounce` for owners with `IsDead` (sprite flashes still play), then groups by (owner, channel), finds the live driver through `EffectDrivers`, and applies the plan: despawn the old driver and `start_effect` the new one, or update `then` in place. `start_effect` spawns `(Name::new("Fx:<Kind>"), EffectDriver, DriverOf(owner), AnimTarget, TweenAnim)`. `on_effect_completed` reads `AnimCompletedEvent`, despawns the finished driver and starts its `then`.
+Tween shapes (built in `start_effect` when the effect starts):
+- `Translate`: linear, from the current `Transform` to the `GridCoords` position, over its `ms` (the `MovementSlide` duration).
+- `Settle`: `QuadraticOut`, same start and end, over `config.timing.move_repeat_rate_ms`.
+- `Knockback`: `QuadraticOut`, same start and end, over `config.effects.knockback_tween_ms`.
+- `DeathBounce`: a bounce tween from `RestingTranslation` (or the current `Transform` if there is none).
+- `ParryPunch`: `CubicIn` scale from the peak down to `Vec3::ONE`.
+- `DamageFlash`: color to red over a quarter of `ms`, then back to white over `ms`.
 
-Sprite drivers are not cleared on round reset: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
+### Resolver systems
+
+`resolve_effect_requests` applies the drop rule for dead owners, groups the requests by (owner, channel), finds the live driver through `EffectDrivers`, and applies the plan. It despawns the old driver and calls `start_effect` for the new one, or updates `then` in place. `start_effect` spawns `(Name::new("Fx:<Kind>"), EffectDriver, DriverOf(owner), AnimTarget, TweenAnim)`. It builds the tween with the `RootTweenSources` system param: the owner `Transform`, `GridCoords`, `RestingTranslation` and the `MapInfo` resource. If the owner has none of the needed components, no driver is spawned.
+
+`on_effect_completed` reads `AnimCompletedEvent`, despawns the finished driver, and starts its `then`. When the finished effect was a `DeathBounce`, it also inserts `Visibility::Hidden` on the owner. The owner stays alive and keeps `IsDead` until the round reset.
+
+`clear_root_effect_drivers` runs on `OnExit(RoundPhase::Outcome)`. It despawns every driver on the `RootTranslation` channel, with its queued `then`. It does not need any order against `reset_round`. Sprite drivers are not cleared: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
 
 ## Components, Resources and Messages CRUD
 
 ### Query KnockbackEffect entities (knockback)
 
 Used in the following systems:
-- **apply_knockback**: reads `Transform`, `GridCoords`, `KnockbackEffect`, `Has<IsDead>`, and `Option<&Health>` on newly knocked-back entities; mutates `GridCoords`, writes `TweenAnim` + `ActiveTransformEffect`; removes `KnockbackEffect`
+- **apply_knockback**: reads `KnockbackEffect`, `Has<IsDead>`, and `Option<&Health>` on newly knocked-back entities; mutates `GridCoords`; removes `KnockbackEffect`
 
 ```mermaid
 ---
@@ -235,26 +243,22 @@ apply_knockback ---> knockback_query
 
 player_entity@{ shape: st-rect, label: "Player Entity" }
 
-pe_transform>"`**Transform**`"] --> |belongs to| player_entity
 pe_coords>"`**GridCoords**`"] --> |belongs to| player_entity
 pe_knockback>"`**KnockbackEffect**`"] --> |belongs to| player_entity
 pe_is_dead>"`**IsDead**`"] --> |belongs to| player_entity
-pe_tween>"`**TweenAnim**`"] --> |belongs to| player_entity
-pe_active>"`**ActiveTransformEffect**`"] --> |belongs to| player_entity
+pe_health>"`**Health**`"] --> |belongs to| player_entity
 
-knockback_query ---> |reads| pe_transform
 knockback_query -..-> |filter Added| pe_knockback
 knockback_query ---> |reads| pe_knockback
 knockback_query ---> |reads Has| pe_is_dead
+knockback_query ---> |"reads (optional)"| pe_health
 knockback_query ---> |writes| pe_coords
-knockback_query ---> |writes| pe_tween
-knockback_query ---> |writes| pe_active
 ```
 
 ### Read MapInfo resource (knockback)
 
 Used in the following systems:
-- **apply_knockback**: validates the target tile with `on_ground` and converts `GridCoords` to world-space via `to_translation`
+- **apply_knockback**: validates the target tile with `on_ground`
 
 ```mermaid
 ---
@@ -275,13 +279,13 @@ map_info_res@{ shape: doc, label: "MapInfo" }
 
 map_info_res --> |belongs to| world
 
-apply_knockback ---> |reads `on_ground` + `to_translation`| map_info_res
+apply_knockback ---> |reads `on_ground`| map_info_res
 ```
 
-### Write commands (apply_knockback)
+### Write commands and EffectRequest (apply_knockback)
 
 Used in the following systems:
-- **apply_knockback**: inserts a slide `TweenAnim` + `ActiveTransformEffect(Knockback)` + `IsKnockedBack` on the entity when valid, not dead and with health above 0, and always removes `KnockbackEffect`
+- **apply_knockback**: when the target is valid, the entity is not dead and its health is above 0, writes a `Knockback` `EffectRequest` and inserts `IsKnockedBack`; always removes `KnockbackEffect`
 
 ```mermaid
 ---
@@ -299,18 +303,14 @@ update -.-> apply_knockback
 
 player_entity@{ shape: st-rect, label: "Player Entity" }
 
-pe_tween_anim>"`**TweenAnim**`"]
-pe_active>"`**ActiveTransformEffect(Knockback)**`"]
 pe_is_knocked>"`**IsKnockedBack**`"]
 pe_knockback>"`**KnockbackEffect**`"]
+effect_request(["`**EffectRequest**`"])
 
-pe_tween_anim --> |written on| player_entity
-pe_active --> |written on| player_entity
 pe_is_knocked --> |written on| player_entity
 pe_knockback --> |removed from| player_entity
 
-apply_knockback ---> |writes slide tween| pe_tween_anim
-apply_knockback ---> |tags ownership| pe_active
+apply_knockback ---> |writes Knockback| effect_request
 apply_knockback ---> |inserts component| pe_is_knocked
 apply_knockback ---> |always removes| pe_knockback
 ```
@@ -318,7 +318,7 @@ apply_knockback ---> |always removes| pe_knockback
 ### Query TranslateEffectTarget entities
 
 Used in the following systems:
-- **apply_translate_effect**: reads `Transform`, `GridCoords`, and optional `MovementSlide` on entities whose `GridCoords` changed, that carry `TranslateEffectTarget` and none of `KnockbackEffect`/`IsKnockedBack`/`IsDead`; writes `TweenAnim` + `ActiveTransformEffect`
+- **apply_translate_effect**: reads the optional `MovementSlide` on entities whose `GridCoords` changed and that carry `TranslateEffectTarget`; writes a `Translate` `EffectRequest`
 
 ```mermaid
 ---
@@ -340,31 +340,22 @@ apply_translate_effect ---> translate_query
 
 moving_entity@{ shape: st-rect, label: "Moving Entity" }
 
-me_transform>"`**Transform**`"] --> |belongs to| moving_entity
 me_grid_coords>"`**GridCoords**`"] --> |belongs to| moving_entity
 me_slide>"`**MovementSlide**`"] --> |belongs to| moving_entity
-me_tween_anim>"`**TweenAnim**`"] --> |belongs to| moving_entity
-me_active>"`**ActiveTransformEffect**`"] --> |belongs to| moving_entity
 me_marker>"`**TranslateEffectTarget**`"] --> |belongs to| moving_entity
-me_knockback>"`**KnockbackEffect**`"] --> |belongs to| moving_entity
-me_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| moving_entity
-me_is_dead>"`**IsDead**`"] --> |belongs to| moving_entity
 
-translate_query ---> |reads| me_transform
 translate_query -..-> |filter Changed| me_grid_coords
 translate_query ---> |"reads (optional)"| me_slide
-translate_query ---> |writes| me_tween_anim
-translate_query ---> |writes| me_active
 translate_query -..-> |filter With| me_marker
-translate_query -..-> |filter Without| me_knockback
-translate_query -..-> |filter Without| me_is_knocked
-translate_query -..-> |filter Without| me_is_dead
+
+effect_request(["`**EffectRequest**`"])
+apply_translate_effect ---> |writes Translate| effect_request
 ```
 
 ### Query MovementSettle entities
 
 Used in the following systems:
-- **apply_movement_settle**: reads `Transform`, `GridCoords`, `Has<IsKnockedBack>`, `Has<IsDead>`, `Has<KnockbackEffect>` on newly settled entities; conditionally writes `TweenAnim` + `ActiveTransformEffect`; always removes `MovementSettle`
+- **apply_movement_settle**: reads newly added `MovementSettle` markers, writes a `Settle` `EffectRequest` for each, and always removes `MovementSettle`
 
 ```mermaid
 ---
@@ -386,23 +377,11 @@ apply_movement_settle ---> settle_query
 
 moving_entity@{ shape: st-rect, label: "Moving Entity" }
 
-me_transform>"`**Transform**`"] --> |belongs to| moving_entity
-me_grid_coords>"`**GridCoords**`"] --> |belongs to| moving_entity
-me_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| moving_entity
-me_is_dead>"`**IsDead**`"] --> |belongs to| moving_entity
-me_knockback_effect>"`**KnockbackEffect**`"] --> |belongs to| moving_entity
 me_settle>"`**MovementSettle**`"] --> |belongs to| moving_entity
-me_tween>"`**TweenAnim**`"] --> |belongs to| moving_entity
-me_active>"`**ActiveTransformEffect**`"] --> |belongs to| moving_entity
 
-settle_query ---> |reads| me_transform
-settle_query ---> |reads| me_grid_coords
-settle_query ---> |reads Has| me_is_knocked
-settle_query ---> |reads Has| me_is_dead
-settle_query ---> |reads Has| me_knockback_effect
 settle_query -..-> |filter Added| me_settle
-apply_movement_settle ---> |"writes (if not dead/knocked back/pending knockback)"| me_tween
-apply_movement_settle ---> |"writes (if not dead/knocked back/pending knockback)"| me_active
+effect_request(["`**EffectRequest**`"])
+apply_movement_settle ---> |writes Settle| effect_request
 apply_movement_settle ---> |always removes| me_settle
 ```
 
@@ -480,7 +459,7 @@ bounce_query ---> |reads| be_bounce
 ### Query WaveEffectTarget entities and write commands (wave effect)
 
 Used in the following systems:
-- **apply_wave_effect**: looks up the `WaveEffectTarget` entity at the source's current grid position via `MapInfo::claimed_entities`, reads its `Transform` and optional `RestingTranslation` as the bounce origin, and inserts a bounce `TweenAnim` directly on it (no `BounceEffectTarget` indirection, and no `ActiveTransformEffect` tag, since no completion handler needs to identify a wave bounce)
+- **apply_wave_effect**: looks up the `WaveEffectTarget` entity at the source's current grid position via `MapInfo::claimed_entities`, reads its `Transform` and optional `RestingTranslation` as the bounce origin, and inserts a bounce `TweenAnim` directly on it (no `BounceEffectTarget` indirection)
 
 ```mermaid
 ---
@@ -521,7 +500,7 @@ apply_wave_effect ---> |resolves via `claimed_entities`| map_info_res
 ### Query BounceEffectTarget entities (bounce effect)
 
 Used in the following systems:
-- **apply_bounce_effect**: detects newly added `BounceEffectTarget` markers, reads `Transform` and optional `RestingTranslation`, plays the bounce tween, tags `ActiveTransformEffect(Bounce)`, and removes the marker
+- **apply_bounce_effect**: detects newly added `BounceEffectTarget` markers (claimed tiles only), reads `Transform` and optional `RestingTranslation`, plays the bounce tween directly on the tile, and removes the marker
 
 ```mermaid
 ---
@@ -541,19 +520,17 @@ update -.-> apply_bounce_effect
 bounce_target_query{{"`bounce_target_query`"}}:::query
 apply_bounce_effect ---> bounce_target_query
 
-bounce_entity@{ shape: st-rect, label: "Bouncing Entity" }
+bounce_entity@{ shape: st-rect, label: "Bouncing Claimed Tile" }
 
 be_transform>"`**Transform**`"] --> |belongs to| bounce_entity
 be_resting>"`**RestingTranslation**`"] --> |belongs to| bounce_entity
 be_target>"`**BounceEffectTarget**`"] --> |belongs to| bounce_entity
 be_tween>"`**TweenAnim**`"] --> |belongs to| bounce_entity
-be_active>"`**ActiveTransformEffect**`"] --> |belongs to| bounce_entity
 
 bounce_target_query ---> |reads| be_transform
 bounce_target_query ---> |"reads (optional)"| be_resting
 bounce_target_query -..-> |filter Added| be_target
 bounce_target_query ---> |writes| be_tween
-bounce_target_query ---> |writes| be_active
 apply_bounce_effect ---> |removes| be_target
 ```
 
@@ -681,10 +658,10 @@ damageable_died_message(["`**DamageableDied**`"])
 message_reader ---> |reads| damageable_died_message
 ```
 
-### Query knockback state (apply_death_effect) and write commands
+### Write IsDead and EffectRequest (apply_death_effect)
 
 Used in the following systems:
-- **apply_death_effect**: reads `Has<IsKnockedBack>` on the dying entity and a separate `Query<(), With<KnockbackEffect>>` to decide whether to defer the bounce; always inserts `BounceEffect` + `IsDead`, then inserts either `PendingDeathBounce` or `BounceEffectTarget`
+- **apply_death_effect**: inserts `IsDead` on the dying entity (matched by a query filtered `Without<IsDead>`) and writes an `EffectRequest` with `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }`
 
 ```mermaid
 ---
@@ -702,199 +679,22 @@ apply_death_effect["`**apply_death_effect**`"]
 update -.-> apply_death_effect
 
 dying_query{{"`damageable_query`"}}:::query
-pending_query{{"`knockback_pending`"}}:::query
 apply_death_effect ---> dying_query
-apply_death_effect ---> pending_query
 
 dying_entity@{ shape: st-rect, label: "Dying Entity" }
 
-de_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| dying_entity
-de_knockback_effect>"`**KnockbackEffect**`"] --> |belongs to| dying_entity
+de_marker>"`**DamageEffectTarget**`"] --> |belongs to| dying_entity
+de_health>"`**Health**`"] --> |belongs to| dying_entity
 de_is_dead>"`**IsDead**`"] --> |belongs to| dying_entity
-de_bounce_effect>"`**BounceEffect**`"]
-de_pending>"`**PendingDeathBounce**`"]
-de_bounce_target>"`**BounceEffectTarget**`"]
 
-dying_query ---> |reads Has| de_is_knocked
+dying_query -..-> |filter With| de_marker
+dying_query -..-> |filter With| de_health
 dying_query -..-> |filter Without| de_is_dead
-pending_query -..-> |filter With| de_knockback_effect
 
-de_bounce_effect --> |always inserted on| dying_entity
-de_is_dead --> |always inserted on| dying_entity
-de_pending --> |"inserted if deferring"| dying_entity
-de_bounce_target --> |"inserted if not deferring"| dying_entity
-
-apply_death_effect ---> |inserts| de_bounce_effect
 apply_death_effect ---> |inserts| de_is_dead
-apply_death_effect ---> |inserts if knockback in flight/pending| de_pending
-apply_death_effect ---> |"inserts otherwise"| de_bounce_target
-```
 
-### Query PendingDeathBounce entities (start_deferred_death_bounce)
-
-Used in the following systems:
-- **start_deferred_death_bounce**: promotes any `PendingDeathBounce` + `BounceEffect` entity without `IsKnockedBack`/`KnockbackEffect` to `BounceEffectTarget`, removing `PendingDeathBounce`
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-start_deferred_death_bounce["`**start_deferred_death_bounce**`"]
-
-update -.-> start_deferred_death_bounce
-
-pending_query{{"`pending`"}}:::query
-start_deferred_death_bounce ---> pending_query
-
-dying_entity@{ shape: st-rect, label: "Dying Entity" }
-
-de_pending>"`**PendingDeathBounce**`"] --> |belongs to| dying_entity
-de_bounce_effect>"`**BounceEffect**`"] --> |belongs to| dying_entity
-de_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| dying_entity
-de_knockback_effect>"`**KnockbackEffect**`"] --> |belongs to| dying_entity
-de_bounce_target>"`**BounceEffectTarget**`"]
-
-pending_query -..-> |filter With| de_pending
-pending_query -..-> |filter With| de_bounce_effect
-pending_query -..-> |filter Without| de_is_knocked
-pending_query -..-> |filter Without| de_knockback_effect
-
-start_deferred_death_bounce ---> |inserts| de_bounce_target
-start_deferred_death_bounce ---> |removes| de_pending
-```
-
-### Read AnimCompletedEvent (death effect)
-
-Used in the following systems:
-- **on_death_effect_completed**: reads tween completion events, then confirms via `ActiveTransformEffect == Bounce` that the completed tween was the death bounce before hiding the entity
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef reader stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-on_death_effect_completed["`**on_death_effect_completed**`"]
-
-update -.-> on_death_effect_completed
-
-event_reader{{"EventReader#60;AnimCompletedEvent#62;"}}:::reader
-on_death_effect_completed ---> event_reader
-
-anim_completed_event(["`**AnimCompletedEvent**`"])
-
-event_reader ---> |reads| anim_completed_event
-```
-
-### Query IsDead entities (death completed)
-
-Used in the following systems:
-- **on_death_effect_completed**: checks whether the entity whose animation completed carries `IsDead` + `BounceEffect`, then reads `ActiveTransformEffect` to confirm the completed tween belongs to the death bounce, before hiding it
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-on_death_effect_completed["`**on_death_effect_completed**`"]
-
-update -.-> on_death_effect_completed
-
-dead_query{{"`dead_entities`"}}:::query
-on_death_effect_completed ---> dead_query
-
-dead_entity@{ shape: st-rect, label: "Dying Entity" }
-
-de_is_dead>"`**IsDead**`"] --> |belongs to| dead_entity
-de_bounce>"`**BounceEffect**`"] --> |belongs to| dead_entity
-de_active>"`**ActiveTransformEffect**`"] --> |belongs to| dead_entity
-
-dead_query -..-> |filter With| de_is_dead
-dead_query -..-> |filter With| de_bounce
-dead_query ---> |reads, must equal Bounce| de_active
-```
-
-### Write commands (on_death_effect_completed)
-
-Used in the following systems:
-- **on_death_effect_completed**: hides the entity and removes its `BounceEffect` + `ActiveTransformEffect` after its death bounce animation has completed (the entity survives for the round reset)
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-on_death_effect_completed["`**on_death_effect_completed**`"]
-
-update -.-> on_death_effect_completed
-
-dead_entity@{ shape: st-rect, label: "Dying Entity (hidden)" }
-
-on_death_effect_completed ---> |hides + removes BounceEffect + ActiveTransformEffect| dead_entity
-```
-
-### Read AnimCompletedEvent and query IsKnockedBack (on_knockback_tween_completed)
-
-Used in the following systems:
-- **on_knockback_tween_completed**: reads tween completion events, then confirms via `ActiveTransformEffect == Knockback` before clearing only `ActiveTransformEffect` — `IsKnockedBack` itself is timer-driven and is never removed here (see `tick_knockback_lock`)
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef reader stroke-dasharray: 3 3
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-on_knockback_tween_completed["`**on_knockback_tween_completed**`"]
-
-update -.-> on_knockback_tween_completed
-
-event_reader{{"EventReader#60;AnimCompletedEvent#62;"}}:::reader
-on_knockback_tween_completed ---> event_reader
-
-anim_completed_event(["`**AnimCompletedEvent**`"])
-event_reader ---> |reads| anim_completed_event
-
-knocked_query{{"`knocked_back`"}}:::query
-on_knockback_tween_completed ---> knocked_query
-
-knocked_entity@{ shape: st-rect, label: "Knocked-back Entity" }
-
-ke_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| knocked_entity
-ke_active>"`**ActiveTransformEffect**`"] --> |belongs to| knocked_entity
-
-knocked_query -..-> |filter With| ke_is_knocked
-knocked_query ---> |reads, must equal Knockback| ke_active
-
-on_knockback_tween_completed ---> |removes ActiveTransformEffect only| knocked_entity
+effect_request(["`**EffectRequest**`"])
+apply_death_effect ---> |writes DeathBounce| effect_request
 ```
 
 ### Query IsKnockedBack entities and tick timer (tick_knockback_lock)
@@ -934,60 +734,12 @@ time_res --> |belongs to| world
 tick_knockback_lock ---> |reads delta| time_res
 ```
 
-### ActiveTransformEffect component lifecycle
-
-`ActiveTransformEffect(TransformEffectKind)` (`src/components/effects.rs`) tags which effect currently owns an entity's `Transform` `TweenAnim` slot. In practice this arbitration only matters for players, the only entities with more than one system competing for the slot. Its full lifecycle:
-- **Inserted** by `apply_knockback` (`Knockback`), `apply_translate_effect` (`Translate`), `apply_movement_settle` (`Settle`), and `apply_bounce_effect` (`Bounce`) — each only when it also writes the competing `TweenAnim`, so the tag and the tween it identifies are always set together. `apply_bounce_effect` fires on `Added<BounceEffectTarget>` regardless of entity kind, so a claimed tile bounced by the Animations plugin's tile-claim bounce (`animate_claimed_tile`) also receives `ActiveTransformEffect(Bounce)` — harmlessly, since nothing ever reads or removes it from a tile.
-- **Read** by `on_death_effect_completed` and `on_knockback_tween_completed`, each on every `AnimCompletedEvent`, to confirm the completed tween belongs to their own effect (`Bounce` / `Knockback` respectively) before acting.
-- **Removed** by `on_death_effect_completed` (alongside `BounceEffect`, once confirmed `Bounce`), by `on_knockback_tween_completed` (alone, once confirmed `Knockback` — it no longer touches `IsKnockedBack`, see the `IsKnockedBack` lifecycle below), and by `reset_round` (Round plugin) unconditionally on every player round reset.
-- Not removed on Settle/Translate completion, or on a tile's tile-claim bounce — there is no completion handler for those cases, so the tag simply persists, showing the most recent effect, until a later transform effect overwrites it (players) or indefinitely (tiles, which never receive a competing effect).
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-apply_knockback["`**apply_knockback**`"]
-apply_translate_effect["`**apply_translate_effect**`"]
-apply_movement_settle["`**apply_movement_settle**`"]
-apply_bounce_effect["`**apply_bounce_effect**`"]
-on_death_effect_completed["`**on_death_effect_completed**`"]
-on_knockback_tween_completed["`**on_knockback_tween_completed**`"]
-reset_round["`**reset_round** (Round)`"]
-
-update -.-> apply_knockback
-update -.-> apply_translate_effect
-update -.-> apply_movement_settle
-update -.-> apply_bounce_effect
-update -.-> on_death_effect_completed
-update -.-> on_knockback_tween_completed
-
-player_entity@{ shape: st-rect, label: "Player Entity" }
-tile_entity@{ shape: st-rect, label: "ClaimedTile Entity" }
-active_component@{ shape: doc, label: "ActiveTransformEffect" }
-
-apply_knockback ---> |writes Knockback| active_component
-apply_translate_effect ---> |writes Translate| active_component
-apply_movement_settle ---> |writes Settle| active_component
-apply_bounce_effect ---> |writes Bounce| active_component
-on_death_effect_completed ---> |"removes (if Bounce)"| active_component
-on_knockback_tween_completed ---> |"removes (if Knockback)"| active_component
-reset_round ---> |always removes| active_component
-active_component --> |belongs to| player_entity
-active_component --> |"also lands on (tile-claim bounce, never read)"| tile_entity
-```
-
 ### IsKnockedBack component lifecycle
 
-`IsKnockedBack(Timer)` (`src/components/effects.rs`) is the authoritative input lock for a knocked-back entity — `handle_characters_input` (Input plugin) and `apply_translate_effect` both filter it `Without`. It carries its own `Timer` and its lifecycle is fully decoupled from the visual knockback tween's completion: a `Transform`-channel tween can be silently replaced by another effect without firing a completion event for the discarded one, so tween-completion identity is not a sound basis for the lock's duration. Its full lifecycle:
-- **Inserted** by `apply_knockback`, seeded with `Timer::new(config.effects.knockback_tween_ms, TimerMode::Once)` — the same duration as the slide tween it accompanies, though the two run independently from that point on.
-- **Ticked and removed** by `tick_knockback_lock`, every frame, purely once its timer finishes — the sole removal path during normal play. `on_knockback_tween_completed` reads it (to confirm the tag match) but never removes it.
-- **Removed** by `reset_round` (Round plugin) unconditionally on every player round reset, alongside `ActiveTransformEffect` and the other transient effect components.
+`IsKnockedBack(Timer)` (`src/components/effects.rs`) is only the input lock of a knocked-back entity. `handle_characters_input` (Input plugin) reads it. It does not change any tween: the resolver and the driver policy decide what the position tween does. Its lifecycle is separate from the knockback driver, and the two run on their own timers. Its full lifecycle:
+- **Inserted** by `apply_knockback`, seeded with `Timer::new(config.effects.knockback_tween_ms, TimerMode::Once)`, the same duration as the knockback driver tween.
+- **Ticked and removed** by `tick_knockback_lock`, every frame, once its timer finishes. This is the only removal path during normal play.
+- **Removed** by `reset_round` (Round plugin) on every player round reset.
 
 ```mermaid
 ---
@@ -1206,6 +958,12 @@ de_link>"`**DriverOf**`"] --> |belongs to| driver_entity
 de_tween>"`**TweenAnim**`"] --> |belongs to| driver_entity
 
 owner_query ---> |reads, writes then| de_driver
+
+world@{ shape: st-rect, label: "World" }
+map_info_res@{ shape: doc, label: "MapInfo" }
+map_info_res --> |belongs to| world
+resolve_effect_requests ---> |"reads (via start_effect, for root tween start and end)"| map_info_res
+
 resolve_effect_requests ---> |despawns replaced driver| driver_entity
 resolve_effect_requests ---> |spawns with DriverOf, AnimTarget, TweenAnim| driver_entity
 ```
@@ -1213,7 +971,7 @@ resolve_effect_requests ---> |spawns with DriverOf, AnimTarget, TweenAnim| drive
 ### Read AnimCompletedEvent (on_effect_completed)
 
 Used in the following systems:
-- **on_effect_completed**: despawns the `EffectDriver` entity whose tween just finished and starts its queued `then` effect
+- **on_effect_completed**: despawns the `EffectDriver` entity whose tween just finished, inserts `Visibility::Hidden` on the owner when the finished effect was a `DeathBounce`, and starts the queued `then` effect (through `start_effect`, which reads `RootTweenSources`: owner `Transform`, `GridCoords`, `RestingTranslation` and `MapInfo`)
 
 ```mermaid
 ---
@@ -1246,6 +1004,40 @@ driver_query ---> |reads| de_driver
 
 on_effect_completed ---> |despawns| driver_entity
 on_effect_completed ---> |spawns driver for then| driver_entity
+
+owner_entity@{ shape: st-rect, label: "Owner Entity (after DeathBounce)" }
+oe_visibility>"`**Visibility**`"] --> |belongs to| owner_entity
+on_effect_completed ---> |inserts Hidden| oe_visibility
+```
+
+### Query EffectDriver entities (clear_root_effect_drivers)
+
+Used in the following systems:
+- **clear_root_effect_drivers**: reads every `EffectDriver` and despawns those whose kind is on the `RootTranslation` channel
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+exit_outcome(("`OnExit(Outcome)`")):::system-group
+clear_root_effect_drivers["`**clear_root_effect_drivers**`"]
+
+exit_outcome -.-> clear_root_effect_drivers
+
+driver_query{{"`drivers`"}}:::query
+clear_root_effect_drivers ---> driver_query
+
+driver_entity@{ shape: st-rect, label: "Effect Driver" }
+de_driver>"`**EffectDriver**`"] --> |belongs to| driver_entity
+
+driver_query ---> |"reads (kind channel must be RootTranslation)"| de_driver
+clear_root_effect_drivers ---> |despawns| driver_entity
 ```
 
 ### SpriteLitOverlay and TilemapLitOverlay lifecycle
@@ -1306,10 +1098,12 @@ clear_glow ---> |clears pulses, hides| overlay_entity
 ### EffectDriver component lifecycle
 
 `EffectDriver { owner, kind, then }` (`src/components/effects.rs`) is a transient carrier entity whose `TweenAnim` is redirected at the animated component through `AnimTarget`, so several effects can run on one sprite without sharing a `TweenAnim` slot. Its full lifecycle:
-- **Spawned** by `resolve_effect_requests` (or by `on_effect_completed` for a queued `then`) through `start_effect`, linked to its owner with `DriverOf`.
-- **Replaced** by `resolve_effect_requests` when a new effect on the same channel wins `decide` with `Replace`: the old driver is despawned and the new one spawned in the same frame, so a repeated hit or parry restarts its tween from the start.
-- **Despawned on completion** by `on_effect_completed`, reading `AnimCompletedEvent`; no reset is needed, since the tweens end at white color and `Vec3::ONE`.
-- **Not cleared on round reset** for sprite drivers.
+- **Spawned** by `resolve_effect_requests` (or by `on_effect_completed` for a queued `then`) through `start_effect`, linked to its owner with `DriverOf`. Root effects build their tween at this moment, from the owner's current `Transform` to the `GridCoords` position (Translate, Settle, Knockback) or from `RestingTranslation` (DeathBounce).
+- **Replaced** by `resolve_effect_requests` when a new effect on the same channel wins `decide` with `Replace`: the old driver is despawned and the new one spawned in the same frame, so a repeated hit, parry or drag step restarts its tween.
+- **Updated in place** by `resolve_effect_requests` when a request is queued: only `then` changes.
+- **Despawned on completion** by `on_effect_completed`, reading `AnimCompletedEvent`. A queued `then` starts at that moment. When a DeathBounce driver completes, the owner gets `Visibility::Hidden`.
+- **Despawned on round end** by `clear_root_effect_drivers` (`OnExit(RoundPhase::Outcome)`), for root translation drivers only, including a queued `then`.
+- **Not cleared on round end** for sprite drivers.
 
 ```mermaid
 ---
@@ -1321,25 +1115,44 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
+exit_outcome(("`OnExit(Outcome)`")):::system-group
 
 apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
 apply_damage_effect["`**apply_damage_effect**`"]
+apply_translate_effect["`**apply_translate_effect**`"]
+apply_movement_settle["`**apply_movement_settle**`"]
+apply_knockback["`**apply_knockback**`"]
+apply_death_effect["`**apply_death_effect**`"]
 on_effect_completed["`**on_effect_completed**`"]
 resolve_effect_requests["`**resolve_effect_requests**`"]
+clear_root_effect_drivers["`**clear_root_effect_drivers**`"]
 
 update -.-> apply_parry_scale_effect
 update -.-> apply_damage_effect
+update -.-> apply_translate_effect
+update -.-> apply_movement_settle
+update -.-> apply_knockback
+update -.-> apply_death_effect
 update -.-> on_effect_completed
 update -.-> resolve_effect_requests
+exit_outcome -.-> clear_root_effect_drivers
 
 effect_request(["`**EffectRequest**`"])
 driver_entity@{ shape: st-rect, label: "Effect Driver" }
 sprite_entity@{ shape: st-rect, label: "Owner Child (Sprite, Transform)" }
+player_entity@{ shape: st-rect, label: "Player Entity (Transform)" }
 
 apply_parry_scale_effect ---> |writes ParryPunch| effect_request
 apply_damage_effect ---> |writes DamageFlash| effect_request
+apply_translate_effect ---> |writes Translate| effect_request
+apply_movement_settle ---> |writes Settle| effect_request
+apply_knockback ---> |writes Knockback| effect_request
+apply_death_effect ---> |writes DeathBounce| effect_request
 effect_request ---> |read by| resolve_effect_requests
 resolve_effect_requests ---> |spawns or replaces| driver_entity
-driver_entity ---> |animates via AnimTarget| sprite_entity
-on_effect_completed ---> |despawns on AnimCompletedEvent| driver_entity
+driver_entity ---> |animates sprite effects via AnimTarget| sprite_entity
+driver_entity ---> |animates root effects via AnimTarget| player_entity
+on_effect_completed ---> |despawns on AnimCompletedEvent, starts then| driver_entity
+on_effect_completed ---> |hides after DeathBounce| player_entity
+clear_root_effect_drivers ---> |despawns root drivers| driver_entity
 ```

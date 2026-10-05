@@ -72,7 +72,7 @@ Three other systems gate on phases other than `Playing`:
 
 - `OnEnter(RoundPhase::Starting)`: `round/intro.rs`'s `begin_intro_countdown` spawns the first countdown number.
 - `OnEnter(RoundPhase::Outcome)`: `round/outcome.rs`'s `show_outcome_banner` spawns the win banner; `telemetry.rs`'s `record_outcome` (also gated `telemetry_enabled`) writes the round's outcome record.
-- `OnExit(RoundPhase::Outcome)`: `round/state.rs`'s `reset_round` wipes tile ownership, health, charges, and positions back to spawn; `round/outcome.rs`'s `despawn_outcome_banner` removes the win banner.
+- `OnExit(RoundPhase::Outcome)`: `round/state.rs`'s `reset_round` wipes tile ownership, health, charges, and positions back to spawn; `effects.rs`'s `clear_root_effect_drivers` despawns the player position effect drivers (and any queued follow-up effect), with no order against `reset_round`; `round/outcome.rs`'s `despawn_outcome_banner` removes the win banner.
 - `OnExit(RoundPhase::Loading)`: the Maps plugin's bootstrap chain (see above).
 - `OnExit(RoundPhase::Playing)`: `effects.rs`'s `clear_glow` empties every lit overlay's pulses and hides the overlay.
 
@@ -80,7 +80,7 @@ Three other systems gate on phases other than `Playing`:
 
 - `claim_tile` (`claim.rs`) is gated on `Playing`, matching the rest of the `GameplaySet` pipeline: a `BeamResolved` message is always written and drained within the same frame, while `Playing`.
 - `GameplaySet::Displacement` (`effects.rs`'s `apply_knockback`) is ungated too. It runs after `Damage` and before `Presentation`, so a `KnockbackEffect` inserted by `Movement` or `Damage` is always seen in the same frame.
-- `hud.rs`'s `HudSync` stage and `GameplaySet::Presentation` (`animations.rs`, plus `effects.rs`'s `apply_death_effect`) are both deliberately ungated, not oversights. Neither writes anything round-resolution logic reads back, and both need to keep running past `Playing`: to let a tween or `smooth_nudge` (HP bar, damage flash, death bounce) finish playing out into `Outcome`, or to let a `Starting`-phase system pick up `reset_round`'s `OnExit(Outcome)` mass write — the tile-unclaim cascade, the HUD digit resets — as a visible transition during the intro instead of a snap at "GO!".
+- `hud.rs`'s `HudSync` stage and `GameplaySet::Presentation` (`animations.rs`, plus the `EffectsSet` systems in `effects.rs`: `apply_death_effect`, the other request writers, `on_effect_completed` and `resolve_effect_requests`) are both deliberately ungated, not oversights. Neither writes anything round-resolution logic reads back, and both need to keep running past `Playing`: to let a tween or `smooth_nudge` (HP bar, damage flash, death bounce) finish playing out into `Outcome`, or to let a `Starting`-phase system pick up `reset_round`'s `OnExit(Outcome)` mass write — the tile-unclaim cascade, the HUD digit resets — as a visible transition during the intro instead of a snap at "GO!".
 - `round/state.rs`'s `start_countdown` and `round/intro.rs`'s `despawn_go_banner` are similarly ungated by design, for the same reason: continuous state (a resource re-insert, a tween) that must keep evolving right across a phase boundary rather than freezing at it.
 - `maps.rs` is the only plugin coupled to both state machines from opposite layers: `load_maps` hooks `OnEnter(AppState::InRound)`, its bootstrap chain hooks `OnExit(RoundPhase::Loading)`.
 - `RoundPhase` ownership is split three ways: `round/state.rs`, `round/intro.rs`, and `round/outcome.rs` each gate their own systems on the phase *and* write one of its transitions, so no single file in the `round` feature is purely a reader or purely a writer of it.
@@ -159,5 +159,6 @@ phase_outcome ---> |gates| round_outcome_plugin
 phase_outcome ---> |on enter| telemetry_plugin
 phase_outcome ---> |on exit| round_state_plugin
 phase_outcome ---> |on exit| round_outcome_plugin
+phase_outcome ---> |on exit| effects_plugin
 round_outcome_plugin ---> |writes| phase_starting
 ```

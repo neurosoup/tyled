@@ -12,6 +12,7 @@ use bevy::{
     prelude::*,
     render::render_resource::TextureFormat,
 };
+use bevy::ecs::system::SystemParam;
 use bevy_ecs_tiled::prelude::{TilePos, TileTextureIndex, TilemapId, TilemapTexture};
 use bevy_spritesheet_animation::plugin::AnimationSystemSet;
 use bevy_tweening::{
@@ -149,6 +150,11 @@ pub(crate) fn plugin(app: &mut App) {
         (
             apply_damage_effect.in_set(EffectsSet::Request),
             apply_parry_scale_effect.in_set(EffectsSet::Request),
+            apply_translate_effect.in_set(EffectsSet::Request),
+            apply_movement_settle.in_set(EffectsSet::Request),
+            apply_death_effect
+                .after(apply_knockback)
+                .in_set(EffectsSet::Request),
             on_effect_completed.in_set(EffectsSet::Complete),
             resolve_effect_requests.in_set(EffectsSet::Resolve),
         ),
@@ -161,13 +167,7 @@ pub(crate) fn plugin(app: &mut App) {
             sync_resting_translation
                 .before(apply_bounce_effect)
                 .before(apply_wave_effect),
-            apply_knockback
-                .in_set(GameplaySet::Displacement)
-                .before(apply_translate_effect),
-            apply_translate_effect,
-            apply_movement_settle,
-            apply_death_effect.after(apply_knockback).in_set(GameplaySet::Presentation),
-            start_deferred_death_bounce,
+            apply_knockback.in_set(GameplaySet::Displacement),
             apply_wave_effect,
             apply_bounce_effect,
             spawn_sprite_lit_overlays,
@@ -176,8 +176,6 @@ pub(crate) fn plugin(app: &mut App) {
                 .after(spawn_sprite_lit_overlays)
                 .after(spawn_tilemap_lit_overlays),
             update_lit_overlays.after(apply_glow_effect),
-            on_death_effect_completed,
-            on_knockback_tween_completed,
             tick_knockback_lock,
             trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
         ),
@@ -191,6 +189,7 @@ pub(crate) fn plugin(app: &mut App) {
         sync_lit_overlay_frames.after(AnimationSystemSet),
     );
     app.add_systems(OnExit(RoundPhase::Playing), clear_glow);
+    app.add_systems(OnExit(RoundPhase::Outcome), clear_root_effect_drivers);
 }
 
 pub fn create_movement_tween(
@@ -308,101 +307,65 @@ fn make_lit_image(source: &Image, lightness: f32, chroma: f32) -> Option<Image> 
 
 fn apply_knockback(
     mut commands: Commands,
+    mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     mut query: Query<
-        (Entity, &Transform, &mut GridCoords, &KnockbackEffect, Has<IsDead>, Option<&Health>),
+        (Entity, &mut GridCoords, &KnockbackEffect, Has<IsDead>, Option<&Health>),
         Added<KnockbackEffect>,
     >,
     map_info: Res<MapInfo>,
 ) {
-    for (entity, transform, mut coords, knockback, is_dead, health) in &mut query {
+    for (entity, mut coords, knockback, is_dead, health) in &mut query {
         let target = *coords + knockback.direction;
         let is_lethal = health.is_some_and(|health| health.current <= 0.0);
         if !is_dead && !is_lethal && map_info.on_ground(target) {
-            let start = transform.translation;
-            let destination = target.to_translation(&map_info);
             *coords = target;
-            commands.entity(entity).insert((
-                TweenAnim::new(create_movement_tween(
-                    start,
-                    destination,
-                    config.effects.knockback_tween_ms,
-                    EaseFunction::QuadraticOut,
-                )),
-                IsKnockedBack(Timer::new(
-                    Duration::from_millis(config.effects.knockback_tween_ms),
-                    TimerMode::Once,
-                )),
-                ActiveTransformEffect(TransformEffectKind::Knockback),
-            ));
+            requests.write(EffectRequest {
+                owner: entity,
+                kind: EffectKind::Knockback {
+                    ms: config.effects.knockback_tween_ms,
+                },
+            });
+            commands.entity(entity).insert(IsKnockedBack(Timer::new(
+                Duration::from_millis(config.effects.knockback_tween_ms),
+                TimerMode::Once,
+            )));
         }
-        // Always remove, even when dead or blocked — otherwise this component
-        // strands and permanently blocks future Transform effects on this entity.
+        // Always remove, even when dead or blocked, so the marker never strands.
         commands.entity(entity).remove::<KnockbackEffect>();
     }
 }
 
 fn apply_translate_effect(
-    mut commands: Commands,
+    mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
-    mut moving_objects: Query<
-        (Entity, &Transform, &GridCoords, Option<&MovementSlide>),
-        (
-            Changed<GridCoords>,
-            With<TranslateEffectTarget>,
-            Without<KnockbackEffect>,
-            Without<IsKnockedBack>,
-            Without<IsDead>,
-        ),
+    moving_objects: Query<
+        (Entity, Option<&MovementSlide>),
+        (Changed<GridCoords>, With<TranslateEffectTarget>),
     >,
-    map_info: Res<MapInfo>,
 ) {
-    for (entity, transform, grid_coords, movement_slide) in &mut moving_objects {
-        let destination = grid_coords.to_translation(&map_info);
-        let duration_ms = movement_slide.map_or(config.timing.move_repeat_rate_ms, |s| s.duration_ms);
-
-        commands.entity(entity).insert((
-            TweenAnim::new(create_movement_tween(
-                transform.translation,
-                destination,
-                duration_ms,
-                EaseFunction::Linear,
-            )),
-            ActiveTransformEffect(TransformEffectKind::Translate),
-        ));
+    for (entity, movement_slide) in &moving_objects {
+        let ms = movement_slide.map_or(config.timing.move_repeat_rate_ms, |s| s.duration_ms);
+        requests.write(EffectRequest {
+            owner: entity,
+            kind: EffectKind::Translate { ms },
+        });
     }
 }
 
 fn apply_movement_settle(
     mut commands: Commands,
+    mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
-    query: Query<
-        (
-            Entity,
-            &Transform,
-            &GridCoords,
-            Has<IsKnockedBack>,
-            Has<IsDead>,
-            Has<KnockbackEffect>,
-        ),
-        Added<MovementSettle>,
-    >,
-    map_info: Res<MapInfo>,
+    query: Query<Entity, Added<MovementSettle>>,
 ) {
-    for (entity, transform, grid_coords, is_knocked_back, is_dead, has_knockback_effect) in &query
-    {
-        if !is_knocked_back && !is_dead && !has_knockback_effect {
-            let destination = grid_coords.to_translation(&map_info);
-            commands.entity(entity).insert((
-                TweenAnim::new(create_movement_tween(
-                    transform.translation,
-                    destination,
-                    config.timing.move_repeat_rate_ms,
-                    EaseFunction::QuadraticOut,
-                )),
-                ActiveTransformEffect(TransformEffectKind::Settle),
-            ));
-        }
+    for entity in &query {
+        requests.write(EffectRequest {
+            owner: entity,
+            kind: EffectKind::Settle {
+                ms: config.timing.move_repeat_rate_ms,
+            },
+        });
         commands.entity(entity).remove::<MovementSettle>();
     }
 }
@@ -491,9 +454,25 @@ fn fold_requests(live: Option<LiveEffect>, requests: &[EffectKind]) -> ChannelPl
     }
 }
 
+/// What a root effect needs to build its tween when it starts.
+#[derive(SystemParam)]
+struct RootTweenSources<'w, 's> {
+    owners: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static GridCoords,
+            Option<&'static RestingTranslation>,
+        ),
+    >,
+    map_info: Res<'w, MapInfo>,
+}
+
 /// Spawns the driver entity that runs one effect tween.
 fn start_effect(
     commands: &mut Commands,
+    sources: &RootTweenSources,
     owner: Entity,
     kind: EffectKind,
     then: Option<EffectKind>,
@@ -518,16 +497,49 @@ fn start_effect(
                 TweenAnim::new(create_color_flash_tween(ms)),
             ));
         }
-        EffectKind::Translate { .. }
-        | EffectKind::Settle { .. }
-        | EffectKind::Knockback { .. }
-        | EffectKind::DeathBounce { .. } => {}
+        EffectKind::Translate { ms }
+        | EffectKind::Settle { ms }
+        | EffectKind::Knockback { ms } => {
+            let Ok((transform, coords, _)) = sources.owners.get(owner) else {
+                return;
+            };
+            let ease = match kind {
+                EffectKind::Translate { .. } => EaseFunction::Linear,
+                _ => EaseFunction::QuadraticOut,
+            };
+            commands.spawn((
+                driver,
+                AnimTarget::component::<Transform>(owner),
+                TweenAnim::new(create_movement_tween(
+                    transform.translation,
+                    coords.to_translation(&sources.map_info),
+                    ms,
+                    ease,
+                )),
+            ));
+        }
+        EffectKind::DeathBounce {
+            intensity,
+            bounce_count,
+            decay,
+        } => {
+            let Ok((transform, _, resting)) = sources.owners.get(owner) else {
+                return;
+            };
+            let origin = resting.map_or(transform.translation, |resting| resting.0);
+            commands.spawn((
+                driver,
+                AnimTarget::component::<Transform>(owner),
+                TweenAnim::new(create_bounce_tween(origin, intensity, bounce_count, decay)),
+            ));
+        }
     }
 }
 
 fn resolve_effect_requests(
     mut commands: Commands,
     mut requests: MessageReader<EffectRequest>,
+    sources: RootTweenSources,
     dead: Query<(), With<IsDead>>,
     owners: Query<&EffectDrivers>,
     mut drivers: Query<&mut EffectDriver>,
@@ -564,7 +576,7 @@ fn resolve_effect_requests(
             if let Some(driver) = live_driver {
                 commands.entity(driver).despawn();
             }
-            start_effect(&mut commands, owner, kind, then);
+            start_effect(&mut commands, &sources, owner, kind, then);
         } else if let (Some(then), Some(driver)) = (plan.new_then, live_driver) {
             if let Ok(mut driver) = drivers.get_mut(driver) {
                 driver.then = then;
@@ -575,6 +587,7 @@ fn resolve_effect_requests(
 
 fn on_effect_completed(
     mut commands: Commands,
+    sources: RootTweenSources,
     mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
     drivers: Query<&EffectDriver>,
 ) {
@@ -583,8 +596,20 @@ fn on_effect_completed(
             continue;
         };
         commands.entity(event.anim_entity).despawn();
+        if matches!(driver.kind, EffectKind::DeathBounce { .. }) {
+            commands.entity(driver.owner).insert(Visibility::Hidden);
+        }
         if let Some(then) = driver.then {
-            start_effect(&mut commands, driver.owner, then, None);
+            start_effect(&mut commands, &sources, driver.owner, then, None);
+        }
+    }
+}
+
+/// Despawns the root translation drivers when a round ends.
+fn clear_root_effect_drivers(mut commands: Commands, drivers: Query<(Entity, &EffectDriver)>) {
+    for (entity, driver) in &drivers {
+        if driver.kind.channel() == EffectChannel::RootTranslation {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -631,108 +656,31 @@ fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> O
     sprite_query.get(first_child).is_ok().then_some(first_child)
 }
 
-// Reacts to DamageableDied event. Defers the bounce if knocked back — see
-// `start_deferred_death_bounce`.
+/// Marks a died entity dead and requests its death bounce.
 fn apply_death_effect(
     mut commands: Commands,
+    mut requests: MessageWriter<EffectRequest>,
     mut damageable_died_reader: MessageReader<DamageableDied>,
-    damageable_query: Query<
-        Has<IsKnockedBack>,
-        (With<DamageEffectTarget>, With<Health>, Without<IsDead>),
-    >,
-    knockback_pending: Query<(), With<KnockbackEffect>>,
+    damageable_query: Query<(), (With<DamageEffectTarget>, With<Health>, Without<IsDead>)>,
 ) {
     for damageable_died_message in damageable_died_reader.read() {
-        let Ok(is_knocked_back) = damageable_query.get(damageable_died_message.entity) else {
+        let entity = damageable_died_message.entity;
+        if damageable_query.get(entity).is_err() {
             continue;
-        };
-        let defer =
-            is_knocked_back || knockback_pending.get(damageable_died_message.entity).is_ok();
-
-        let mut entity_commands = commands.entity(damageable_died_message.entity);
-        entity_commands.insert((
-            BounceEffect {
+        }
+        commands.entity(entity).insert(IsDead);
+        requests.write(EffectRequest {
+            owner: entity,
+            kind: EffectKind::DeathBounce {
                 intensity: 8.0,
                 bounce_count: 3,
                 decay: 0.33,
-                z_index: 1,
             },
-            IsDead,
-        ));
-        if defer {
-            entity_commands.insert(PendingDeathBounce);
-        } else {
-            entity_commands.insert(BounceEffectTarget);
-        }
+        });
     }
 }
 
-/// Promotes a death bounce that was parked behind a knockback slide.
-fn start_deferred_death_bounce(
-    mut commands: Commands,
-    pending: Query<
-        Entity,
-        (
-            With<PendingDeathBounce>,
-            With<BounceEffect>,
-            Without<IsKnockedBack>,
-            Without<KnockbackEffect>,
-        ),
-    >,
-) {
-    for entity in &pending {
-        commands
-            .entity(entity)
-            .insert(BounceEffectTarget)
-            .remove::<PendingDeathBounce>();
-    }
-}
-
-// Once the death bounce finishes, hide the dead entity and clear its bounce
-// rather than despawning it. In a round-based match the loser must survive to be
-// restored by the round reset (`reset_round`, round `state` submodule); the
-// `IsDead` marker is kept so the entity stays inert until then. Only players
-// carry `DamageEffectTarget`, so this only ever hides players.
-fn on_death_effect_completed(
-    mut commands: Commands,
-    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    dead_entities: Query<&ActiveTransformEffect, (With<IsDead>, With<BounceEffect>)>,
-) {
-    for anim_completed_message in anim_completed_reader.read() {
-        let Ok(active) = dead_entities.get(anim_completed_message.anim_entity) else {
-            continue;
-        };
-        if active.0 != TransformEffectKind::Bounce {
-            continue;
-        }
-        commands
-            .entity(anim_completed_message.anim_entity)
-            .insert(Visibility::Hidden)
-            .remove::<(BounceEffect, ActiveTransformEffect)>();
-    }
-}
-
-// Only clears the `ActiveTransformEffect` tag — `IsKnockedBack` itself is
-// timer-driven, see `tick_knockback_lock`.
-fn on_knockback_tween_completed(
-    mut commands: Commands,
-    mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    knocked_back: Query<&ActiveTransformEffect, With<IsKnockedBack>>,
-) {
-    for ev in anim_completed_reader.read() {
-        let Ok(active) = knocked_back.get(ev.anim_entity) else {
-            continue;
-        };
-        if active.0 != TransformEffectKind::Knockback {
-            continue;
-        }
-        commands
-            .entity(ev.anim_entity)
-            .remove::<ActiveTransformEffect>();
-    }
-}
-
-/// The sole remover of `IsKnockedBack`.
+/// Ticks the knockback input lock and removes it when it ends.
 fn tick_knockback_lock(
     mut commands: Commands,
     time: Res<Time>,
@@ -796,10 +744,12 @@ fn apply_bounce_effect(
         let origin = resting.map(|r| r.0).unwrap_or(transform.translation);
         commands
             .entity(entity)
-            .insert((
-                TweenAnim::new(create_bounce_tween(origin, intensity, bounce_count, decay)),
-                ActiveTransformEffect(TransformEffectKind::Bounce),
-            ))
+            .insert(TweenAnim::new(create_bounce_tween(
+                origin,
+                intensity,
+                bounce_count,
+                decay,
+            )))
             .remove::<BounceEffectTarget>();
     }
 }
@@ -1075,6 +1025,7 @@ fn clear_glow(
 mod tests {
     use super::*;
     use bevy::render::render_resource::{Extent3d, TextureDimension};
+    use bevy_ecs_tiled::prelude::{TilemapGridSize, TilemapSize, TilemapTileSize};
     use bevy_tweening::TweeningPlugin;
 
     const T: EffectKind = EffectKind::Translate { ms: 10 };
@@ -1098,6 +1049,15 @@ mod tests {
         EffectKind::DamageFlash {
             sprite: Entity::PLACEHOLDER,
             ms,
+        }
+    }
+
+    fn test_map_info() -> MapInfo {
+        MapInfo {
+            map_size: TilemapSize::new(4, 4),
+            grid_size: TilemapGridSize::new(16.0, 16.0),
+            tile_size: TilemapTileSize::new(16.0, 16.0),
+            ..default()
         }
     }
 
@@ -1193,6 +1153,7 @@ mod tests {
     fn two_flash_requests_in_one_frame_give_one_driver() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, TweeningPlugin));
+        app.insert_resource(test_map_info());
         app.add_message::<EffectRequest>();
         app.add_systems(Update, resolve_effect_requests);
         let sprite = app.world_mut().spawn(Sprite::default()).id();
@@ -1212,6 +1173,40 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(drivers, 1);
+    }
+
+    #[test]
+    fn death_bounce_starts_after_knockback_finishes() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TweeningPlugin));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::from_millis(150),
+        ));
+        app.insert_resource(test_map_info());
+        app.add_message::<EffectRequest>();
+        app.add_systems(
+            Update,
+            (on_effect_completed, resolve_effect_requests).chain(),
+        );
+        let owner = app
+            .world_mut()
+            .spawn((Transform::default(), GridCoords::new(0, 0)))
+            .id();
+        for kind in [D, EffectKind::Knockback { ms: 100 }] {
+            app.world_mut().write_message(EffectRequest { owner, kind });
+        }
+        app.update();
+        let kinds = |app: &mut App| -> Vec<EffectKind> {
+            app.world_mut()
+                .query::<&EffectDriver>()
+                .iter(app.world())
+                .map(|driver| driver.kind)
+                .collect()
+        };
+        assert_eq!(kinds(&mut app), vec![EffectKind::Knockback { ms: 100 }]);
+        app.update();
+        app.update();
+        assert_eq!(kinds(&mut app), vec![D]);
     }
 
     fn image_from(pixels: &[[u8; 4]]) -> Image {

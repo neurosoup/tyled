@@ -124,23 +124,6 @@ pub struct KnockbackEffect {
 #[derive(Component)]
 pub struct IsKnockedBack(pub Timer);
 
-/// Which effect currently owns an entity's `Transform` `TweenAnim` slot.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ActiveTransformEffect(pub TransformEffectKind);
-
-/// Priority order (highest first): Bounce > Knockback > {Settle, Translate}.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TransformEffectKind {
-    Translate,
-    Settle,
-    Knockback,
-    Bounce,
-}
-
-/// A death bounce that is waiting for an in-flight knockback slide to finish.
-#[derive(Component)]
-pub struct PendingDeathBounce;
-
 /// Marks entities allowed to act as a wave source for `apply_wave_effect`.
 #[derive(Component)]
 pub struct WaveSource;
@@ -158,7 +141,6 @@ pub enum EffectChannel {
 }
 
 /// One effect request or running effect, with the data needed to build its tween.
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum EffectKind {
     Translate { ms: u64 },
