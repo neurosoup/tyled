@@ -231,11 +231,12 @@ fn initialize_players(
     loadouts: Res<PlayerLoadouts>,
 ) {
     for (entity, player, mut transform) in &mut players_query {
-        let look_direction = LookDirection::new(match player.player_id {
+        let spawn_direction = match player.player_id {
             0 => Direction::Down,
             1 => Direction::Up,
             _ => Direction::Down,
-        });
+        };
+        let look_direction = LookDirection::new(spawn_direction);
 
         if let Some(grid_coords) =
             GridCoords::from_world_pos(&(transform.translation.truncate()), &map_info)
@@ -243,6 +244,7 @@ fn initialize_players(
             commands.entity(entity).insert((
                 grid_coords,
                 SpawnPoint(grid_coords),
+                SpawnLookDirection(spawn_direction),
                 PreviousGridCoords(grid_coords),
                 look_direction,
                 TranslateEffectTarget,

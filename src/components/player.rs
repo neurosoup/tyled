@@ -14,6 +14,10 @@ pub struct Player {
 #[derive(Component)]
 pub struct SpawnPoint(pub GridCoords);
 
+/// The direction a player faces at spawn, restored by the round reset.
+#[derive(Component, Clone, Copy)]
+pub struct SpawnLookDirection(pub Direction);
+
 /// The tile a character occupied before its most recent move.
 #[derive(Component, Clone, Copy)]
 pub struct PreviousGridCoords(pub GridCoords);

@@ -326,6 +326,8 @@ fn reset_round(
     mut players: Query<(
         Entity,
         &SpawnPoint,
+        &SpawnLookDirection,
+        &mut LookDirection,
         &mut Health,
         &mut BeamCharges,
         &mut ClaimedTileCount,
@@ -348,9 +350,20 @@ fn reset_round(
         *reserved_counts.entry(*owner).or_default() += 1;
     }
 
-    for (entity, spawn, mut health, mut charges, mut count, mut in_flight, mut transform, mut resting) in
-        &mut players
+    for (
+        entity,
+        spawn,
+        spawn_look,
+        mut look,
+        mut health,
+        mut charges,
+        mut count,
+        mut in_flight,
+        mut transform,
+        mut resting,
+    ) in &mut players
     {
+        look.direction = Some(spawn_look.0);
         health.current = health.max;
         charges.current = charges.max;
         count.current = reserved_counts.get(&entity).copied().unwrap_or(0);
