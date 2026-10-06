@@ -492,7 +492,10 @@ reset" rather than hardcoding "impassable" — the payload may evolve again.
 **Visuals**: `BounceEffect`/`WaveEffectTarget` is already decoupled from beam
 logic via messages, so new behaviors mostly reuse it. New ability feedback
 (regen pulse, contest countdown) follows the same `*EffectTarget` pattern used
-today.
+today. A tile has one `TweenAnim` slot that the wave bounce owns, so tile
+visuals that last while a state is true (armed Landmine/Barrier, pending
+contest) go on a child overlay, and competing one-shot tile effects go through
+the effect resolver (doc-10 "Tile effects and the resolver").
 
 **Round-phase text** (intro countdown, win banner) is *screen-space*, not
 world-space: it renders on a dedicated **fourth camera** (a fixed, full-window

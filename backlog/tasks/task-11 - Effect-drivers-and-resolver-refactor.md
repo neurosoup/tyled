@@ -160,6 +160,8 @@ Verify: same as Stage 3. Rollback: revert; Stage 3 works without it.
 
 `apply_wave_effect` (`525-556`) and the claim bounce (`animations.rs:99` → `apply_bounce_effect`) keep inserting `TweenAnim` directly: one channel, always replace, which the slot gives for free. Drivers would add a spawn and despawn per beam step. No work.
 
+When tiles join the resolver: when a tile gets a second tween on a different value, or a one-shot effect that must wait for, beat, or run beside the bounce. A second direct `TweenAnim` on a tile would be replaced by the next wave bounce (the bug `9770b6d` fixed for players). Visuals that last while a state is true use a child overlay instead (lit overlay pattern). Expected triggers from `DECKBUILDING.md`: Landmine (#17), Barrier (#33) / Bulwark (#34), Contested Ground (#15), regen pulse (§6). See doc-10 "Tile effects and the resolver".
+
 ### Policy table (RootTranslation)
 
 | Incoming ↓ / current → | none | Translate or Settle | Knockback | DeathBounce |

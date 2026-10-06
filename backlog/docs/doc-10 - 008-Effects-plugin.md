@@ -209,6 +209,22 @@ Tween shapes (built in `start_effect` when the effect starts):
 
 `clear_root_effect_drivers` runs on `OnExit(RoundPhase::Outcome)`. It despawns every driver on the `RootTranslation` channel, with its queued `then`. It does not need any order against `reset_round`. Sprite drivers are not cleared: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
 
+### Tile effects and the resolver
+
+Tiles do not use the resolver. The wave bounce and the claim bounce insert `TweenAnim` directly on the tile. Both animate the tile translation, start from `RestingTranslation`, and the latest one wins, which the single `TweenAnim` slot already gives.
+
+Rule for new tile visuals: a tile must never get a second direct `TweenAnim` that animates a different value. An entity has one `TweenAnim` slot, so the next wave bounce would replace it. This is the same bug that commit `9770b6d` fixed for the player's punch and flash.
+
+Use one of these instead:
+- **A visual that lasts while a state is true** (for example an armed Landmine, an armed Barrier, a pending Contested Ground tile): a child overlay sprite on the tile, shown while the state holds, with its own animation or tween. This is the lit overlay pattern. The child has its own `TweenAnim` slot and moves with the tile.
+- **A one-shot effect that competes with the bounce** (for example a Barrier hit, a regen pulse): move tiles onto the resolver. Add the `EffectKind` variants and a channel; `EffectRequest { owner, kind }` already works for any owner entity.
+
+How an overlay splits between state and requests:
+- **The overlay's existence and visibility come from state.** A system shows the overlay only while the state component is present (for example `LandmineArmed`), and re-reads it every frame. Do not start and stop it with requests: a missed stop (round reset, tile flip, despawn) would leave the marker stuck.
+- **Animations on the overlay go through requests.** The owner is the tile and the target is the overlay sprite, the same way `ScalePunch` and `DamageFlash` target the player's sprite child. Use a channel for the overlay. This gives the replace, queue and drop rules, and `then` covers "play the hit flash, then go back to the armed loop". It needs two additions: looping tweens (they never send `AnimCompletedEvent`) and a way to stop a channel.
+- **The beam glow stays separate.** `GlowPulses` keeps every pulse and shows the strongest one, while the resolver keeps one effect per channel, so a weak neighbor pulse would cut off a strong center pulse. The glow also pushes many pulses per beam step, which would mean many driver spawns.
+
+Abilities in `DECKBUILDING.md` that will need this: Landmine (#17), Barrier (#33) and Bulwark (#34), Contested Ground (#15), and the regen pulse (§6 "Visuals"). Burst claims (Splitter, Chain Reaction, Full Draw, Ricochet, Juggernaut, Beachhead) may also want a small delay between bounces, like `GlowPulse.delay`.
 
 ## Components, Resources and Messages CRUD
 
