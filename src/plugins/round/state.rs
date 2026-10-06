@@ -379,9 +379,6 @@ fn reset_round(
                 IsTurning,
                 IsKnockedBack,
                 KnockbackEffect,
-                BounceEffect,
-                BounceEffectTarget,
-                MovementSettle,
             )>();
     }
 

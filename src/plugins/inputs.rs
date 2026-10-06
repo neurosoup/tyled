@@ -83,6 +83,7 @@ fn handle_characters_input(
     mut entity_moved_writer: MessageWriter<EntityMoved>,
     mut beam_fired_writer: MessageWriter<BeamFired>,
     mut parry_triggered_writer: MessageWriter<ParryTriggered>,
+    mut movement_stopped_writer: MessageWriter<MovementStopped>,
 ) {
     for (
         entity,
@@ -135,7 +136,7 @@ fn handle_characters_input(
         let axis = action_state.clamped_axis_pair(&Action::Move);
         if axis == Vec2::ZERO {
             if move_repeat.moving {
-                commands.entity(entity).insert(MovementSettle);
+                movement_stopped_writer.write(MovementStopped { entity });
             }
             move_repeat.held_axis = Vec2::ZERO;
             move_repeat.moving = false;
@@ -188,7 +189,7 @@ fn handle_characters_input(
             // The slide lasts until the next step is due, so the first tile glides straight
             // into the cruise with no idle gap: the first move out of rest spans the longer
             // delay, later steps run at the shorter repeat rate. Slides are linear; the only
-            // easing is the ease-out on stop, applied on release via MovementSettle.
+            // easing is the ease-out on stop, applied on release via MovementStopped.
             let base_ms = if move_repeat.moving {
                 config.timing.move_repeat_rate_ms
             } else {

@@ -103,13 +103,6 @@ pub struct MovementSlide {
     pub duration_ms: u64,
 }
 
-/*
- * Requests an ease-out slide to the current tile when movement stops.
- * Inserted by the inputs plugin on release, consumed by apply_movement_settle.
- */
-#[derive(Component)]
-pub struct MovementSettle;
-
 /// Stores the resting world position for entities whose Transform may be mid-tween.
 /// Used by bounce/wave effects so they always return to the correct origin.
 #[derive(Component)]
@@ -128,10 +121,6 @@ pub struct IsKnockedBack(pub Timer);
 #[derive(Component)]
 pub struct WaveSource;
 
-/// One-shot landed-parry scale punch, inserted on the parrier's root entity.
-#[derive(Component)]
-pub struct ParryScaleEffectTarget;
-
 /// The animated value an effect writes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum EffectChannel {
@@ -147,7 +136,7 @@ pub enum EffectKind {
     Settle { ms: u64 },
     Knockback { ms: u64 },
     DeathBounce { intensity: f32, bounce_count: usize, decay: f32 },
-    ParryPunch { sprite: Entity, peak: f32, secs: f32 },
+    ScalePunch { sprite: Entity, peak: f32, secs: f32 },
     DamageFlash { sprite: Entity, ms: u64 },
 }
 
@@ -159,7 +148,7 @@ impl EffectKind {
             | Self::Settle { .. }
             | Self::Knockback { .. }
             | Self::DeathBounce { .. } => EffectChannel::RootTranslation,
-            Self::ParryPunch { .. } => EffectChannel::SpriteScale,
+            Self::ScalePunch { .. } => EffectChannel::SpriteScale,
             Self::DamageFlash { .. } => EffectChannel::SpriteColor,
         }
     }
@@ -171,7 +160,7 @@ impl EffectKind {
             Self::Settle { .. } => 1,
             Self::Knockback { .. } => 2,
             Self::DeathBounce { .. } => 3,
-            Self::ParryPunch { .. } | Self::DamageFlash { .. } => 0,
+            Self::ScalePunch { .. } | Self::DamageFlash { .. } => 0,
         }
     }
 
@@ -182,7 +171,7 @@ impl EffectKind {
             Self::Settle { .. } => "Fx:Settle",
             Self::Knockback { .. } => "Fx:Knockback",
             Self::DeathBounce { .. } => "Fx:DeathBounce",
-            Self::ParryPunch { .. } => "Fx:ParryPunch",
+            Self::ScalePunch { .. } => "Fx:ScalePunch",
             Self::DamageFlash { .. } => "Fx:DamageFlash",
         }
     }
@@ -191,7 +180,6 @@ impl EffectKind {
 /// A carrier entity that runs one effect tween on its owner's channel.
 #[derive(Component, Debug)]
 pub struct EffectDriver {
-    pub owner: Entity,
     pub kind: EffectKind,
     pub then: Option<EffectKind>,
 }

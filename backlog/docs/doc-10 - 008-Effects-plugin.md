@@ -7,7 +7,7 @@ updated_date: '2026-10-05 00:00'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a landed-parry scale punch that briefly enlarges the parrier's sprite. Every player effect tween (translate, settle, knockback, death bounce, damage flash, parry punch) runs as a driver entity, and one resolver decides which effect owns each animated channel. Claimed tiles keep direct `TweenAnim` inserts for their wave and claim bounces.
+Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a scale punch that briefly enlarges a sprite (a landed parry is the current source). Every player effect tween (translate, settle, knockback, death bounce, damage flash, scale punch) runs as a driver entity, and one resolver decides which effect owns each animated channel. Claimed tiles keep direct `TweenAnim` inserts for their wave and claim bounces.
 
 ## Transform effect ownership
 
@@ -24,7 +24,7 @@ All player root-translation effects (Translate, Settle, Knockback, DeathBounce) 
 - `Queue`: keep the running driver and store the new effect as its `then`. It starts when the running driver completes.
 - `Drop`: ignore the request.
 
-`ParryPunch` and `DamageFlash` have their own channels and are always `Start` or `Replace`.
+`ScalePunch` and `DamageFlash` have their own channels and are always `Start` or `Replace`.
 
 Fold rules (how the requests of one frame are combined):
 - One queued slot per driver (`then`). `merge_queued` replaces the old queued effect when the new one has a higher or equal rank. A DeathBounce beats any queued movement. A later Translate or Settle replaces an earlier one.
@@ -50,9 +50,8 @@ Death and knockback follow the same rules. A death bounce that arrives during a 
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities
             - Writes `EffectRequest { owner, kind: Translate { ms } }`, with `ms` from the entity's `MovementSlide` (or `config.timing.move_repeat_rate_ms` if absent)
     - `apply_movement_settle` (`EffectsSet::Request`):
-        - Reacts to `Added<MovementSettle>`
-            - Writes `EffectRequest { owner, kind: Settle { ms } }` with `ms` from `config.timing.move_repeat_rate_ms`
-            - Always removes `MovementSettle`
+        - Reads `MovementStopped` messages (written by the Input plugin)
+            - Writes `EffectRequest { owner: entity, kind: Settle { ms } }` with `ms` from `config.timing.move_repeat_rate_ms`
     - `apply_death_effect` (`EffectsSet::Request`, after `apply_knockback`):
         - Reads `DamageableDied` messages, matched against entities with `DamageEffectTarget` and `Health` but without `IsDead`
             - Inserts `IsDead`
@@ -81,13 +80,9 @@ Death and knockback follow the same rules. A death bounce that arrives during a 
     - `tick_knockback_lock` (no ordering dependency; placed by registration order):
         - Runs every frame against every entity carrying `IsKnockedBack`
             - Ticks the entity's timer; once it finishes, removes `IsKnockedBack`. This is the only removal path during normal play, and it is only the input lock
-    - `trigger_parry_scale_effect` (tagged `GameplaySet::Presentation`):
+    - `trigger_parry_scale_effect` (`EffectsSet::Request`):
         - Reads `BeamParried` messages
-            - Inserts `ParryScaleEffectTarget` on the parrier's root entity
-    - `apply_parry_scale_effect` (`EffectsSet::Request`):
-        - Reacts to `Added<ParryScaleEffectTarget>`
-            - Resolves the entity's first child sprite; if found, writes `EffectRequest { owner, kind: ParryPunch { sprite, peak, secs } }`
-            - Always removes `ParryScaleEffectTarget`, even when no sprite child is found
+            - Finds the parrier's sprite child with `sprite_child`; if found, writes `EffectRequest { owner: parrier, kind: ScalePunch { sprite, peak, secs } }`
     - `on_effect_completed` (`EffectsSet::Complete`):
         - Reads `AnimCompletedEvent`; despawns the `EffectDriver` entity whose tween finished and starts its queued `then` effect, if any
             - When the finished effect was a `DeathBounce`, inserts `Visibility::Hidden` on the owner
@@ -114,7 +109,7 @@ Runs in `EffectsSet::Request`. Reacts to `Changed<GridCoords>` on entities that 
 
 ### Apply Movement Settle
 
-Runs in `EffectsSet::Request`. Reacts to `Added<MovementSettle>`. Writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` and removes `MovementSettle`. The system does not check `IsKnockedBack`, `IsDead` or `KnockbackEffect`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. `MovementSettle` is removed every time, so the marker never strands. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
+Runs in `EffectsSet::Request`. Reads `MovementStopped { entity }` messages. For each message, writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` with `owner` set to the message entity. The system has no query and no marker component, so nothing needs to be removed. It does not check `IsKnockedBack`, `IsDead` or `KnockbackEffect`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
 
 ### Sync Resting Translation
 
@@ -172,19 +167,17 @@ Runs on `OnExit(RoundPhase::Playing)`. Empties every overlay's `GlowPulses`, set
 
 ### Trigger Parry Scale Effect
 
-Reads `BeamParried` messages. For each, inserts `ParryScaleEffectTarget` on the parrier's root entity — one marker insert per landed parry, with no dedup of its own (deduplication happens downstream in `apply_parry_scale_effect`). Tagged `.in_set(GameplaySet::Presentation)`, the same position in the shared gameplay chain (`schedule.rs`) as `apply_death_effect`.
+Runs in `EffectsSet::Request`. Reads `BeamParried` messages. For each one, it finds the parrier's sprite child with `sprite_child`. If a sprite child exists, it writes an `EffectRequest { owner: parrier, kind: ScalePunch { sprite, peak, secs } }`. The values come from `config.parry.scale_punch_peak` (default `1.3`) and `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). If the parrier has no sprite child, nothing is written. The request is written in the same frame as the message, so there is no marker and no frame delay. The resolver builds the tween with `create_scale_punch_tween`: a `TransformScaleLens` from the peak down to `Vec3::ONE` with `EaseFunction::CubicIn`. A second parry before the punch ends restarts it.
 
-### Apply Parry Scale Effect
-
-Reacts to `Added<ParryScaleEffectTarget>`. Walks the entity's children to find the first child sprite entity; if found, writes an `EffectRequest` with `EffectKind::ParryPunch { sprite, peak, secs }`, taken from `config.parry.scale_punch_peak` (default `1.3`) and `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). The resolver builds the tween with `create_parry_scale_tween`: a `TransformScaleLens` from the peak down to `Vec3::ONE` with `EaseFunction::CubicIn`. `ParryScaleEffectTarget` is removed unconditionally, even when no sprite child is found, so a parrier without a sprite child never strands the marker. Runs in `EffectsSet::Request`. A second parry before the punch ends restarts it.
+The scale punch is a generic effect. Any system can write a `ScalePunch` request for any sprite. The parry is only one source.
 
 ### Effect drivers and resolver
 
-An effect driver is a carrier entity that runs one effect tween on an owner's channel. It carries `EffectDriver { owner, kind, then }`, `DriverOf(owner)`, an `AnimTarget` pointing at the animated component, and the `TweenAnim`. The owner holds the matching `EffectDrivers` relationship target (`linked_spawn`, so despawning the owner despawns its drivers). The link does not use `ChildOf`, because `sprite_child` reads `Children::first()`.
+An effect driver is a carrier entity that runs one effect tween on an owner's channel. It carries `EffectDriver { kind, then }`, `DriverOf(owner)`, an `AnimTarget` pointing at the animated component, and the `TweenAnim`. The owner holds the matching `EffectDrivers` relationship target (`linked_spawn`, so despawning the owner despawns its drivers). The link does not use `ChildOf`, because `sprite_child` reads `Children::first()`.
 
 Each driver owns one `EffectChannel`: `RootTranslation`, `SpriteScale` or `SpriteColor`. Two effects on the same sprite (a punch and a flash) run together, because they use different channels and different drivers. The channel of each kind:
 - `RootTranslation`: `Translate`, `Settle`, `Knockback`, `DeathBounce`. The driver targets the owner `Transform`.
-- `SpriteScale`: `ParryPunch`. The driver targets the sprite child `Transform`.
+- `SpriteScale`: `ScalePunch`. The driver targets the sprite child `Transform`.
 - `SpriteColor`: `DamageFlash`. The driver targets the sprite child `Sprite`.
 
 Every write to a player's position tween goes through a driver. No other system inserts a `TweenAnim` on a player root. Tiles are the exception: `apply_wave_effect` and `apply_bounce_effect` insert `TweenAnim` directly on a claimed tile. A tile has one channel and every new bounce replaces the old one.
@@ -205,7 +198,7 @@ Tween shapes (built in `start_effect` when the effect starts):
 - `Settle`: `QuadraticOut`, same start and end, over `config.timing.move_repeat_rate_ms`.
 - `Knockback`: `QuadraticOut`, same start and end, over `config.effects.knockback_tween_ms`.
 - `DeathBounce`: a bounce tween from `RestingTranslation` (or the current `Transform` if there is none).
-- `ParryPunch`: `CubicIn` scale from the peak down to `Vec3::ONE`.
+- `ScalePunch`: `CubicIn` scale from the peak down to `Vec3::ONE`.
 - `DamageFlash`: color to red over a quarter of `ms`, then back to white over `ms`.
 
 ### Resolver systems
@@ -215,6 +208,7 @@ Tween shapes (built in `start_effect` when the effect starts):
 `on_effect_completed` reads `AnimCompletedEvent`, despawns the finished driver, and starts its `then`. When the finished effect was a `DeathBounce`, it also inserts `Visibility::Hidden` on the owner. The owner stays alive and keeps `IsDead` until the round reset.
 
 `clear_root_effect_drivers` runs on `OnExit(RoundPhase::Outcome)`. It despawns every driver on the `RootTranslation` channel, with its queued `then`. It does not need any order against `reset_round`. Sprite drivers are not cleared: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
+
 
 ## Components, Resources and Messages CRUD
 
@@ -352,10 +346,10 @@ effect_request(["`**EffectRequest**`"])
 apply_translate_effect ---> |writes Translate| effect_request
 ```
 
-### Query MovementSettle entities
+### Read MovementStopped messages
 
 Used in the following systems:
-- **apply_movement_settle**: reads newly added `MovementSettle` markers, writes a `Settle` `EffectRequest` for each, and always removes `MovementSettle`
+- **apply_movement_settle**: reads `MovementStopped` messages from the Input plugin and writes a `Settle` `EffectRequest` for each one
 
 ```mermaid
 ---
@@ -372,17 +366,11 @@ apply_movement_settle["`**apply_movement_settle**`"]
 
 update -.-> apply_movement_settle
 
-settle_query{{"`settle_query`"}}:::query
-apply_movement_settle ---> settle_query
+movement_stopped_message(["`**MovementStopped**`"])
+movement_stopped_message ---> |read by| apply_movement_settle
 
-moving_entity@{ shape: st-rect, label: "Moving Entity" }
-
-me_settle>"`**MovementSettle**`"] --> |belongs to| moving_entity
-
-settle_query -..-> |filter Added| me_settle
 effect_request(["`**EffectRequest**`"])
 apply_movement_settle ---> |writes Settle| effect_request
-apply_movement_settle ---> |always removes| me_settle
 ```
 
 ### Sync Resting Translation
@@ -844,7 +832,7 @@ overlays_query ---> |pushes into| oe_pulses
 ### Read BeamParried messages
 
 Used in the following systems:
-- **trigger_parry_scale_effect**: reads `BeamParried` messages and inserts `ParryScaleEffectTarget` on the parrier's root entity
+- **trigger_parry_scale_effect**: reads `BeamParried` messages, finds the parrier's sprite child with `sprite_child` (reads `Children` and `Sprite`), and writes an `EffectRequest` with `ScalePunch`
 
 ```mermaid
 ---
@@ -855,6 +843,7 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef reader stroke-dasharray: 3 3
+classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
 trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
@@ -868,52 +857,21 @@ beam_parried_message(["`**BeamParried**`"])
 
 message_reader ---> |reads| beam_parried_message
 
-parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
-pe_target>"`**ParryScaleEffectTarget**`"]
-pe_target --> |inserted on| parrier_entity
-
-trigger_parry_scale_effect ---> |inserts| pe_target
-```
-
-### Query ParryScaleEffectTarget entities and write EffectRequest (apply_parry_scale_effect)
-
-Used in the following systems:
-- **apply_parry_scale_effect**: reacts to `Added<ParryScaleEffectTarget>`, resolves the entity's first child sprite, writes an `EffectRequest` with `ParryPunch`, and always removes `ParryScaleEffectTarget`
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
-
-update -.-> apply_parry_scale_effect
-
-parry_query{{"`parry_query`"}}:::query
+children_query{{"`children_query`"}}:::query
 sprite_query{{"`sprite_query`"}}:::query
-apply_parry_scale_effect ---> parry_query
-apply_parry_scale_effect ---> sprite_query
+trigger_parry_scale_effect ---> children_query
+trigger_parry_scale_effect ---> sprite_query
 
 parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
-pe_target>"`**ParryScaleEffectTarget**`"] --> |belongs to| parrier_entity
 pe_children>"`**Children**`"] --> |"belongs to (optional)"| parrier_entity
-
-parry_query -..-> |filter Added| pe_target
-parry_query ---> |"reads (optional)"| pe_children
-apply_parry_scale_effect ---> |always removes| pe_target
+children_query ---> |"reads (optional)"| pe_children
 
 sprite_entity@{ shape: st-rect, label: "Parrier Child (Sprite)" }
 se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
 sprite_query ---> |reads| se_sprite
 
 effect_request(["`**EffectRequest**`"])
-apply_parry_scale_effect ---> |writes ParryPunch| effect_request
+trigger_parry_scale_effect ---> |writes ScalePunch| effect_request
 ```
 
 ### Read EffectRequest and spawn drivers (resolve_effect_requests)
@@ -1097,7 +1055,7 @@ clear_glow ---> |clears pulses, hides| overlay_entity
 
 ### EffectDriver component lifecycle
 
-`EffectDriver { owner, kind, then }` (`src/components/effects.rs`) is a transient carrier entity whose `TweenAnim` is redirected at the animated component through `AnimTarget`, so several effects can run on one sprite without sharing a `TweenAnim` slot. Its full lifecycle:
+`EffectDriver { kind, then }` (`src/components/effects.rs`) is a transient carrier entity whose `TweenAnim` is redirected at the animated component through `AnimTarget`, so several effects can run on one sprite without sharing a `TweenAnim` slot. Its full lifecycle:
 - **Spawned** by `resolve_effect_requests` (or by `on_effect_completed` for a queued `then`) through `start_effect`, linked to its owner with `DriverOf`. Root effects build their tween at this moment, from the owner's current `Transform` to the `GridCoords` position (Translate, Settle, Knockback) or from `RestingTranslation` (DeathBounce).
 - **Replaced** by `resolve_effect_requests` when a new effect on the same channel wins `decide` with `Replace`: the old driver is despawned and the new one spawned in the same frame, so a repeated hit, parry or drag step restarts its tween.
 - **Updated in place** by `resolve_effect_requests` when a request is queued: only `then` changes.
@@ -1117,7 +1075,7 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 exit_outcome(("`OnExit(Outcome)`")):::system-group
 
-apply_parry_scale_effect["`**apply_parry_scale_effect**`"]
+trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
 apply_damage_effect["`**apply_damage_effect**`"]
 apply_translate_effect["`**apply_translate_effect**`"]
 apply_movement_settle["`**apply_movement_settle**`"]
@@ -1127,7 +1085,7 @@ on_effect_completed["`**on_effect_completed**`"]
 resolve_effect_requests["`**resolve_effect_requests**`"]
 clear_root_effect_drivers["`**clear_root_effect_drivers**`"]
 
-update -.-> apply_parry_scale_effect
+update -.-> trigger_parry_scale_effect
 update -.-> apply_damage_effect
 update -.-> apply_translate_effect
 update -.-> apply_movement_settle
@@ -1142,9 +1100,11 @@ driver_entity@{ shape: st-rect, label: "Effect Driver" }
 sprite_entity@{ shape: st-rect, label: "Owner Child (Sprite, Transform)" }
 player_entity@{ shape: st-rect, label: "Player Entity (Transform)" }
 
-apply_parry_scale_effect ---> |writes ParryPunch| effect_request
+trigger_parry_scale_effect ---> |writes ScalePunch| effect_request
 apply_damage_effect ---> |writes DamageFlash| effect_request
 apply_translate_effect ---> |writes Translate| effect_request
+movement_stopped_message(["`**MovementStopped**`"])
+movement_stopped_message ---> |read by| apply_movement_settle
 apply_movement_settle ---> |writes Settle| effect_request
 apply_knockback ---> |writes Knockback| effect_request
 apply_death_effect ---> |writes DeathBounce| effect_request

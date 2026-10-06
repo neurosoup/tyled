@@ -2,7 +2,6 @@
  * This plugin handles effects applied to entities on the map.
  * For example, movement effects are applied to entities based on their current position and a target position when their GridCoords component changed.
  */
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -13,6 +12,7 @@ use bevy::{
     render::render_resource::TextureFormat,
 };
 use bevy::ecs::system::SystemParam;
+use bevy::platform::collections::HashMap;
 use bevy_ecs_tiled::prelude::{TilePos, TileTextureIndex, TilemapId, TilemapTexture};
 use bevy_spritesheet_animation::plugin::AnimationSystemSet;
 use bevy_tweening::{
@@ -149,7 +149,7 @@ pub(crate) fn plugin(app: &mut App) {
         Update,
         (
             apply_damage_effect.in_set(EffectsSet::Request),
-            apply_parry_scale_effect.in_set(EffectsSet::Request),
+            trigger_parry_scale_effect.in_set(EffectsSet::Request),
             apply_translate_effect.in_set(EffectsSet::Request),
             apply_movement_settle.in_set(EffectsSet::Request),
             apply_death_effect
@@ -177,7 +177,6 @@ pub(crate) fn plugin(app: &mut App) {
                 .after(spawn_tilemap_lit_overlays),
             update_lit_overlays.after(apply_glow_effect),
             tick_knockback_lock,
-            trigger_parry_scale_effect.in_set(GameplaySet::Presentation),
         ),
     );
     app.add_systems(
@@ -240,7 +239,7 @@ pub fn create_bounce_tween(
         .unwrap()
 }
 
-pub fn create_parry_scale_tween(peak: f32, duration_secs: f32) -> Tween {
+pub fn create_scale_punch_tween(peak: f32, duration_secs: f32) -> Tween {
     Tween::new(
         EaseFunction::CubicIn,
         Duration::from_secs_f32(duration_secs),
@@ -305,6 +304,7 @@ fn make_lit_image(source: &Image, lightness: f32, chroma: f32) -> Option<Image> 
     Some(image)
 }
 
+/// Moves a knocked-back entity one tile and requests its slide.
 fn apply_knockback(
     mut commands: Commands,
     mut requests: MessageWriter<EffectRequest>,
@@ -336,6 +336,7 @@ fn apply_knockback(
     }
 }
 
+/// Requests a slide for each player whose grid position changed.
 fn apply_translate_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
@@ -353,20 +354,19 @@ fn apply_translate_effect(
     }
 }
 
+/// Requests an ease-out settle for each player that stopped moving.
 fn apply_movement_settle(
-    mut commands: Commands,
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
-    query: Query<Entity, Added<MovementSettle>>,
+    mut movement_stopped_reader: MessageReader<MovementStopped>,
 ) {
-    for entity in &query {
+    for message in movement_stopped_reader.read() {
         requests.write(EffectRequest {
-            owner: entity,
+            owner: message.entity,
             kind: EffectKind::Settle {
                 ms: config.timing.move_repeat_rate_ms,
             },
         });
-        commands.entity(entity).remove::<MovementSettle>();
     }
 }
 
@@ -411,7 +411,7 @@ fn merge_queued(existing: Option<EffectKind>, incoming: EffectKind) -> Option<Ef
     }
 }
 
-/// Folds one frame of requests for one channel into at most one spawn or one queue update.
+/// Combines one frame of requests for one channel into at most one new driver or one queue change.
 fn fold_requests(live: Option<LiveEffect>, requests: &[EffectKind]) -> ChannelPlan {
     let mut sorted = requests.to_vec();
     sorted.sort_by_key(|kind| kind.rank());
@@ -479,15 +479,15 @@ fn start_effect(
 ) {
     let driver = (
         Name::new(kind.name()),
-        EffectDriver { owner, kind, then },
+        EffectDriver { kind, then },
         DriverOf(owner),
     );
     match kind {
-        EffectKind::ParryPunch { sprite, peak, secs } => {
+        EffectKind::ScalePunch { sprite, peak, secs } => {
             commands.spawn((
                 driver,
                 AnimTarget::component::<Transform>(sprite),
-                TweenAnim::new(create_parry_scale_tween(peak, secs)),
+                TweenAnim::new(create_scale_punch_tween(peak, secs)),
             ));
         }
         EffectKind::DamageFlash { sprite, ms } => {
@@ -541,7 +541,7 @@ fn resolve_effect_requests(
     mut requests: MessageReader<EffectRequest>,
     sources: RootTweenSources,
     dead: Query<(), With<IsDead>>,
-    owners: Query<&EffectDrivers>,
+    owner_drivers: Query<&EffectDrivers>,
     mut drivers: Query<&mut EffectDriver>,
 ) {
     let mut grouped: HashMap<(Entity, EffectChannel), Vec<EffectKind>> = HashMap::new();
@@ -558,26 +558,19 @@ fn resolve_effect_requests(
             .push(request.kind);
     }
     for ((owner, channel), kinds) in grouped {
-        let live_driver = owners.get(owner).ok().and_then(|live| {
-            live.iter().find(|driver| {
-                drivers
-                    .get(*driver)
-                    .is_ok_and(|driver| driver.kind.channel() == channel)
+        let live_driver = owner_drivers.get(owner).ok().and_then(|live| {
+            live.iter().find_map(|entity| {
+                let driver = drivers.get(entity).ok()?;
+                (driver.kind.channel() == channel).then_some((entity, (driver.kind, driver.then)))
             })
         });
-        let live = live_driver.and_then(|driver| {
-            drivers
-                .get(driver)
-                .ok()
-                .map(|driver| (driver.kind, driver.then))
-        });
-        let plan = fold_requests(live, &kinds);
+        let plan = fold_requests(live_driver.map(|(_, live)| live), &kinds);
         if let Some((kind, then)) = plan.spawn {
-            if let Some(driver) = live_driver {
+            if let Some((driver, _)) = live_driver {
                 commands.entity(driver).despawn();
             }
             start_effect(&mut commands, &sources, owner, kind, then);
-        } else if let (Some(then), Some(driver)) = (plan.new_then, live_driver) {
+        } else if let (Some(then), Some((driver, _))) = (plan.new_then, live_driver) {
             if let Ok(mut driver) = drivers.get_mut(driver) {
                 driver.then = then;
             }
@@ -589,18 +582,18 @@ fn on_effect_completed(
     mut commands: Commands,
     sources: RootTweenSources,
     mut anim_completed_reader: MessageReader<AnimCompletedEvent>,
-    drivers: Query<&EffectDriver>,
+    drivers: Query<(&EffectDriver, &DriverOf)>,
 ) {
     for event in anim_completed_reader.read() {
-        let Ok(driver) = drivers.get(event.anim_entity) else {
+        let Ok((driver, &DriverOf(owner))) = drivers.get(event.anim_entity) else {
             continue;
         };
         commands.entity(event.anim_entity).despawn();
         if matches!(driver.kind, EffectKind::DeathBounce { .. }) {
-            commands.entity(driver.owner).insert(Visibility::Hidden);
+            commands.entity(owner).insert(Visibility::Hidden);
         }
         if let Some(then) = driver.then {
-            start_effect(&mut commands, &sources, driver.owner, then, None);
+            start_effect(&mut commands, &sources, owner, then, None);
         }
     }
 }
@@ -615,8 +608,11 @@ fn clear_root_effect_drivers(mut commands: Commands, drivers: Query<(Entity, &Ef
 }
 
 #[cfg(feature = "dev")]
-fn warn_duplicate_channel_drivers(owners: Query<(Entity, &EffectDrivers)>, drivers: Query<&EffectDriver>) {
-    for (owner, owned) in &owners {
+fn warn_duplicate_channel_drivers(
+    owner_drivers: Query<(Entity, &EffectDrivers)>,
+    drivers: Query<&EffectDriver>,
+) {
+    for (owner, owned) in &owner_drivers {
         let mut seen: Vec<EffectChannel> = Vec::new();
         for driver in owned.iter().filter_map(|driver| drivers.get(driver).ok()) {
             let channel = driver.kind.channel();
@@ -628,6 +624,7 @@ fn warn_duplicate_channel_drivers(owners: Query<(Entity, &EffectDrivers)>, drive
     }
 }
 
+/// Requests a damage flash for each entity whose health changed.
 fn apply_damage_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
@@ -656,7 +653,7 @@ fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> O
     sprite_query.get(first_child).is_ok().then_some(first_child)
 }
 
-/// Marks a died entity dead and requests its death bounce.
+/// Marks a died entity dead and requests its death effect.
 fn apply_death_effect(
     mut commands: Commands,
     mut requests: MessageWriter<EffectRequest>,
@@ -754,34 +751,26 @@ fn apply_bounce_effect(
     }
 }
 
+/// Requests a scale punch on the sprite of each player that landed a parry.
 fn trigger_parry_scale_effect(
-    mut commands: Commands,
-    mut beam_parried_reader: MessageReader<BeamParried>,
-) {
-    for message in beam_parried_reader.read() {
-        commands.entity(message.parrier).insert(ParryScaleEffectTarget);
-    }
-}
-
-fn apply_parry_scale_effect(
     mut requests: MessageWriter<EffectRequest>,
-    mut commands: Commands,
     config: Res<GameConfig>,
-    parry_query: Query<(Entity, Option<&Children>), Added<ParryScaleEffectTarget>>,
+    mut beam_parried_reader: MessageReader<BeamParried>,
+    children_query: Query<&Children>,
     sprite_query: Query<&Sprite>,
 ) {
-    for (entity, children) in &parry_query {
-        if let Some(sprite) = sprite_child(children, &sprite_query) {
+    for message in beam_parried_reader.read() {
+        let owner = message.parrier;
+        if let Some(sprite) = sprite_child(children_query.get(owner).ok(), &sprite_query) {
             requests.write(EffectRequest {
-                owner: entity,
-                kind: EffectKind::ParryPunch {
+                owner,
+                kind: EffectKind::ScalePunch {
                     sprite,
                     peak: config.parry.scale_punch_peak,
                     secs: config.parry.scale_punch_secs,
                 },
             });
         }
-        commands.entity(entity).remove::<ParryScaleEffectTarget>();
     }
 }
 
@@ -1038,7 +1027,7 @@ mod tests {
     };
 
     fn punch() -> EffectKind {
-        EffectKind::ParryPunch {
+        EffectKind::ScalePunch {
             sprite: Entity::PLACEHOLDER,
             peak: 1.5,
             secs: 0.2,
@@ -1196,17 +1185,82 @@ mod tests {
             app.world_mut().write_message(EffectRequest { owner, kind });
         }
         app.update();
-        let kinds = |app: &mut App| -> Vec<EffectKind> {
+        assert_eq!(driver_kinds(&mut app), vec![EffectKind::Knockback { ms: 100 }]);
+        app.update();
+        app.update();
+        assert_eq!(driver_kinds(&mut app), vec![D]);
+    }
+
+    fn driver_kinds(app: &mut App) -> Vec<EffectKind> {
+        app.world_mut()
+            .query::<&EffectDriver>()
+            .iter(app.world())
+            .map(|driver| driver.kind)
+            .collect()
+    }
+
+    fn resolver_app(step: Duration) -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TweeningPlugin));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(step));
+        app.insert_resource(test_map_info());
+        app.add_message::<EffectRequest>();
+        app.add_systems(
+            Update,
+            (on_effect_completed, resolve_effect_requests).chain(),
+        );
+        app
+    }
+
+    #[test]
+    fn dead_owner_drops_position_requests_but_keeps_flash_and_death() {
+        let mut app = resolver_app(Duration::from_millis(10));
+        let sprite = app.world_mut().spawn(Sprite::default()).id();
+        let owner = app
+            .world_mut()
+            .spawn((Transform::default(), GridCoords::new(0, 0), IsDead))
+            .id();
+        let flash = EffectKind::DamageFlash { sprite, ms: 100 };
+        for kind in [T, flash] {
+            app.world_mut().write_message(EffectRequest { owner, kind });
+        }
+        app.update();
+        assert_eq!(driver_kinds(&mut app), vec![flash]);
+        app.world_mut().write_message(EffectRequest { owner, kind: D });
+        app.update();
+        let kinds = driver_kinds(&mut app);
+        assert_eq!(kinds.len(), 2);
+        assert!(kinds.contains(&D));
+        assert!(kinds.contains(&flash));
+    }
+
+    #[test]
+    fn finished_death_bounce_hides_owner() {
+        let mut app = resolver_app(Duration::from_millis(100));
+        let owner = app
+            .world_mut()
+            .spawn((Transform::default(), GridCoords::new(0, 0), Visibility::Visible))
+            .id();
+        app.world_mut().write_message(EffectRequest { owner, kind: D });
+        for _ in 0..20 {
+            app.update();
+        }
+        assert_eq!(app.world().get::<Visibility>(owner), Some(&Visibility::Hidden));
+        assert!(driver_kinds(&mut app).is_empty());
+    }
+
+    #[test]
+    fn clear_root_effect_drivers_keeps_sprite_drivers() {
+        let mut app = App::new();
+        app.add_systems(Update, clear_root_effect_drivers);
+        let owner = app.world_mut().spawn_empty().id();
+        let flash = flash(100);
+        for (kind, then) in [(K, Some(D)), (flash, None)] {
             app.world_mut()
-                .query::<&EffectDriver>()
-                .iter(app.world())
-                .map(|driver| driver.kind)
-                .collect()
-        };
-        assert_eq!(kinds(&mut app), vec![EffectKind::Knockback { ms: 100 }]);
+                .spawn((EffectDriver { kind, then }, DriverOf(owner)));
+        }
         app.update();
-        app.update();
-        assert_eq!(kinds(&mut app), vec![D]);
+        assert_eq!(driver_kinds(&mut app), vec![flash]);
     }
 
     fn image_from(pixels: &[[u8; 4]]) -> Image {

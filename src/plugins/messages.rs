@@ -13,6 +13,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<CharacterCollision>();
     app.add_message::<ParryTriggered>();
     app.add_message::<BeamParried>();
+    app.add_message::<MovementStopped>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -58,6 +59,12 @@ pub struct ChargeSpent {
 pub struct ChargeRegen {
     pub owner: Entity,
     pub amount: u32,
+}
+
+// Fired when a player releases the move key after moving.
+#[derive(Message)]
+pub struct MovementStopped {
+    pub entity: Entity,
 }
 
 #[derive(Message)]
