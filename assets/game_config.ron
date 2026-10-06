@@ -92,11 +92,11 @@
         solar_panels_tiles_per_charge: 10, // [live] owned tiles required per regenerated charge
     ),
     parry: (
-        window_fraction: 0.5,    // [live] fraction of the beam's current step duration
+        window_fraction: 0.75,    // [live] fraction of the beam's current step duration
         speed_multiplier: 1.3,   // [live] per-parry rally speed multiplier
         min_step_secs: 0.035,    // [live] hard floor on beam step duration regardless of rally speed
-        scale_punch_peak: 1.3,   // [live] peak scale of the parrier's landed-parry scale punch
-        scale_punch_secs: 0.25,  // [live] scale-punch tween duration, in dilated (hitstop-affected) time
+        scale_punch_peak: 1.1,   // [live] peak scale of the parrier's landed-parry scale punch
+        scale_punch_secs: 0.15,  // [live] scale-punch tween duration, in dilated (hitstop-affected) time
     ),
     hitstop: (
         factor: 0.1,         // [live] relative_speed snapped to on trigger
