@@ -45,7 +45,7 @@ Only gameplay/timing/visual values live here. Structural invariants stay in thei
     - `damage_bar_delay_ms` `[live]` — milliseconds the damage-echo bar holds still after a hit before it starts catching up, read by the HUD plugin's `arm_damage_echo_delay` each time a player's `Health` changes.
 
 - `effects` (`EffectsConfig`) — read by the Effects plugin (see the Effects plugin doc):
-    - `knockback_tween_ms` `[live]` — milliseconds for the knockback slide tween.
+    - `knockback_tween_ms` `[live]` — milliseconds of the knockback slide and of the input lock (`IsKnockedBack`); both always last the same time. Higher = longer stun.
     - `damage_flash_ms` `[live]` — milliseconds for the damage colour-flash tween.
     - `beam_glow_fade_in_ms` `[live]` — milliseconds for the glow fade-in. Higher gives a softer, slower start.
     - `beam_glow_hold_ms` `[live]` — milliseconds the glow stays at full strength. Higher gives a longer flash.

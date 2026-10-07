@@ -124,7 +124,7 @@ pub struct AnimationConfig {
 
 #[derive(Reflect, Clone, Deserialize)]
 pub struct EffectsConfig {
-    /// Milliseconds for the knockback slide tween.
+    /// Milliseconds of the knockback slide and of the input lock; higher = longer stun.
     pub knockback_tween_ms: u64,
     /// Milliseconds for the damage colour-flash tween.
     pub damage_flash_ms: u64,

@@ -58,7 +58,7 @@
         charges_bar_decay_rate: 100.0,   // [live] charges bar snap speed; keep >= territory_bar_decay_rate
     ),
     effects: (
-        knockback_tween_ms: 200,   // [live] ms for the knockback slide tween
+        knockback_tween_ms: 200,   // [live] ms of the knockback slide and of the input lock; higher = longer stun
         damage_flash_ms: 150,      // [live] ms for the damage colour-flash tween
         beam_glow_fade_in_ms: 10,        // [live] ms for the glow fade-in; higher = softer, slower start
         beam_glow_hold_ms: 10,           // [live] ms the glow stays at full strength; higher = longer flash
