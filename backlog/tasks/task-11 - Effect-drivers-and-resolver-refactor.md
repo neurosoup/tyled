@@ -1,10 +1,10 @@
 ---
 id: TASK-11
 title: Effect drivers and resolver refactor
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-04 18:00'
-updated_date: '2026-10-04 17:11'
+updated_date: '2026-10-06 17:14'
 labels: []
 milestone: m-5
 dependencies: []
@@ -189,7 +189,7 @@ Fold rules:
 ### Open design questions (for game-designer)
 
 1. Death bounce waits for the slide to finish, or for the lock to expire? Blocks Stage 3. Default: the slide (driver completion), identical today because both use `knockback_tween_ms`.
-2. Stun duration separate from slide duration? Blocks Stage 4 and Barrier. Default: one knob; if split later, add `knockback_lock_ms` with a higher/lower comment.
+2. Stun duration separate from slide duration? Decided 2026-10-07: no, they always last the same time; one knob (`knockback_tween_ms`).
 3. Does being dragged block parrying? Blocks nothing here (input gate at `inputs.rs:81`). Default: keep it blocked.
 4. Does a lethal hit still play its last knockback slide before the death bounce? Blocks Stage 1's health check. Default: no slide.
 
@@ -201,3 +201,9 @@ Fold rules:
 - Stage 4: ownership moves across plugins; keep docs in sync. Rollback: revert.
 - All stages: never run the game yourself; the user runs each manual checklist.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Stages 1-3 shipped: 53a0d15 (Displacement set, no slide on a lethal hit), fa60b9c (effect drivers and resolver for the damage flash and scale punch), c6fe0a6 (player position effects through the resolver). Review follow-ups in 3c2f4b5: generic ScalePunch, MovementStopped message, resolver cleanups, three new tests. Stage 5 needs no code; notes on future tile effects in 1d2f591. Stage 4 moved to its own task. Design questions used the plan defaults: the death bounce waits for the slide, one duration for stun and slide (confirmed by the user on 2026-10-07), being dragged blocks parry, a lethal hit plays no slide.
+<!-- SECTION:FINAL_SUMMARY:END -->
