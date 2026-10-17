@@ -3,88 +3,38 @@ id: doc-24
 title: '[000] Plugin state relationships'
 type: other
 created_date: '2026-09-15 12:00'
-updated_date: '2026-10-16 12:00'
+updated_date: '2026-10-17 12:00'
 ---
 # Plugin State Relationships
 
-This document summarises how the game's plugins are coupled through Bevy's state-machine gating, as distinct from the message-passing coupling described in `doc-9 - 000-Plugin-message-relationships.md`. Where messages are an explicit write/read contract between plugins, state gating is implicit: a system's `run_if(in_state(...))` or `OnEnter`/`OnExit` schedule attaches it to a state machine owned by a different plugin, and only a `NextState<T>::set` call actually drives a transition.
+Some plugins are linked through game states, not through messages. A plugin can run only in one state, run once when a state starts or ends, or move the game to a new state. The diagram below shows each of these links.
 
-There are two state machines in this codebase, and three distinct relationship types to either of them:
+For the links through messages, see [doc-9 Plugin message relationships](/documentation/9/000-plugin-message-relationships).
 
-- **Gated by** (`run_if(in_state(...))`) — the system is skipped entirely while the game is not in that state.
-- **Hooked to enter/exit** (`OnEnter`/`OnExit`) — the system runs exactly once, at the instant of the transition.
-- **Writes** (`NextState<T>::set`) — the system decides when the whole app moves to a different state. For either machine, only a small number of systems, spread across few files, are allowed to do this.
+## Link kinds
 
-Each state machine also has exactly one **default state** — the variant Bevy sets it to at `init_state::<T>()`, before any system runs. The diagrams mark this with a small filled-circle node (a UML-style initial pseudostate) pointing at that state, distinct from the `Gated by`/`Hooked to`/`Writes` edges above since nothing "writes" the default — it's just where the machine starts.
+- **gates**: the systems run only while the game is in that state.
+- **on enter / on exit**: the systems run once, when the state starts or ends.
+- **writes**: the systems move the game to a new state. Only a few systems do this.
+- **default**: the state the machine starts in (the small white circle).
 
-## AppState
+## State machines
 
-`AppState` (`src/plugins/menu.rs`) is the app's top-level lifecycle: `MainMenu` (default) and `InRound`. It has exactly one directed edge, `MainMenu → InRound`, and nothing ever transitions back.
+- `AppState` (`menu.rs`): `MainMenu` → `InRound`. It never goes back.
+- `RoundPhase` (`round/state.rs`): `Loading` → `Starting` → `Playing` → `Outcome` → `Starting` again.
 
-- **Gated by**: the Menu plugin's three chained systems (`ensure_menu_spawned`, `update_selection`, `confirm_selection`) all run `run_if(in_state(AppState::MainMenu))`.
-- **Hooked to enter/exit**: the Maps plugin's `load_maps` runs `OnEnter(AppState::InRound)`.
-- **Writes**: `confirm_selection` (Menu plugin) is the only system that calls `NextState<AppState>::set(AppState::InRound)`, when a matchup is confirmed with Q or `/`.
+## Notes
 
-## RoundPhase
+- `Loading` ends only when both maps (level and HUD) have finished loading.
+- A round reaches `Outcome` on a kill, at the end of the countdown, or when all players are out of charges.
+- Telemetry also needs the `telemetry_enabled` config, so it can be off during `Playing`.
+- HUD, animations and effects are not gated, on purpose: their tweens must finish across phase changes.
+- The knockback lock timer is not gated, so a lock still ends after the phase changes.
+- On exit of `Outcome`, effects remove the drivers that move players, with no fixed order against `reset_round`. An effect driver is a small entity that plays one effect tween (for example a slide or a knockback) for one player.
 
-`RoundPhase` (`src/plugins/round/state.rs`) is the round lifecycle: `Loading` (default) → `Starting` → `Playing` → `Outcome` → back to `Starting`. Unlike `AppState`, its writers are spread across three files rather than one.
+## Reading the diagram
 
-### The causal handoff between the two machines
-
-The two machines are not independent: `RoundPhase`'s first transition is downstream of `AppState`'s only transition, relayed through a Tiled message rather than a direct state read.
-
-1. `confirm_selection` (Menu plugin) sets `AppState::InRound`.
-2. `OnEnter(AppState::InRound)` runs `load_maps` (Maps plugin), which spawns the level map (`CurrentLevel`) and the HUD map (`HudMap`).
-3. Each map fires a `TiledEvent<MapCreated>` once loaded. `start_round_on_map_created` (Round plugin, gated `run_if(in_state(RoundPhase::Loading))`) reads both, latching `level_ready`/`hud_ready` in two `Local<bool>`s, and only calls `next_phase.set(RoundPhase::Starting)` once both maps have reported in.
-4. `OnExit(RoundPhase::Loading)` then runs the Maps plugin's four bootstrap systems (`initialize_map_info`, then `initialize_players`/`initialize_claimed_tiles`/`initialize_hud_bars`, chained), which need `MapInfo` populated and both maps' entities present.
-
-So `AppState` gates map loading; `RoundPhase::Loading`'s exit gates world bootstrap on top of that, and the dependency between the two machines is a message, not a shared state read.
-
-### Writers (three files)
-
-- `round/state.rs`: `start_round_on_map_created` writes `Loading → Starting` (see above). The shared `conclude_round` helper writes `→ Outcome`, called from three systems in the same file — `resolve_kill`, `resolve_timeout`, `resolve_charge_exhaustion` — each of which independently detects a round-ending condition (a death, the countdown reaching zero, or every player exhausting their charges with no beam in flight) and defers to `conclude_round` to record the result and transition.
-- `round/intro.rs`: `advance_intro_countdown` writes `Starting → Playing`, once the "3·2·1·GO!" intro countdown reaches zero.
-- `round/outcome.rs`: `advance_outcome` writes `Outcome → Starting`, once the win banner's linger timer elapses.
-
-`start_round_on_map_created` is not in any `GameplaySet`; only the `(tick_countdown, resolve_kill, resolve_timeout, resolve_charge_exhaustion)` tuple in `round/state.rs` is tagged `GameplaySet::RoundResolution`. So the Round plugin's state-writing systems sit partly inside and partly outside the `schedule.rs` pipeline chain — the ones that fire before or between rounds (map-created latch, countdown start) are outside it, the ones that fire during live play (round resolution) are inside it.
-
-### Gated by `run_if(in_state(RoundPhase::Playing))`
-
-Every stage of the gameplay pipeline declared in `schedule.rs`'s `GameplaySet` chain gates on `Playing`, with three exceptions (see Asymmetries below):
-
-- `GameplaySet::BotThink` — `bot.rs`'s `bot_think`
-- `GameplaySet::Input` — `inputs.rs`'s `handle_characters_input` (`tick_turning` shares the same `Playing` gate but is not tagged `GameplaySet::Input`)
-- `GameplaySet::Movement` — `controller.rs`'s `move_characters`
-- `GameplaySet::Beam` — `beam.rs`'s `spawn_beam`, `beam_step`
-- `GameplaySet::Economy` — `charge.rs`'s `regen_charges_from_solar_panels`, `cap_charges_to_unclaimed_tiles`
-- `GameplaySet::Damage` — `damage.rs`'s `apply_owned_tile_entry_damage`, `apply_owned_tile_damage`, `apply_beam_damage`, `apply_collision_damage`
-- `GameplaySet::Displacement` — `damage.rs`'s `apply_knockback`
-- `GameplaySet::RoundResolution` — `round/state.rs`'s `tick_countdown`, `resolve_kill`, `resolve_timeout`, `resolve_charge_exhaustion`
-
-Outside the `GameplaySet` chain, `telemetry.rs`'s `record_actions` and `record_decisions` also gate on `run_if(in_state(RoundPhase::Playing))`, stacked with a second `run_if(telemetry_enabled)` config-resource gate — the only place in the codebase a state gate and a config gate are stacked on the same systems, so these can be inactive even while `Playing`.
-
-Three other systems gate on phases other than `Playing`:
-
-- `round/state.rs`'s `start_round_on_map_created` gates on `run_if(in_state(RoundPhase::Loading))`.
-- `round/intro.rs`'s `advance_intro_countdown` gates on `run_if(in_state(RoundPhase::Starting))`.
-- `round/outcome.rs`'s `advance_outcome` gates on `run_if(in_state(RoundPhase::Outcome))`.
-
-### Hooked to enter/exit
-
-- `OnEnter(RoundPhase::Starting)`: `round/intro.rs`'s `begin_intro_countdown` spawns the first countdown number.
-- `OnEnter(RoundPhase::Outcome)`: `round/outcome.rs`'s `show_outcome_banner` spawns the win banner; `telemetry.rs`'s `record_outcome` (also gated `telemetry_enabled`) writes the round's outcome record.
-- `OnExit(RoundPhase::Outcome)`: `round/state.rs`'s `reset_round` wipes tile ownership, health, charges, and positions back to spawn; `effects.rs`'s `clear_root_effect_drivers` despawns the player position effect drivers (and any queued follow-up effect), with no order against `reset_round`; `round/outcome.rs`'s `despawn_outcome_banner` removes the win banner.
-- `OnExit(RoundPhase::Loading)`: the Maps plugin's bootstrap chain (see above).
-- `OnExit(RoundPhase::Playing)`: `effects.rs`'s `clear_glow` empties every lit overlay's pulses and hides the overlay.
-
-## Asymmetries
-
-- `claim_tile` (`claim.rs`) is gated on `Playing`, matching the rest of the `GameplaySet` pipeline: a `BeamResolved` message is always written and drained within the same frame, while `Playing`.
-- `GameplaySet::Displacement` (`damage.rs`'s `apply_knockback`) is gated on `Playing`. It runs after `Damage` and before `Presentation`, so a `KnockbackRequested` message written by `Movement` or `Damage` is always seen in the same frame. `damage.rs`'s `tick_knockback_lock` is ungated, so a running lock still finishes across a phase boundary.
-- `hud.rs`'s `HudSync` stage and `GameplaySet::Presentation` (`animations.rs`, plus the `EffectsSet` systems in `effects.rs`: `apply_death_effect`, the other request writers, `on_effect_completed` and `resolve_effect_requests`) are both deliberately ungated, not oversights. Neither writes anything round-resolution logic reads back, and both need to keep running past `Playing`: to let a tween or `smooth_nudge` (HP bar, damage flash, death bounce) finish playing out into `Outcome`, or to let a `Starting`-phase system pick up `reset_round`'s `OnExit(Outcome)` mass write — the tile-unclaim cascade, the HUD digit resets — as a visible transition during the intro instead of a snap at "GO!".
-- `round/state.rs`'s `start_countdown` and `round/intro.rs`'s `despawn_go_banner` are similarly ungated by design, for the same reason: continuous state (a resource re-insert, a tween) that must keep evolving right across a phase boundary rather than freezing at it.
-- `maps.rs` is the only plugin coupled to both state machines from opposite layers: `load_maps` hooks `OnEnter(AppState::InRound)`, its bootstrap chain hooks `OnExit(RoundPhase::Loading)`.
-- `RoundPhase` ownership is split three ways: `round/state.rs`, `round/intro.rs`, and `round/outcome.rs` each gate their own systems on the phase *and* write one of its transitions, so no single file in the `round` feature is purely a reader or purely a writer of it.
+The game starts in the menu. Picking a matchup loads the maps, and the end of loading starts the round loop. Each round goes from the intro to play, then to the result banner, and back to the intro.
 
 ```mermaid
 ---
