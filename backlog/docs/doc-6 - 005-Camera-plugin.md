@@ -3,11 +3,13 @@ id: doc-6
 title: '[005] Camera plugin'
 type: other
 created_date: '2026-02-01 19:27'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-10-17 12:00'
 ---
 # Camera Plugin
 
-Contains systems related to camera initialization and runtime updates. The plugin uses `bevy_smooth_pixel_camera` for pixel-perfect sub-pixel smoothing on the main camera. Four cameras are active at runtime:
+This plugin spawns all the cameras and moves the main camera each frame. The main camera follows the players and zooms only to pixel-perfect levels. The HUD keeps a fixed size at the top of the window.
+
+Four cameras are active at runtime:
 
 | Camera | Render layer | Order | Purpose |
 |--------|-------------|-------|---------|
@@ -16,67 +18,53 @@ Contains systems related to camera initialization and runtime updates. The plugi
 | HUD camera | layer 1 | 3 | Renders the HUD map in a fixed viewport strip at the top of the window |
 | Overlay camera | layer 3 | 4 | Renders screen-space round-phase banners (intro countdown, etc.) full-window, on top of everything; content is drawn by the round `intro` submodule |
 
-The `PixelCamera` component (from `bevy_smooth_pixel_camera`) also spawns a `ViewportImage` sprite child. Its `snap_camera_position` system (PostUpdate) snaps the main camera's `GlobalTransform` to the nearest integer world unit and offsets the `ViewportImage` by the subpixel remainder to produce smooth motion without pixel crawl.
-
-## Plugin workflow
-
-- Startup phase
-    - `initialize_cameras` (reads `Res<GameConfig>`) spawns three camera entities:
-        - A main `Camera2d` with `PixelCamera` (`ViewportScalingMode::PixelSize(1.0)`) and an `OrthographicProjection` starting at `config.camera.zoom_levels[0]` (1/4). `PixelCamera` automatically spawns a `ViewportCamera` child on layer 2 with render order 2.
-        - A HUD `Camera2d` assigned to `RenderLayers` layer 1, render order 3, with a fixed viewport occupying the top strip of the window.
-        - An overlay `Camera2d` assigned to `RenderLayers` layer 3, render order 4, `ClearColorConfig::None`, with a `ScalingMode::FixedVertical` orthographic projection (constant fraction of screen height at any window size, centred on the origin — no resize handling needed).
-- Update phase
-    - `sync_clear_color`:
-        - Reads `config.camera.bg_hue`/`bg_saturation`/`bg_lightness` (235.0 / 0.28 / 0.18) and writes the resulting color into `ClearColor`, so the background tint also hot-reloads when the config changes in dev
-    - `initialize_hud_rendering`:
-        - Reacts to `TiledEvent<MapCreated>` for the `HudMap` entity only
-        - Inserts `Propagate(RenderLayers)` on the HUD map root entity so all its children are rendered exclusively in the HUD camera layer
-    - `update_camera`:
-        - Reads all `Character` transforms, computes the barycenter and max inter-player distance
-        - Smoothly nudges the main camera `Transform` toward the barycenter (`config.camera.decay_rate`, 4.0), shifted up in world space by `(HUD_VIEWPORT_H / 2) * scale` so the framing is centred in the region below the HUD strip and top-of-arena players aren't occluded by the HUD overlay
-        - Lerps the orthographic scale toward the nearest pixel-perfect zoom level (`config.camera.zoom_decay_rate`, 8.0), then snaps exactly once within 0.001 to guarantee a clean 1/n value
-    - `update_hud_viewport`:
-        - Reacts to `WindowResized` events
-        - Recalculates the HUD camera viewport rect and re-applies the pixel-perfect fixed 2× orthographic scale on window resize
+`PixelCamera` (from `bevy_smooth_pixel_camera`) snaps the main camera to whole world units. It moves the viewport image by the rest, so motion is smooth with no pixel crawl.
 
 ## Plugin Systems
 
 ### Initialize Cameras
 
-Reads `Res<GameConfig>` and spawns three camera entities at startup, resulting in four active cameras at runtime:
-
-1. **Main camera** — carries `Camera2d` and `PixelCamera` (`PixelSize(1.0)`, render layer 2, order 2). `PixelCamera::on_add` automatically spawns a `ViewportCamera` (layer 2, order 2) and a `ViewportImage` sprite child. The `OrthographicProjection` starts at `config.camera.zoom_levels[0]` (0.25 — most zoomed out). The main camera has no `RenderLayers` component; the `update_camera` query uses `Without<RenderLayers>` to isolate it from the ViewportCamera, HUD camera, and overlay camera. **Invariant:** every non-main camera must carry an explicit `RenderLayers`, or that `Single` matches more than one entity and breaks.
-2. **HUD camera** — carries `Camera2d`, `RenderLayers` layer 1, and `Camera { order: 3 }`. Its viewport is set to a fixed top strip of the window, and its `OrthographicProjection` scale is initialized to the pixel-perfect fixed 2× (`scale_factor / HUD_SCALE`) at spawn so the HUD is correct from the first frame. Render order 3 ensures it composites on top of the ViewportCamera (order 2).
-3. **Overlay camera** — carries `Camera2d`, `RenderLayers` layer 3, `Msaa::Off` (matching the HUD camera to avoid a sample-count mismatch), and `Camera { order: 4, clear_color: ClearColorConfig::None }`. Its `OrthographicProjection` uses `ScalingMode::FixedVertical { viewport_height: OVERLAY_VIEWPORT_HEIGHT }`, keeping banner glyphs a constant fraction of screen height at any resolution and centred on the origin — so no `WindowResized` handling is needed. Order 4 composites it above the HUD. The banners it renders are spawned by the round `intro` submodule.
+- Runs at `Startup`. Spawns the main, HUD and overlay cameras. `PixelCamera` spawns the fourth one.
+- The main camera starts at `zoom_levels[0]` (the most zoomed out).
+- The main camera is the only one with no `RenderLayers`. `update_camera` finds it this way.
+- **Trap:** every other camera must have a `RenderLayers`, or that lookup matches two cameras and breaks.
+- The HUD camera gets its scale at spawn, so the HUD is right from the first frame.
+- The overlay camera does not clear the screen, and uses `Msaa::Off` like the HUD camera.
+- MSAA (multisample anti-aliasing) makes the edges of shapes softer, so they do not look like small steps. Cameras drawn on top of each other must use the same setting, or wgpu reports an error.
+- The overlay uses a fixed vertical size, so its banners keep their size on resize with no extra code.
 
 ### Sync Clear Color
 
-Reads `Res<GameConfig>` and writes the background tint into the `ClearColor` resource from `config.camera.bg_hue`/`bg_saturation`/`bg_lightness` (235.0 / 0.28 / 0.18). Running off the config means the background color hot-reloads whenever the config asset changes in dev.
+- Sets the background color from `bg_hue`, `bg_saturation` and `bg_lightness`.
+- It reads the color from the config, so the color hot-reloads in dev.
 
 ### Initialize HUD Rendering
 
-Reacts to `TiledEvent<MapCreated>` filtered to the `HudMap` entity only. Inserts a `Propagate(RenderLayers)` component on the HUD map root entity, propagating `RenderLayers` layer 1 down the entire entity hierarchy via `HierarchyPropagatePlugin`. This ensures the HUD tilemap and all its child sprites are rendered only in the HUD camera and never appear in the main game camera.
+- Runs when the HUD map is loaded. Puts the whole HUD map on layer 1.
+- So the HUD is drawn only by the HUD camera, never by the main camera.
 
 ### Update Camera
 
-Runs every frame and reads `Res<GameConfig>` for its camera tunables. Reads the `Transform` of every `Character` entity to compute:
-- The **barycenter** (average position) — the camera target.
-- The **max inter-player distance** — used to derive the desired zoom scale.
-
-The camera `Transform` is smoothly nudged toward the barycenter using `smooth_nudge` (decay rate `config.camera.decay_rate`, 4.0). The target is offset upward in world space by `(HUD_VIEWPORT_H / 2) * scale` (world-per-physical-pixel equals the orthographic scale, so the offset tracks the current zoom). This re-centres the framing in the visible region *below* the HUD strip instead of the whole window, so players near the top of the arena stay clear of the HUD overlay. Only `scale` affects pixel-perfection — translation is snapped/subpixel-blitted by the pixel camera — so the offset is safe at any zoom.
-
-Zoom is pixel-perfect: only the four levels in `config.camera.zoom_levels` (`[1/4, 1/3, 1/2, 1]`) are valid target values, since with `PixelSize(1.0)` these are the only scales where 1 world unit = an integer number of screen pixels. The nearest level is selected by mapping `max_distance` through `config.camera.base_zoom_distance` (150.0) to a continuous zoom factor (clamped to `config.camera.zoom_min`..`config.camera.zoom_max`, 0.5..3.0), then picking the closest entry in `config.camera.zoom_levels`. The `OrthographicProjection` scale lerps toward the target at `config.camera.zoom_decay_rate` (8.0) and snaps exactly once within 0.001 to guarantee the final value is a clean 1/n fraction.
+- Runs every frame. The target is the average position of the players.
+- The camera moves toward it smoothly, at `decay_rate`.
+- The target is moved up by half the HUD height, so players near the top stay below the HUD.
+- This offset is safe at any zoom: only the scale matters for pixel-perfect drawing.
+- Zoom uses only `zoom_levels` (`1/4`, `1/3`, `1/2`, `1`). Only these give whole pixels per world unit.
+- The player distance, divided by `base_zoom_distance` and clamped to `zoom_min`..`zoom_max`, picks the nearest level.
+- The zoom moves toward it at `zoom_decay_rate`, then snaps to the exact value when it is very close.
 
 ### Update HUD Viewport
 
-Runs whenever a `WindowResized` event is received. Recomputes the HUD camera's `Viewport` rect — a full-window-width strip of fixed height anchored to the top of the window. The `OrthographicProjection` scale is set to `window.scale_factor() / HUD_SCALE`, a pixel-perfect fixed 2×: since physical pixels per world unit = `scale_factor / scale`, every 16px HUD tile maps to exactly `16 * HUD_SCALE` physical pixels at any DPI. The HUD is therefore a fixed-size, horizontally-centered band (the camera sits at the origin and the map uses `TilemapAnchor::Center`) rather than stretched to fill the window width — the transparent side margins show the game world beneath.
+- Runs when the window is resized. The HUD viewport is a full-width strip at the top.
+- The HUD scale is a fixed 2x at any DPI. Each 16px HUD tile is always `16 * HUD_SCALE` screen pixels.
+- So the HUD is a fixed-size band in the middle. The game world shows on both sides.
 
 ## Components, Resources and Messages CRUD
 
 ### Write ClearColor resource
 
 Used in the following systems:
-- **sync_clear_color**: writes the background color from `config.camera.bg_hue`/`bg_saturation`/`bg_lightness` into the global `ClearColor`
+- **sync_clear_color**: sets the background color.
 
 ```mermaid
 ---
@@ -106,7 +94,7 @@ sync_clear_color ---> |writes| clear_color_res
 ### Read TiledEvent MapCreated messages (HUD)
 
 Used in the following systems:
-- **initialize_hud_rendering**: used to detect when the HudMap has finished loading so `Propagate(RenderLayers)` can be inserted
+- **initialize_hud_rendering**: waits for the HUD map to finish loading.
 
 ```mermaid
 ---
@@ -134,7 +122,7 @@ message_reader ---> |reads| map_created_message
 ### Read WindowResized events
 
 Used in the following systems:
-- **update_hud_viewport**: reacts to window resize events to recalculate the HUD camera viewport and orthographic scale
+- **update_hud_viewport**: one update for each window resize.
 
 ```mermaid
 ---
@@ -162,7 +150,7 @@ event_reader ---> |reads| window_resized_event
 ### Query Character transforms
 
 Used in the following systems:
-- **update_camera**: reads all `Transform` components on `Character`-marked entities to compute the camera target position and zoom level
+- **update_camera**: the positions of all characters.
 
 ```mermaid
 ---
@@ -194,7 +182,7 @@ characters_query -..-> |filter With| ce_character
 ### Write Camera components (main)
 
 Used in the following systems:
-- **update_camera**: smoothly updates the main camera `Transform` (position) and `OrthographicProjection` (zoom scale) every frame
+- **update_camera**: moves and zooms the main camera.
 
 ```mermaid
 ---
@@ -223,13 +211,13 @@ ce_camera2d>"`**Camera2d**`"] --> |belongs to| camera_entity
 camera_query ---> |writes| ce_transform
 camera_query ---> |writes| ce_projection
 camera_query -..-> |filter With| ce_camera2d
-camera_query -..-> |filter Without RenderLayers - excludes ViewportCamera and HUD camera| ce_camera2d
+camera_query -..-> |filter Without RenderLayers - excludes ViewportCamera, HUD and overlay cameras| ce_camera2d
 ```
 
 ### Write HUD Camera components (viewport)
 
 Used in the following systems:
-- **update_hud_viewport**: updates the HUD camera `Camera::viewport` rect and `OrthographicProjection` scale on window resize
+- **update_hud_viewport**: sets the HUD viewport and scale.
 
 ```mermaid
 ---
@@ -263,7 +251,7 @@ hud_camera_query -..-> |filter With| hc_render_layers
 ### Write commands — initialize_hud_rendering
 
 Used in the following systems:
-- **initialize_hud_rendering**: inserts `Propagate(RenderLayers)` on the HUD map root entity so the render layer propagates to all children
+- **initialize_hud_rendering**: puts the HUD map and all its children on layer 1.
 
 ```mermaid
 ---
@@ -291,7 +279,7 @@ initialize_hud_rendering ---> |inserts component| hm_propagate
 ### Write commands — initialize_cameras (Startup)
 
 Used in the following systems:
-- **initialize_cameras**: spawns the main camera, the HUD camera, and the overlay camera entities with their initial components. `PixelCamera::on_add` automatically spawns additional child entities (`ViewportCamera` on layer 2 / order 2, and `ViewportImage`).
+- **initialize_cameras**: spawns three cameras. `PixelCamera` spawns the viewport camera and image.
 
 ```mermaid
 ---
