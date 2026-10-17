@@ -3,7 +3,7 @@ id: doc-9
 title: '[000] Plugin message relationships'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-09-16 11:00'
+updated_date: '2026-10-16 12:00'
 ---
 # Plugin Message Relationships
 
@@ -14,10 +14,10 @@ For the other axis of plugin coupling — which plugins are gated by, hooked to,
 There are three categories of messages in this codebase:
 
 - **Tiled events** (`TiledEvent<MapCreated>`, `TiledEvent<ObjectCreated>`) — emitted by the external `TiledPlugin` and consumed by the Camera, Round, Animations, and HUD plugins to react to map and object loading completion. `MapCreated` is read by the Camera plugin and by the Round plugin's `state` submodule (`round/state.rs`, which (re)starts the countdown and latches the `Loading → Starting` transition on map creation); `ObjectCreated` is read by both the Animations plugin (to initialize player animations) and the HUD plugin (to initialize digit-counter animations). The Maps plugin has no message relationships — its one-time bootstrap systems (`initialize_map_info`, `initialize_players`, `initialize_claimed_tiles`, `initialize_hud_bars`) run on `OnExit(RoundPhase::Loading)` and query the world directly, so its node in the diagram below carries no edges.
-- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`, `MovementStopped`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `DamageableDied` is emitted by the Damage plugin and read by both the Effects plugin (death bounce) and the Round plugin's `state` submodule (round resolution — every `resolve_*` vector reads it, to end the round on a kill or to defer to a kill). `MovementStopped { entity }` is emitted by the Input plugin when a character releases the move key after moving, and read by the Effects plugin (`apply_movement_settle`), which writes a `Settle` effect request. `TileClaimed`, `ChargeSpent`, and `ChargeRegen` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin, `ChargeSpent` by the Beam plugin, and `ChargeRegen` by the Charge plugin (Solar Panels' regen tick) — none have consumers yet.
+- **Game messages** (`EntityMoved`, `BeamFired`, `BeamResolved`, `TileClaimed`, `ChargeSpent`, `ChargeRegen`, `DamageableDied`, `MovementStopped`, `KnockbackRequested`, `EntityKnockedBack`) — defined in the Messages plugin and exchanged between plugins to drive gameplay logic. `KnockbackRequested { entity, direction }` asks the Damage plugin to push an entity one tile. It is written by the Controller plugin (walking into a beam, collision bumps) and by the Damage plugin (`apply_beam_damage`), and read by the Damage plugin's `apply_knockback`. When one entity gets several requests in a frame, only the last one applies (write order: Controller in `Movement`, then Damage in `Damage`). `EntityKnockedBack { entity }` is written by `apply_knockback` after the entity actually moved, and read by the Effects plugin (`request_knockback_effect`), which writes a `Knockback` effect request. `BeamResolved` is emitted by the Beam plugin and read by the Claim plugin (which turns it into a tile-ownership change) and the Animations plugin. `DamageableDied` is emitted by the Damage plugin and read by both the Effects plugin (death bounce) and the Round plugin's `state` submodule (round resolution — every `resolve_*` vector reads it, to end the round on a kill or to defer to a kill). `MovementStopped { entity }` is emitted by the Input plugin when a character releases the move key after moving, and read by the Effects plugin (`apply_movement_settle`), which writes a `Settle` effect request. `TileClaimed`, `ChargeSpent`, and `ChargeRegen` are beam-ability substrate hooks: `TileClaimed` is emitted by the Claim plugin, `ChargeSpent` by the Beam plugin, and `ChargeRegen` by the Charge plugin (Solar Panels' regen tick) — none have consumers yet.
 - **Library tween events** (`AnimCompletedEvent`) — emitted by the external `bevy_tweening` library when a tween finishes. Externally emitted like the Tiled events, but they drive cross-plugin reactions, so they belong on the map. Consumed by the Effects plugin (to despawn finished `EffectDriver` entities, start their queued follow-up effect, and hide a player once its death-bounce driver completes — `IsKnockedBack` is only the input lock, is timer-driven and clears independently of this event) and the Round plugin's `intro` submodule (`round/intro.rs`, to despawn the "GO!" banner once its scale-up tween completes). The Round plugin's `outcome` submodule (`round/outcome.rs`) has no message relationships of its own — it reacts to `RoundPhase` transitions directly (`OnEnter`/`OnExit`, see `doc-24`) rather than any message — so its node also carries no edges.
 
-The Effects plugin also owns one internal message, `EffectRequest { owner, kind }`, declared in `src/plugins/effects.rs` and registered in `effects::plugin` rather than in `messages.rs`. Its writers (`apply_damage_effect`, `trigger_parry_scale_effect`, `apply_translate_effect`, `apply_movement_settle`, `apply_knockback`, `apply_death_effect`) and its reader (`resolve_effect_requests`) are all inside the Effects plugin, so it adds no edge between plugins and is not drawn in the diagram below. Moving it to `messages.rs` is a convention call.
+The Effects plugin also owns one internal message, `EffectRequest { owner, kind }`, declared in `src/plugins/effects.rs` and registered in `effects::plugin` rather than in `messages.rs`. Its writers (`apply_damage_effect`, `trigger_parry_scale_effect`, `apply_translate_effect`, `apply_movement_settle`, `request_knockback_effect`, `apply_death_effect`) and its reader (`resolve_effect_requests`) are all inside the Effects plugin, so it adds no edge between plugins and is not drawn in the diagram below. Moving it to `messages.rs` is a convention call.
 
 The Round plugin is split into its three submodules here, matching the breakdown in `doc-24`, since each has a distinct set of message relationships (or none, for `outcome`).
 
@@ -61,6 +61,8 @@ charge_spent_message(["`**ChargeSpent**`"])
 charge_regen_message(["`**ChargeRegen**`"])
 damageable_died_message(["`**DamageableDied**`"])
 movement_stopped_message(["`**MovementStopped**`"])
+knockback_requested_message(["`**KnockbackRequested**`"])
+entity_knocked_back_message(["`**EntityKnockedBack**`"])
 anim_completed_message(["`**AnimCompletedEvent**`"])
 
 tiled_plugin ---> |writes| map_created_message
@@ -93,6 +95,13 @@ claim_plugin ---> |writes| tile_claimed_message
 charge_plugin ---> |writes| charge_regen_message
 
 damage_plugin ---> |writes| damageable_died_message
+damage_plugin ---> |writes| knockback_requested_message
+damage_plugin ---> |writes| entity_knocked_back_message
+
+controller_plugin ---> |writes| knockback_requested_message
+
+knockback_requested_message ---> |read by| damage_plugin
+entity_knocked_back_message ---> |read by| effects_plugin
 
 damageable_died_message ---> |read by| effects_plugin
 damageable_died_message ---> |read by| round_state_plugin

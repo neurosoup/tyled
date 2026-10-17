@@ -3,11 +3,11 @@ id: doc-11
 title: '[009] Damage plugin'
 type: other
 created_date: '2026-06-02 00:00'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-10-16 12:00'
 ---
 # Damage Plugin
 
-Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile *from a non-hostile tile*, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
+Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. The plugin also owns knockback: it moves knocked-back entities and holds the `IsKnockedBack` input lock. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile *from a non-hostile tile*, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
 
 The on-enter spike fires only on a *fresh incursion* — a step whose destination is hostile but whose origin was not. It reads the origin from a `PreviousGridCoords` component that the entry system updates on every observed move, so crossing a contiguous run of enemy tiles costs a single spike plus the ongoing standing tick, not a spike per tile.
 
@@ -47,7 +47,19 @@ The two tile systems are complementary and chained (entry before poll): on-enter
             - Writes:
                 - Decrements `Health::current` on any entity whose `GridCoords` matches the beam head, excluding the beam's owner
                 - Writes a `DamageableDied` message if `Health::current` drops to zero
-                - Inserts a `KnockbackEffect` (direction = opposite of beam direction) on the hit entity; the effects plugin picks it up in `GameplaySet::Displacement` the same frame, so `apply_owned_tile_entry_damage` sees the resulting `GridCoords` change one frame later
+                - Writes a `KnockbackRequested` message (direction = the beam direction) for the hit entity; `apply_knockback` handles it in `GameplaySet::Displacement` the same frame, so `apply_owned_tile_entry_damage` sees the resulting `GridCoords` change one frame later
+    - Apply Knockback (`GameplaySet::Displacement`, `in_state(RoundPhase::Playing)`):
+        - Reads:
+            - All `KnockbackRequested` messages (from the controller and from `apply_beam_damage`); only the last one per entity is used
+            - `GridCoords`, `Has<IsDead>`, and `Option<&Health>` on the target entity
+            - `MapInfo` resource (`on_ground`) and `config.effects.knockback_tween_ms`
+        - Writes:
+            - Skips the entity if it is dead, has `Health::current <= 0`, or the target tile is not ground
+            - Otherwise sets `GridCoords` to the target tile
+            - Inserts a fresh `IsKnockedBack(Timer)` on the entity
+            - Writes an `EntityKnockedBack` message
+    - Tick Knockback Lock (every frame, no state gate):
+        - Ticks each `IsKnockedBack` timer and removes the component when it finishes
 
 ## Plugin Systems
 
@@ -57,7 +69,7 @@ Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer`
 
 ### Apply Owned Tile Entry Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by the effects plugin). For each live character it first records the current `GridCoords` into `PreviousGridCoords` (on every move, hostile or not), then applies the spike only on a *fresh incursion*: the destination is hostile (via `is_hostile_tile`) **and** the tile it came from — read from the pre-update `PreviousGridCoords` — was not. On such an entry it calls `deal_damage` with `config.damage.on_enter` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. Gating on the origin tile means a character walking through a contiguous enemy region is charged once, not per tile, while the standing poll keeps ticking as it traverses. Reading and updating `PreviousGridCoords` in the same system keeps it order-independent of the controller and effects plugins. This is also the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
+Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by `apply_knockback`). For each live character it first records the current `GridCoords` into `PreviousGridCoords` (on every move, hostile or not), then applies the spike only on a *fresh incursion*: the destination is hostile (via `is_hostile_tile`) **and** the tile it came from — read from the pre-update `PreviousGridCoords` — was not. On such an entry it calls `deal_damage` with `config.damage.on_enter` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. Gating on the origin tile means a character walking through a contiguous enemy region is charged once, not per tile, while the standing poll keeps ticking as it traverses. Reading and updating `PreviousGridCoords` in the same system keeps it order-independent of the controller plugin and of knockback. This is also the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
 
 ### Apply Owned Tile Damage
 
@@ -65,7 +77,15 @@ Runs every `DamageTimer` tick. Iterates over all `Character` entities with `Heal
 
 ### Apply Beam Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities whose position changed this frame (i.e. each beam step). For every such beam, iterates all entities with `Health`, skipping dead entities and the beam's own owner, and calls `deal_damage` for any whose `GridCoords` matches the beam head position. On a hit, also inserts a `KnockbackEffect` component on the damaged entity (direction = `-beam.direction`) so the effects plugin can push the entity one tile back and play the slide+bounce animation.
+Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities whose position changed this frame (i.e. each beam step). For every such beam, iterates all entities with `Health`, skipping dead entities and the beam's own owner, and calls `deal_damage` for any whose `GridCoords` matches the beam head position. On a hit, also writes a `KnockbackRequested` message for the damaged entity (direction = `beam.direction`). `apply_knockback` below turns it into the move.
+
+### Apply Knockback
+
+Runs in `GameplaySet::Displacement`, gated by `in_state(RoundPhase::Playing)`. It is the only place that moves an entity because of a knockback. It reads every `KnockbackRequested` message of the frame, from the controller plugin (walking into a beam, collision bumps) and from `apply_beam_damage`. It keeps only the last request for each entity (latest wins, in write order: controller in `Movement`, then damage in `Damage`). Earlier requests for the same entity are ignored. For each entity it skips the knockback when the entity is dead (`IsDead`), has `Health::current <= 0`, or the target tile is not on ground (`MapInfo::on_ground`). Otherwise it sets `GridCoords` to the target tile, inserts a fresh `IsKnockedBack` timer of `config.effects.knockback_tween_ms`, and writes `EntityKnockedBack`. The effects plugin reads that message to play the slide. `apply_owned_tile_entry_damage` sees the `GridCoords` change on the next frame.
+
+### Tick Knockback Lock
+
+Runs every frame, not gated by `RoundPhase`. Ticks the timer of every `IsKnockedBack` entity and removes the component when the timer finishes. This is the only removal path during normal play.
 
 ### deal_damage (helper)
 
@@ -312,10 +332,11 @@ damageables_query ---> |reads| de_coords
 damageables_query ---> |writes| de_health
 ```
 
-### Write KnockbackEffect (beam damage)
+### Knockback messages
 
 Used in the following systems:
-- **apply_beam_damage**: inserts `KnockbackEffect` on the hit entity so the effects plugin slides and bounces it one tile opposite to the beam direction
+- **apply_beam_damage**: writes `KnockbackRequested` for the hit entity (direction = the beam direction)
+- **apply_knockback**: reads `KnockbackRequested` (from this plugin and from the controller plugin) and writes `EntityKnockedBack` for each entity that actually moved
 
 ```mermaid
 ---
@@ -328,16 +349,90 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 apply_beam_damage["`**apply_beam_damage**`"]
+apply_knockback["`**apply_knockback**`"]
 
 update -.-> apply_beam_damage
+update -.-> apply_knockback
 
-damageable_entity@{ shape: st-rect, label: "Damageable Entity" }
+knockback_requested_message(["`**KnockbackRequested**`"])
+entity_knocked_back_message(["`**EntityKnockedBack**`"])
 
-de_knockback>"`**KnockbackEffect**`"]
+apply_beam_damage ---> |writes| knockback_requested_message
+knockback_requested_message ---> |read by| apply_knockback
+apply_knockback ---> |writes| entity_knocked_back_message
+```
 
-de_knockback --> |inserted on| damageable_entity
+### Query knocked-back entities (apply_knockback)
 
-apply_beam_damage ---> |inserts component| de_knockback
+Used in the following systems:
+- **apply_knockback**: reads `Has<IsDead>` and `Option<&Health>`; writes `GridCoords`; inserts `IsKnockedBack`. Reads `MapInfo` (`on_ground`) and `GameConfig` (`effects.knockback_tween_ms`)
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_knockback["`**apply_knockback**`"]
+
+update -.-> apply_knockback
+
+knockback_query{{"`query`"}}:::query
+apply_knockback ---> knockback_query
+
+world@{ shape: st-rect, label: "World" }
+map_info_res@{ shape: doc, label: "MapInfo" }
+map_info_res --> |belongs to| world
+
+target_entity@{ shape: st-rect, label: "Knocked-back Entity" }
+
+ke_coords>"`**GridCoords**`"] --> |belongs to| target_entity
+ke_is_dead>"`**IsDead**`"] --> |belongs to| target_entity
+ke_health>"`**Health**`"] --> |belongs to| target_entity
+ke_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| target_entity
+
+knockback_query ---> |writes| ke_coords
+knockback_query ---> |reads Has| ke_is_dead
+knockback_query ---> |"reads (optional)"| ke_health
+apply_knockback ---> |reads `on_ground`| map_info_res
+apply_knockback ---> |"inserts, timer seeded from knockback_tween_ms"| ke_is_knocked
+```
+
+### IsKnockedBack component lifecycle
+
+`IsKnockedBack(Timer)` (`src/components/effects.rs`) is only the input lock of a knocked-back entity. `handle_characters_input` (Input plugin) reads it.
+- **Inserted** by `apply_knockback`, with a fresh `Timer` of `config.effects.knockback_tween_ms`. A new knockback replaces a running lock.
+- **Ticked and removed** by `tick_knockback_lock`, every frame, once the timer finishes. This system is not gated by `RoundPhase`.
+- **Removed** by `reset_round` (Round plugin).
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+apply_knockback["`**apply_knockback**`"]
+tick_knockback_lock["`**tick_knockback_lock**`"]
+
+update -.-> apply_knockback
+update -.-> tick_knockback_lock
+reset_round["`**reset_round** (Round)`"]
+
+is_knocked_back@{ shape: doc, label: "IsKnockedBack" }
+reset_round ---> |always removes| is_knocked_back
+
+apply_knockback ---> |"inserts, timer seeded from knockback_tween_ms"| is_knocked_back
+tick_knockback_lock ---> |ticks timer every frame| is_knocked_back
+tick_knockback_lock ---> |"removes once timer finishes"| is_knocked_back
 ```
 
 ### Write DamageableDied messages

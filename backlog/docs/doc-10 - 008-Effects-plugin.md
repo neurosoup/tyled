@@ -3,7 +3,7 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-10-05 00:00'
+updated_date: '2026-10-16 12:00'
 ---
 # Effects Plugin
 
@@ -33,7 +33,7 @@ Fold rules (how the requests of one frame are combined):
 - Owners with `IsDead`: every `RootTranslation` request except `DeathBounce` is dropped before the fold. Sprite flashes still play.
 - Translate under Knockback is `Queue`, not `Drop`. The input lock timer and the knockback tween are not ordered, so input can unlock one frame before the slide ends. The queued Translate builds its tween from the current position when it starts. It does nothing visible if the player has not moved.
 
-Death and knockback follow the same rules. A death bounce that arrives during a knockback is queued, so the slide finishes first. A lethal hit plays no slide, because `apply_knockback` skips it. `IsKnockedBack` is only the input lock and plays no part in these rules.
+Death and knockback follow the same rules. A death bounce that arrives during a knockback is queued, so the slide finishes first. A lethal hit plays no slide, because the damage plugin's `apply_knockback` skips it and never writes `EntityKnockedBack`. `IsKnockedBack` is only the input lock, owned by the damage plugin, and plays no part in these rules.
 
 ## Plugin workflow
 
@@ -41,18 +41,16 @@ Death and knockback follow the same rules. A death bounce that arrives during a 
     - `sync_resting_translation` (before `apply_bounce_effect` and `apply_wave_effect`):
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities (players)
             - Writes `RestingTranslation` to the new grid position's world translation
-    - `apply_knockback` (tagged `GameplaySet::Displacement`, before `apply_death_effect`):
-        - Reacts to `Added<KnockbackEffect>`
-            - Reads `Has<IsDead>`, `Option<&Health>`, and `MapInfo` to validate the target tile
-            - If the target is on ground, the entity is not dead and its `Health.current` is above 0: mutates `GridCoords`, writes `EffectRequest { owner, kind: Knockback { ms } }`, and inserts `IsKnockedBack(Timer)` seeded from `config.effects.knockback_tween_ms`
-            - Always removes `KnockbackEffect`
+    - `request_knockback_effect` (`EffectsSet::Request`, before `apply_translate_effect` and `apply_movement_settle`):
+        - Reads `EntityKnockedBack` messages (written by the damage plugin's `apply_knockback` after it moved the entity)
+            - Writes `EffectRequest { owner: entity, kind: Knockback { ms } }`, with `ms` from `config.effects.knockback_tween_ms`
     - `apply_translate_effect` (`EffectsSet::Request`):
         - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities
             - Writes `EffectRequest { owner, kind: Translate { ms } }`, with `ms` from the entity's `MovementSlide` (or `config.timing.move_repeat_rate_ms` if absent)
     - `apply_movement_settle` (`EffectsSet::Request`):
         - Reads `MovementStopped` messages (written by the Input plugin)
             - Writes `EffectRequest { owner: entity, kind: Settle { ms } }` with `ms` from `config.timing.move_repeat_rate_ms`
-    - `apply_death_effect` (`EffectsSet::Request`, after `apply_knockback`):
+    - `apply_death_effect` (`EffectsSet::Request`, after `request_knockback_effect`):
         - Reads `DamageableDied` messages, matched against entities with `DamageEffectTarget` and `Health` but without `IsDead`
             - Inserts `IsDead`
             - Writes `EffectRequest { owner, kind: DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 } }`
@@ -77,9 +75,6 @@ Death and knockback follow the same rules. A death bounce that arrives during a 
             - Pushes a peak-1.0 `GlowPulse` onto the overlay of the tile under the beam, and a `beam_glow_neighbor_peak` pulse (delayed by `beam_glow_neighbor_delay_ms`) onto each orthogonal neighbor and onto the tile two steps ahead along `Beam::direction` (skipped when the direction is zero); each pulse goes to both the claimed tile's overlay and the ground cell's overlay, even when the beam's own position has no claimed tile
     - `update_lit_overlays` (after `apply_glow_effect`):
         - Advances every overlay's pulses by the frame delta, sets the overlay alpha to the maximum pulse strength, prunes finished pulses, and toggles the overlay's visibility
-    - `tick_knockback_lock` (no ordering dependency; placed by registration order):
-        - Runs every frame against every entity carrying `IsKnockedBack`
-            - Ticks the entity's timer; once it finishes, removes `IsKnockedBack`. This is the only removal path during normal play, and it is only the input lock
     - `trigger_parry_scale_effect` (`EffectsSet::Request`):
         - Reads `BeamParried` messages
             - Finds the parrier's sprite child with `sprite_child`; if found, writes `EffectRequest { owner: parrier, kind: ScalePunch { sprite, peak, secs } }`
@@ -99,9 +94,9 @@ Death and knockback follow the same rules. A death bounce that arrives during a 
 
 ## Plugin Systems
 
-### Apply Knockback
+### Request Knockback Effect
 
-Runs in `GameplaySet::Displacement`, so it sees a `KnockbackEffect` inserted in the same frame by `Movement` or `Damage`. It is ordered before `apply_death_effect`. Reacts to `Added<KnockbackEffect>`. This system is the gameplay half of knockback. It computes the target tile (`GridCoords + direction`) and checks it with `MapInfo::on_ground`. If the target is on ground, `Has<IsDead>` reads false and `Health.current` is above 0 (a lethal hit plays no slide), it does three things. It mutates `GridCoords` to the target. It writes a `Knockback { ms: config.effects.knockback_tween_ms }` `EffectRequest` (default `200`). It inserts `IsKnockedBack(Timer::new(config.effects.knockback_tween_ms, TimerMode::Once))`, the input lock (see the `IsKnockedBack` lifecycle section below). The tween itself is built later by the driver, not here. `KnockbackEffect` is removed unconditionally, even when dead, lethal or blocked, so the marker never strands.
+Runs in `EffectsSet::Request`. It is ordered before `apply_translate_effect` and `apply_movement_settle`, and `apply_death_effect` runs after it. Reads `EntityKnockedBack { entity }` messages. For each one, writes a `Knockback { ms: config.effects.knockback_tween_ms }` `EffectRequest` (default `200`) with `owner` set to the message entity. This is only the visual half of knockback. The damage plugin owns the gameplay half: its `apply_knockback` moves `GridCoords`, sets the `IsKnockedBack` input lock, and writes `EntityKnockedBack` only when the entity really moved. A dead, lethal or blocked knockback writes no message, so no slide plays. The tween itself is built later by the driver, not here.
 
 ### Apply Translate Effect
 
@@ -109,7 +104,7 @@ Runs in `EffectsSet::Request`. Reacts to `Changed<GridCoords>` on entities that 
 
 ### Apply Movement Settle
 
-Runs in `EffectsSet::Request`. Reads `MovementStopped { entity }` messages. For each message, writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` with `owner` set to the message entity. The system has no query and no marker component, so nothing needs to be removed. It does not check `IsKnockedBack`, `IsDead` or `KnockbackEffect`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
+Runs in `EffectsSet::Request`. Reads `MovementStopped { entity }` messages. For each message, writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` with `owner` set to the message entity. The system has no query and no marker component, so nothing needs to be removed. It does not check `IsKnockedBack` or `IsDead`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
 
 ### Sync Resting Translation
 
@@ -129,11 +124,7 @@ Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker
 
 ### Apply Death Effect
 
-Runs in `EffectsSet::Request`, after `apply_knockback`. Reads `DamageableDied` messages, matched against a query filtered to entities with `DamageEffectTarget` and `Health` but without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, inserts `IsDead` on the dying entity and writes a `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }` `EffectRequest`. The system does not check for a running knockback. The resolver queues the death bounce behind a knockback, so the slide finishes first. It has no `RoundPhase` gate, so it can still catch a `DamageableDied` message written on the last `Playing` frame, after the phase has changed to `Outcome`.
-
-### Tick Knockback Lock
-
-Runs every frame against every entity carrying `IsKnockedBack`, with no ordering dependency on any other system in this plugin. Ticks each entity's timer by `Res<Time>`'s delta, and once the timer finishes, removes `IsKnockedBack`. This releases the entity back to normal movement. The lock does not affect any driver.
+Runs in `EffectsSet::Request`, after `request_knockback_effect`. Reads `DamageableDied` messages, matched against a query filtered to entities with `DamageEffectTarget` and `Health` but without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, inserts `IsDead` on the dying entity and writes a `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }` `EffectRequest`. The system does not check for a running knockback. The resolver queues the death bounce behind a knockback, so the slide finishes first. It has no `RoundPhase` gate, so it can still catch a `DamageableDied` message written on the last `Playing` frame, after the phase has changed to `Outcome`.
 
 ### Spawn Sprite Lit Overlays
 
@@ -228,47 +219,10 @@ Abilities in `DECKBUILDING.md` that will need this: Landmine (#17), Barrier (#33
 
 ## Components, Resources and Messages CRUD
 
-### Query KnockbackEffect entities (knockback)
+### Read EntityKnockedBack messages and write EffectRequest (request_knockback_effect)
 
 Used in the following systems:
-- **apply_knockback**: reads `KnockbackEffect`, `Has<IsDead>`, and `Option<&Health>` on newly knocked-back entities; mutates `GridCoords`; removes `KnockbackEffect`
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-apply_knockback["`**apply_knockback**`"]
-
-update -.-> apply_knockback
-
-knockback_query{{"`knockback_query`"}}:::query
-apply_knockback ---> knockback_query
-
-player_entity@{ shape: st-rect, label: "Player Entity" }
-
-pe_coords>"`**GridCoords**`"] --> |belongs to| player_entity
-pe_knockback>"`**KnockbackEffect**`"] --> |belongs to| player_entity
-pe_is_dead>"`**IsDead**`"] --> |belongs to| player_entity
-pe_health>"`**Health**`"] --> |belongs to| player_entity
-
-knockback_query -..-> |filter Added| pe_knockback
-knockback_query ---> |reads| pe_knockback
-knockback_query ---> |reads Has| pe_is_dead
-knockback_query ---> |"reads (optional)"| pe_health
-knockback_query ---> |writes| pe_coords
-```
-
-### Read MapInfo resource (knockback)
-
-Used in the following systems:
-- **apply_knockback**: validates the target tile with `on_ground`
+- **request_knockback_effect**: reads `EntityKnockedBack` (written by the damage plugin) and writes a `Knockback` `EffectRequest` for each entity. It reads `config.effects.knockback_tween_ms`. It touches no component.
 
 ```mermaid
 ---
@@ -280,49 +234,15 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-apply_knockback["`**apply_knockback**`"]
+request_knockback_effect["`**request_knockback_effect**`"]
 
-update -.-> apply_knockback
+update -.-> request_knockback_effect
 
-world@{ shape: st-rect, label: "World" }
-map_info_res@{ shape: doc, label: "MapInfo" }
-
-map_info_res --> |belongs to| world
-
-apply_knockback ---> |reads `on_ground`| map_info_res
-```
-
-### Write commands and EffectRequest (apply_knockback)
-
-Used in the following systems:
-- **apply_knockback**: when the target is valid, the entity is not dead and its health is above 0, writes a `Knockback` `EffectRequest` and inserts `IsKnockedBack`; always removes `KnockbackEffect`
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-apply_knockback["`**apply_knockback**`"]
-
-update -.-> apply_knockback
-
-player_entity@{ shape: st-rect, label: "Player Entity" }
-
-pe_is_knocked>"`**IsKnockedBack**`"]
-pe_knockback>"`**KnockbackEffect**`"]
+entity_knocked_back_message(["`**EntityKnockedBack**`"])
 effect_request(["`**EffectRequest**`"])
 
-pe_is_knocked --> |written on| player_entity
-pe_knockback --> |removed from| player_entity
-
-apply_knockback ---> |writes Knockback| effect_request
-apply_knockback ---> |inserts component| pe_is_knocked
-apply_knockback ---> |always removes| pe_knockback
+entity_knocked_back_message ---> |read by| request_knockback_effect
+request_knockback_effect ---> |writes Knockback| effect_request
 ```
 
 ### Query TranslateEffectTarget entities
@@ -701,78 +621,6 @@ effect_request(["`**EffectRequest**`"])
 apply_death_effect ---> |writes DeathBounce| effect_request
 ```
 
-### Query IsKnockedBack entities and tick timer (tick_knockback_lock)
-
-Used in the following systems:
-- **tick_knockback_lock**: reads `Res<Time>`; ticks every `IsKnockedBack` entity's timer and removes `IsKnockedBack` once it finishes — the sole removal path during normal play, with no ordering dependency on any tween or completion event
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-classDef query stroke-dasharray: 3 3
-
-update(("`Update`")):::system-group
-tick_knockback_lock["`**tick_knockback_lock**`"]
-
-update -.-> tick_knockback_lock
-
-knocked_query{{"`knocked`"}}:::query
-tick_knockback_lock ---> knocked_query
-
-knocked_entity@{ shape: st-rect, label: "Knocked-back Entity" }
-
-ke_is_knocked>"`**IsKnockedBack**`"] --> |belongs to| knocked_entity
-
-knocked_query ---> |"writes (ticks timer)"| ke_is_knocked
-tick_knockback_lock ---> |"removes once timer finishes"| ke_is_knocked
-
-world@{ shape: st-rect, label: "World" }
-time_res@{ shape: doc, label: "Time" }
-time_res --> |belongs to| world
-
-tick_knockback_lock ---> |reads delta| time_res
-```
-
-### IsKnockedBack component lifecycle
-
-`IsKnockedBack(Timer)` (`src/components/effects.rs`) is only the input lock of a knocked-back entity. `handle_characters_input` (Input plugin) reads it. It does not change any tween: the resolver and the driver policy decide what the position tween does. Its lifecycle is separate from the knockback driver, and the two run on their own timers. Its full lifecycle:
-- **Inserted** by `apply_knockback`, seeded with `Timer::new(config.effects.knockback_tween_ms, TimerMode::Once)`, the same duration as the knockback driver tween.
-- **Ticked and removed** by `tick_knockback_lock`, every frame, once its timer finishes. This is the only removal path during normal play.
-- **Removed** by `reset_round` (Round plugin) on every player round reset.
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-
-apply_knockback["`**apply_knockback**`"]
-tick_knockback_lock["`**tick_knockback_lock**`"]
-reset_round["`**reset_round** (Round)`"]
-
-update -.-> apply_knockback
-update -.-> tick_knockback_lock
-
-player_entity@{ shape: st-rect, label: "Player Entity" }
-is_knocked_back@{ shape: doc, label: "IsKnockedBack" }
-
-apply_knockback ---> |"inserts, timer seeded from knockback_tween_ms"| is_knocked_back
-tick_knockback_lock ---> |ticks timer every frame| is_knocked_back
-tick_knockback_lock ---> |"removes once timer finishes"| is_knocked_back
-reset_round ---> |always removes| is_knocked_back
-is_knocked_back --> |belongs to| player_entity
-```
-
 ### Query Beam entities (glow)
 
 Used in the following systems:
@@ -1095,7 +943,7 @@ trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
 apply_damage_effect["`**apply_damage_effect**`"]
 apply_translate_effect["`**apply_translate_effect**`"]
 apply_movement_settle["`**apply_movement_settle**`"]
-apply_knockback["`**apply_knockback**`"]
+request_knockback_effect["`**request_knockback_effect**`"]
 apply_death_effect["`**apply_death_effect**`"]
 on_effect_completed["`**on_effect_completed**`"]
 resolve_effect_requests["`**resolve_effect_requests**`"]
@@ -1105,7 +953,7 @@ update -.-> trigger_parry_scale_effect
 update -.-> apply_damage_effect
 update -.-> apply_translate_effect
 update -.-> apply_movement_settle
-update -.-> apply_knockback
+update -.-> request_knockback_effect
 update -.-> apply_death_effect
 update -.-> on_effect_completed
 update -.-> resolve_effect_requests
@@ -1122,7 +970,9 @@ apply_translate_effect ---> |writes Translate| effect_request
 movement_stopped_message(["`**MovementStopped**`"])
 movement_stopped_message ---> |read by| apply_movement_settle
 apply_movement_settle ---> |writes Settle| effect_request
-apply_knockback ---> |writes Knockback| effect_request
+entity_knocked_back_message(["`**EntityKnockedBack**`"])
+entity_knocked_back_message ---> |read by| request_knockback_effect
+request_knockback_effect ---> |writes Knockback| effect_request
 apply_death_effect ---> |writes DeathBounce| effect_request
 effect_request ---> |read by| resolve_effect_requests
 resolve_effect_requests ---> |spawns or replaces| driver_entity

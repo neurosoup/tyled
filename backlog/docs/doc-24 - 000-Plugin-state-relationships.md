@@ -3,7 +3,7 @@ id: doc-24
 title: '[000] Plugin state relationships'
 type: other
 created_date: '2026-09-15 12:00'
-updated_date: '2026-09-16 12:00'
+updated_date: '2026-10-16 12:00'
 ---
 # Plugin State Relationships
 
@@ -58,6 +58,7 @@ Every stage of the gameplay pipeline declared in `schedule.rs`'s `GameplaySet` c
 - `GameplaySet::Beam` — `beam.rs`'s `spawn_beam`, `beam_step`
 - `GameplaySet::Economy` — `charge.rs`'s `regen_charges_from_solar_panels`, `cap_charges_to_unclaimed_tiles`
 - `GameplaySet::Damage` — `damage.rs`'s `apply_owned_tile_entry_damage`, `apply_owned_tile_damage`, `apply_beam_damage`, `apply_collision_damage`
+- `GameplaySet::Displacement` — `damage.rs`'s `apply_knockback`
 - `GameplaySet::RoundResolution` — `round/state.rs`'s `tick_countdown`, `resolve_kill`, `resolve_timeout`, `resolve_charge_exhaustion`
 
 Outside the `GameplaySet` chain, `telemetry.rs`'s `record_actions` and `record_decisions` also gate on `run_if(in_state(RoundPhase::Playing))`, stacked with a second `run_if(telemetry_enabled)` config-resource gate — the only place in the codebase a state gate and a config gate are stacked on the same systems, so these can be inactive even while `Playing`.
@@ -79,7 +80,7 @@ Three other systems gate on phases other than `Playing`:
 ## Asymmetries
 
 - `claim_tile` (`claim.rs`) is gated on `Playing`, matching the rest of the `GameplaySet` pipeline: a `BeamResolved` message is always written and drained within the same frame, while `Playing`.
-- `GameplaySet::Displacement` (`effects.rs`'s `apply_knockback`) is ungated too. It runs after `Damage` and before `Presentation`, so a `KnockbackEffect` inserted by `Movement` or `Damage` is always seen in the same frame.
+- `GameplaySet::Displacement` (`damage.rs`'s `apply_knockback`) is gated on `Playing`. It runs after `Damage` and before `Presentation`, so a `KnockbackRequested` message written by `Movement` or `Damage` is always seen in the same frame. `damage.rs`'s `tick_knockback_lock` is ungated, so a running lock still finishes across a phase boundary.
 - `hud.rs`'s `HudSync` stage and `GameplaySet::Presentation` (`animations.rs`, plus the `EffectsSet` systems in `effects.rs`: `apply_death_effect`, the other request writers, `on_effect_completed` and `resolve_effect_requests`) are both deliberately ungated, not oversights. Neither writes anything round-resolution logic reads back, and both need to keep running past `Playing`: to let a tween or `smooth_nudge` (HP bar, damage flash, death bounce) finish playing out into `Outcome`, or to let a `Starting`-phase system pick up `reset_round`'s `OnExit(Outcome)` mass write — the tile-unclaim cascade, the HUD digit resets — as a visible transition during the intro instead of a snap at "GO!".
 - `round/state.rs`'s `start_countdown` and `round/intro.rs`'s `despawn_go_banner` are similarly ungated by design, for the same reason: continuous state (a resource re-insert, a tween) that must keep evolving right across a phase boundary rather than freezing at it.
 - `maps.rs` is the only plugin coupled to both state machines from opposite layers: `load_maps` hooks `OnEnter(AppState::InRound)`, its bootstrap chain hooks `OnExit(RoundPhase::Loading)`.

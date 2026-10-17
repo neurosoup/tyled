@@ -1,9 +1,10 @@
 ---
 id: TASK-13
 title: Move knockback gameplay into the damage plugin
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-06 17:14'
+updated_date: '2026-10-16 12:00'
 labels: []
 milestone: m-5
 dependencies:
@@ -33,5 +34,6 @@ Stage 4 of task-11, split out. Today the effects plugin owns both halves of knoc
 5. If several knockbacks arrive in one tick for one entity, decide the rule (latest wins, or a fixed priority) and write it down for Barrier.
 6. Docs: doc-11 Damage, doc-4 Controller, doc-10 Effects, doc-9 messages (two new messages), doc-15 reset list, DECKBUILDING.md knockback mentions.
 Verify: cargo check, cargo test --features dev. Manual (user): drag across several tiles, death during a drag, collision bump, input locked until the drag ends.
+Decided (2026-10-16, step 5): latest wins per entity per frame. When one entity gets several knockbacks in one frame, only the last one applies. Write order is the controller in Movement, then damage in Damage. Barrier and Body Blocker write KnockbackRequested like any other source and follow the same rule.
 Decided (2026-10-07): the stun (IsKnockedBack lock) and the slide always last the same time. Keep the single knob knockback_tween_ms for both; do not add knockback_lock_ms.
 <!-- SECTION:PLAN:END -->
