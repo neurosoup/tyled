@@ -3,71 +3,58 @@ id: doc-3
 title: '[001] Maps plugin'
 type: other
 created_date: '2026-02-01 16:02'
-updated_date: '2026-09-15 12:00'
+updated_date: '2026-10-17 12:00'
 ---
 # Maps Plugin
 
-Contains systems related to map loading and entity-related initializations. This plugin also initializes the `MapInfo` resource to give world-wide access to specific tile lookups and map-related information.
+This plugin loads the level map and the HUD map when a round begins. After loading, it fills the shared map lookup and sets up the players, the claimable tiles and the HUD bars.
 
-## Plugin workflow
-
-- `OnEnter(AppState::InRound)` (see the Menu plugin doc — this fires once the main menu's matchup selection is confirmed, not unconditionally at launch)
-    - `load_maps` spawns two `TiledMap` entities: one for `level2.tmx` (tagged `CurrentLevel`) and one for `hud2.tmx` (tagged `HudMap`).
-- `OnExit(RoundPhase::Loading)` (chained; this transition fires exactly once, since `Loading` is the round state machine's default variant and every later round loop cycles `Starting → Playing → Outcome → Starting` without ever revisiting `Loading` — see the Round plugin doc)
-    - `initialize_map_info`:
-        - Queries the `CurrentLevel` map entity directly (`Query<..., (With<TiledMap>, With<CurrentLevel>)>::single()`), plus tilemap metadata, all `Ground` tiles (`Entity`, `TilePos`), and all `ForbiddenArea` tiles
-        - Writes the `MapInfo` resource, including `ground_entities`, `claimed_entities`, `forbidden_areas` HashMaps and all map geometry fields
-    - Then, unordered relative to each other (after `initialize_map_info`, so `MapInfo` is populated first):
-        - `initialize_players`:
-            - Queries every `Player`-marked `Character` entity directly
-            - For each: computes `GridCoords` from `Transform`, inserts `GridCoords`, `SpawnPoint` (the initial `GridCoords`, used by the round reset), `SpawnLookDirection` (the initial facing, used by the round reset), `PreviousGridCoords` (seeded to the same spawn coord for the Damage plugin's on-enter spike), `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (the grid coord's world translation, kept in sync thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` = ground-tile count / `config.player.beam_charges_divisor`, default `2`), `AbilityList` (from `PlayerLoadouts`, keyed by player id), `ClaimedTileCount{current:0}` (maintained thereafter by the Claim plugin), `InFlightBeamCount::default()` (maintained thereafter by the Beam plugin)
-            - Inserts `Anchor` on the first child sprite entity of each player
-        - `initialize_claimed_tiles`:
-            - Reads `MapInfo::ground_entities` directly
-            - For each ground tile, spawns a `ClaimedTile{owner:None}` entity with `WaveEffectTarget`, `GlowEffectTarget`, `GridCoords`, `Transform`
-            - Stores each spawned entity in `MapInfo::claimed_entities`
-        - `initialize_hud_bars`:
-            - Queries every entity in the world matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` directly, also reading `Has<TerritoryBar>`/`Has<ChargesBar>`
-            - Initializes each matched entity with `GridCoords` and `Transform`
-            - Zeroes `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches (they grow in via `hud`'s bar animations); `HPBar`/`DamageBar` render at their true value immediately
-            - Sets `Anchor` and `custom_size` on the child sprite entity of each matched bar
-
-None of these four systems read any message — by the time `OnExit(RoundPhase::Loading)` fires, both `TiledMap` entities and everything Tiled spawns from them already exist in the world, so each system queries directly instead of reacting to `TiledEvent<MapCreated>`. See the Round plugin doc for what triggers the `Loading → Starting` transition itself.
+The setup reads no message. When it runs, the maps and all their entities already exist, so it reads the world directly.
 
 ## Plugin Systems
 
 ### Load Maps
 
-Runs on `OnEnter(AppState::InRound)` — once the main menu's matchup selection is confirmed (see the Menu plugin doc), not unconditionally at `Startup`. Spawns two `TiledMap` entities:
-- `level2.tmx` — the current game level, tagged with the `CurrentLevel` marker component.
-- `hud2.tmx` — the heads-up display overlay map, tagged with the `HudMap` marker component.
+- Runs on `OnEnter(AppState::InRound)`, after the matchup is confirmed in the menu.
+- Spawns `level2.tmx` (tagged `CurrentLevel`) and `hud2.tmx` (tagged `HudMap`).
+
+### Setup chain
+
+- The four systems below run on `OnExit(RoundPhase::Loading)`. This happens only once: no round goes back to `Loading`.
+- `initialize_map_info` runs first. The other three run after it, in any order.
 
 ### Initialize Map Info
 
-Runs on `OnExit(RoundPhase::Loading)`, first in the chain. Queries the `CurrentLevel` map entity directly via `Query<(Entity, &TiledMapLayerZOffset), (With<TiledMap>, With<CurrentLevel>)>::single()`, then reads tilemap metadata components from the tilemap whose `TiledName` is `"ground"` **and** whose `TiledMapReference` matches that level map entity — the level map and the HUD map both use the `ground.tsx` tileset, so both spawn a tilemap named `"ground"`, and this map-scoped filter ensures the level's own tile geometry (size, grid, tile-size, anchor) is read rather than the HUD map's. Iterates all `Ground`-marked tile entities (storing them in `ground_entities`) and all `ForbiddenArea`-marked tile entities (storing them in `forbidden_areas`). Also allocates the `claimed_entities` HashMap keyed by `GridCoords`. Writes all collected data into the `MapInfo` resource so it is available world-wide.
+- Fills `MapInfo`: ground tiles, forbidden tiles, an empty claimed-tile map, and the map geometry.
+- Both maps have a tilemap named `"ground"`. It reads only the one of the level map.
 
 ### Initialize Players
 
-Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_claimed_tiles` and `initialize_hud_bars`. Queries every entity carrying `Character` directly (`Query<(Entity, &Player, &mut Transform), With<Character>>`). For each it:
-1. Computes the initial `GridCoords` from the entity world-space `Transform` using the `MapInfo` resource.
-2. Derives the starting `LookDirection` from the player id.
-3. Inserts `GridCoords`, `SpawnPoint` (the initial `GridCoords`, letting the round reset restore it after movement overwrites the Tiled transform), `SpawnLookDirection` (the initial facing, also restored by the round reset), `PreviousGridCoords` (seeded to the same spawn coord so the Damage plugin's on-enter spike has a valid origin tile), `LookDirection`, `TranslateEffectTarget`, `RestingTranslation` (set to that same `GridCoords`'s world translation, kept aligned thereafter by the Effects plugin's `sync_resting_translation`), `DamageEffectTarget`, `Health` (current and max both set to `config.player.starting_health`, default `100.0`), `BeamCharges` (`current` and `max` set to the ground-tile count divided by `config.player.beam_charges_divisor`, default `2`), `AbilityList` (from `PlayerLoadouts`, via `for_player(player_id)`), `ClaimedTileCount{current:0}`, and `InFlightBeamCount::default()` on the player entity, reading these from the `GameConfig` resource. `ClaimedTileCount` starts at zero, maintained thereafter by the Claim plugin. `InFlightBeamCount` starts at zero, maintained thereafter by the Beam plugin (incremented on fire, decremented on despawn) — a synchronous per-player in-flight count for HUD and round-resolution readers.
-4. Inserts an `Anchor` component on the first child entity (the sprite entity) to properly anchor the sprite.
+- Sets up each player with its grid position, facing, health, charges, abilities and counters.
+- `SpawnPoint` and `SpawnLookDirection` keep the start position and facing for the round reset.
+- `PreviousGridCoords` starts on the spawn tile, so tile-entry damage works from the first move.
+- `RestingTranslation` starts at the spawn position. The Effects plugin keeps it up to date.
+- Health is `starting_health`. Charges are the ground-tile count divided by `beam_charges_divisor`.
+- Abilities come from `PlayerLoadouts`. The tile and beam counters start at zero.
 
 ### Initialize Claimed Tiles
 
-Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_hud_bars`. Reads `MapInfo::ground_entities` directly (already populated by `initialize_map_info` earlier in the chain) and for each ground tile spawns a new entity with `ClaimedTile{owner:None}`, `WaveEffectTarget`, `GlowEffectTarget`, `GridCoords`, and `Transform`. `GlowEffectTarget` is the permanent marker that lets the Effects plugin's beam glow telegraph light up the tile as a beam crosses it. The Effects plugin later adds a lit overlay child (`SpriteLitOverlay`) to each such tile and a `LitOverlayLink` on the tile once its `Sprite` exists; this plugin does not spawn them. Each spawned entity is stored in `MapInfo::claimed_entities` keyed by its `GridCoords`, making it available for later lookup by the beam and animation systems.
+- Spawns one `ClaimedTile` with no owner for each ground tile, and stores it in `MapInfo`.
+- The Effects plugin adds the lit overlay to each tile later. This plugin does not.
 
 ### Initialize HUD Bars
 
-Runs on `OnExit(RoundPhase::Loading)`, after `initialize_map_info` (via `.chain()`) but unordered relative to `initialize_players` and `initialize_claimed_tiles`. Queries every entity in the world matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` directly, also reading `Has<TerritoryBar>`/`Has<ChargesBar>` to tell the kinds apart. For each, computes `GridCoords` from its world-space `Transform` and inserts `GridCoords`/`Transform` (including the player-1 `+16px` X nudge). `TerritoryBar`/`ChargesBar` matches additionally get `Transform::scale.x` zeroed so they render empty and grow in as `hud`'s `animate_territory_bar`/`animate_charges_bar` nudge them toward the real ratio; `HPBar`/`DamageBar` render at true value from frame one. Also sets `Anchor` (left-anchored for player 1, right-anchored for player 2) and `custom_size` on each bar's child sprite: `HP_BAR_PIXEL_WIDTH` × `32` (`176x32`) for `HPBar`/`DamageBar`, each player owning an independent container, or `TERRITORY_BAR_PIXEL_WIDTH` × `32` (`432x32`) for `TerritoryBar`/`ChargesBar`, whose P1/P2 bars are anchored 432px apart and grow toward each other across that shared span.
+- Places the HP, damage, territory and charges bars from `hud2.tmx`. Player 1's bars move 16px to the right.
+- Territory and charges bars start empty and grow in. HP and damage bars start at their real value.
+- Player 1's bars grow from the left, player 2's from the right.
+- HP and damage bars are 176x32. Territory and charges bars are 432x32 and grow toward each other.
 
 ## Components, Resources and Messages CRUD
 
 ### Query Tilemap metadata
 
 Used in the following systems:
-- **initialize_map_info**: used to get various map informations (e.g. map size, tile size, etc.)
+- **initialize_map_info**: reads the map geometry (size, tile size, etc.).
 
 ```mermaid
 ---
@@ -109,7 +96,7 @@ tilemap_query -..-> |filter With| tm_marker
 ### Query TilePos of Ground tiles
 
 Used in the following systems:
-- **initialize_map_info**: used to get all `Entity` and `TilePos` of `Ground`-marked tile entities spawned after loading the map
+- **initialize_map_info**: all ground tiles.
 
 ```mermaid
 ---
@@ -143,7 +130,7 @@ ground_tiles_query -..-> |filter With| gt_ground
 ### Query TilePos of ForbiddenArea tiles
 
 Used in the following systems:
-- **initialize_map_info**: used to get all `Entity` and `TilePos` of `ForbiddenArea`-marked tile entities spawned after loading the map
+- **initialize_map_info**: all forbidden tiles.
 
 ```mermaid
 ---
@@ -177,7 +164,7 @@ forbidden_tiles_query -..-> |filter With| ft_forbidden
 ### Query Character entities (initialize_players)
 
 Used in the following systems:
-- **initialize_players**: used to get all `Entity`, `Player::player_id` and `Transform` of `Character`-marked player entities in the world
+- **initialize_players**: all player characters.
 
 ```mermaid
 ---
@@ -213,7 +200,7 @@ players_query -..-> |filter With| pe_character
 ### Write MapInfo resource
 
 Used in systems:
-- **initialize_map_info**: writes the `MapInfo` resource, including `ground_entities`, `claimed_entities`, `forbidden_areas` HashMaps and all map geometry fields
+- **initialize_map_info**: fills every field of `MapInfo`.
 
 ```mermaid
 ---
@@ -257,7 +244,7 @@ initialize_map_info ---> |writes| map_info_res
 ### Write commands — initialize_players
 
 Used in systems:
-- **initialize_players**: inserts `GridCoords`, `SpawnPoint`, `SpawnLookDirection`, `PreviousGridCoords`, `LookDirection`, `TranslateEffectTarget`, `RestingTranslation`, `DamageEffectTarget`, `Health`, `BeamCharges`, `AbilityList`, `ClaimedTileCount`, and `InFlightBeamCount` on each `Player` entity, and `Anchor` on its first child sprite. `SpawnPoint` captures the initial `GridCoords` so the round reset (see the Round plugin doc) can restore it after movement overwrites the Tiled transform. `PreviousGridCoords` is seeded to the same spawn coord so the Damage plugin's on-enter spike (see the Damage plugin doc) has a valid origin tile from the first move. `RestingTranslation` is seeded to that same `GridCoords`'s world translation and kept in sync thereafter by the Effects plugin's `sync_resting_translation`, so bounce effects always read a resting position rather than a `Transform` that may be mid-tween. `AbilityList` comes from `PlayerLoadouts` (Abilities plugin) via `for_player(player_id)` — empty for the Straight-only control. `ClaimedTileCount` starts at zero, maintained by the Claim plugin; `InFlightBeamCount` defaults to zero, maintained by the Beam plugin.
+- **initialize_players**: the player setup listed above. The diagram does not show `SpawnPoint`, `SpawnLookDirection` and `PreviousGridCoords`.
 
 ```mermaid
 ---
@@ -321,7 +308,7 @@ initialize_players ---> |inserts component| ce_anchor
 ### Write commands — initialize_claimed_tiles
 
 Used in systems:
-- **initialize_claimed_tiles**: spawns one `ClaimedTile` entity per ground tile and stores each entity in `MapInfo::claimed_entities`
+- **initialize_claimed_tiles**: one tile entity for each ground tile.
 
 ```mermaid
 ---
@@ -363,7 +350,7 @@ initialize_claimed_tiles ---> |stores entity in claimed_entities| map_info_res
 ### Query HPBar/DamageBar/TerritoryBar/ChargesBar entities (initialize_hud_bars)
 
 Used in the following systems:
-- **initialize_hud_bars**: reads `Entity`, `Player`, `Transform`, `Option<&Children>`, `Has<TerritoryBar>`, and `Has<ChargesBar>` on every entity matching `Or<(With<HPBar>, With<DamageBar>, With<TerritoryBar>, With<ChargesBar>)>` — the same code path initializes all four bar kinds, branching only on the `Has<>` flags to zero territory/charges bars' initial scale
+- **initialize_hud_bars**: all four bar kinds. Only territory and charges bars are handled differently.
 
 ```mermaid
 ---
@@ -400,7 +387,7 @@ bars_query -..-> |filter Or With HPBar/DamageBar/TerritoryBar/ChargesBar| bar_en
 ### Query Sprite entities (initialize_hud_bars)
 
 Used in the following systems:
-- **initialize_hud_bars**: mutably accesses the `Sprite` component to set `custom_size` on the child sprite entity of each matched bar (`HPBar`, `DamageBar`, `TerritoryBar`, or `ChargesBar`); no filter — matches any entity carrying a `Sprite`
+- **initialize_hud_bars**: sets the size of each bar's child sprite. Matches any sprite.
 
 ```mermaid
 ---
@@ -430,7 +417,7 @@ sprite_query ---> |writes custom_size| se_sprite
 ### Write commands — initialize_hud_bars
 
 Used in systems:
-- **initialize_hud_bars**: initializes existing `HPBar`, `DamageBar`, `TerritoryBar`, and `ChargesBar` entities (spawned by the Tiled loader from `hud2.tmx`) with `GridCoords` and `Transform`, additionally zeroing `Transform::scale.x` on `TerritoryBar`/`ChargesBar` matches, and sets `Anchor` and `custom_size` on the child sprite entity; runs on `OnExit(RoundPhase::Loading)`, matching every such entity already present in the world.
+- **initialize_hud_bars**: places the bars spawned from `hud2.tmx`.
 
 ```mermaid
 ---
