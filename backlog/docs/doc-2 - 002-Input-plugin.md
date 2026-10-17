@@ -72,8 +72,6 @@ players_query ---> |reads| pe_entity
 players_query ---> |reads| pe_player
 pe_character>"`**Character**`"] --> |belongs to| player_entity
 
-players_query ---> |reads| pe_entity
-players_query ---> |reads| pe_player
 players_query -..-> |filter Added| pe_player
 players_query -..-> |filter Without| pe_input_map
 players_query -..-> |filter With| pe_character
