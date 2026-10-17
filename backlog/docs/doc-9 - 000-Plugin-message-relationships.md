@@ -55,6 +55,7 @@ claim_plugin["`**Claim Plugin**`"]:::system-group
 charge_plugin["`**Charge Plugin**`"]:::system-group
 damage_plugin["`**Damage Plugin**`"]:::system-group
 effects_plugin["`**Effects Plugin**`"]:::system-group
+hitstop_plugin["`**Hitstop Plugin**`"]:::system-group
 hud_plugin["`**HUD Plugin**`"]:::system-group
 
 map_created_message(["`**TiledEvent#60;MapCreated#62;**`"])
@@ -69,6 +70,9 @@ damageable_died_message(["`**DamageableDied**`"])
 movement_stopped_message(["`**MovementStopped**`"])
 knockback_requested_message(["`**KnockbackRequested**`"])
 entity_knocked_back_message(["`**EntityKnockedBack**`"])
+character_collision_message(["`**CharacterCollision**`"])
+parry_triggered_message(["`**ParryTriggered**`"])
+beam_parried_message(["`**BeamParried**`"])
 anim_completed_message(["`**AnimCompletedEvent**`"])
 
 tiled_plugin ---> |writes| map_created_message
@@ -83,15 +87,21 @@ object_created_message ---> |read by| hud_plugin
 input_plugin ---> |writes| entity_moved_message
 input_plugin ---> |writes| beam_fired_message
 input_plugin ---> |writes| movement_stopped_message
+input_plugin ---> |writes| parry_triggered_message
 
 movement_stopped_message ---> |read by| effects_plugin
 
 entity_moved_message ---> |read by| controller_plugin
 
 beam_fired_message ---> |read by| beam_plugin
+parry_triggered_message ---> |read by| beam_plugin
 
 beam_plugin ---> |writes| beam_resolved_message
 beam_plugin ---> |writes| charge_spent_message
+beam_plugin ---> |writes| beam_parried_message
+
+beam_parried_message ---> |read by| effects_plugin
+beam_parried_message ---> |read by| hitstop_plugin
 
 beam_resolved_message ---> |read by| claim_plugin
 beam_resolved_message ---> |read by| animations_plugin
@@ -105,6 +115,9 @@ damage_plugin ---> |writes| knockback_requested_message
 damage_plugin ---> |writes| entity_knocked_back_message
 
 controller_plugin ---> |writes| knockback_requested_message
+controller_plugin ---> |writes| character_collision_message
+
+character_collision_message ---> |read by| damage_plugin
 
 knockback_requested_message ---> |read by| damage_plugin
 entity_knocked_back_message ---> |read by| effects_plugin
