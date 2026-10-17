@@ -3,104 +3,72 @@ id: doc-5
 title: '[004] Animations plugin'
 type: other
 created_date: '2026-02-01 18:59'
-updated_date: '2026-09-15 14:00'
+updated_date: '2026-10-17 12:00'
 ---
 # Animations Plugin
 
-Contains systems responsible for attaching and updating spritesheet animations on player entities and claimed tile entities. This plugin reacts to the `ObjectCreated` Tiled event to initialize per-player animation handle resources, drives the active player animation each frame based on the player's current `LookDirection`, and manages animations for claimed tiles in reaction to `BeamResolved` messages. While a character carries an `IsTurning` state, its active clip is instead the intermediate 3/4 pose for the current turn segment (`diag_front`/`diag_back`, mirrored with `flip_x`).
+This plugin plays the spritesheet animations of the players and the tiles. A player shows the clip for its facing, or a 3/4 pose while it turns. A tile flips to its owner's color when claimed, and flips back in a wave from the center when the round resets.
 
-HUD animation more broadly — both the HP bars and the numeric rolling-odometer counters — now lives in the HUD plugin.
+HUD animations (bars and number counters) live in the HUD plugin, not here.
 
-`animate_player`, `initialize_player_animations`, and `initialize_claimed_tile_animations` are registered as a plain untagged tuple — none of them reads anything the Beam or Claim plugins write, so their ordering against those plugins doesn't matter. `animate_claimed_tile`, `animate_unclaimed_tile`, and `tick_unclaim_reverts` are registered as a second tuple tagged `.in_set(GameplaySet::Presentation)`, which the shared `GameplaySet` chain (`schedule.rs`) orders after both `GameplaySet::Beam` and `GameplaySet::Claim`. The ordering is load-bearing for two of the three: `animate_claimed_tile` reads `BeamResolved`, so running after `beam_step` (Beam plugin) means it sees a same-frame message instead of catching it one frame late; `tick_unclaim_reverts` re-checks `ClaimedTile::owner` before reverting a tile, so running after `claim_tile` (Claim plugin) means that check sees a same-frame re-claim rather than a stale value. `animate_unclaimed_tile` is grouped with the other two for consistency rather than its own ordering need — `claim_tile` only ever writes `Some(new_owner)`, never `None`, so the `Changed<ClaimedTile>` transition this system watches for (ownership cleared) is only ever produced by `reset_round` (Round plugin), which runs in the `OnExit(RoundPhase::Outcome)` schedule, before `Update` starts, so it's already settled by the time any `Presentation` member runs regardless of intra-`Update` ordering.
+## Ordering
 
-## Plugin workflow
-
-- Update phase
-    - Initialize Player Animations:
-        - Reacts to `TiledEvent<ObjectCreated>` message
-            - Reads:
-                - All `Player`-marked `TiledObject` entities and their `Entity` + `Player` components
-                - The `Sprite` component on each player's child sprite entity (to get the image handle)
-                - `GameConfig` for `config.animation.player_idle_frame_ms` (200)
-            - Writes:
-                - Inserts `PlayerOneAnimations` or `PlayerTwoAnimations` resource into the world (idle + `diag_front`/`diag_back` turn clips)
-                - Inserts `SpritesheetAnimation` on the child sprite entity
-    - Animate Player:
-        - Runs every frame
-            - Reads:
-                - All `Player`-marked entities with `LookDirection` and the optional `IsTurning` state
-                - `PlayerOneAnimations` and `PlayerTwoAnimations` resources (optional/`If`)
-                - `Sprite` and `SpritesheetAnimation` on descendant sprite entities
-            - Writes:
-                - Updates `SpritesheetAnimation` (switches active clip — the turn 3/4 pose while `IsTurning`, otherwise the idle clip for the current `LookDirection`)
-                - Updates `Sprite::flip_x` for left/right facing directions and for the mirrored side of each 3/4 pose
-    - Initialize Claimed Tile Animations:
-        - Reacts to `Added<ClaimedTile>` on newly spawned claimed tile entities
-            - Reads:
-                - `ClaimedTile` entity and its components
-                - `GameConfig` for `config.animation.tile_flip_frame_ms` (20)
-            - Writes:
-                - Builds `ClaimedTileAnimations` resource
-                - Inserts `SpritesheetAnimation`, `Sprite`, and `BounceEffect` on the claimed tile entity
-    - Animate Claimed Tile:
-        - Reacts to `BeamResolved` messages
-            - Reads:
-                - `BeamResolved` message fields (`position`, `owner`)
-                - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
-                - `ClaimedTileAnimations` resource
-            - Writes:
-                - Switches `SpritesheetAnimation` clip on the claimed tile entity to the player-color animation
-                - Inserts `BounceEffectTarget` on the claimed tile entity
-    - Animate Unclaimed Tile:
-        - Runs on `Changed<ClaimedTile>` (fires when the round reset clears a tile's `owner` back to `None`)
-            - Reads:
-                - `ClaimedTile` entities whose ownership changed, with their `GridCoords` and `SpritesheetAnimation`
-                - `ClaimedTileAnimations` resource; `MapInfo` (for the board center); `GameConfig` for `config.animation.unclaim_cascade_secs` (2.5)
-            - Writes:
-                - For a tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay is the tile's distance from the board center scaled over the cascade window — staggering the revert into a radial wave rather than reverting instantly
-    - Tick Unclaim Reverts:
-        - Runs every frame
-            - Reads:
-                - `Time`; `ClaimedTile` + `SpritesheetAnimation` + `UnclaimRevert` on scheduled tiles; `ClaimedTileAnimations` resource
-            - Writes:
-                - Ticks each `UnclaimRevert` timer; when it elapses, if the tile is still unowned, switches its `SpritesheetAnimation` to the reverse of the player-color flip it is showing (returning it to the neutral sprite), then removes `UnclaimRevert` (a tile re-claimed during the cascade is left colored)
+- The three tile systems that react to claims run in `GameplaySet::Presentation`, after the Beam and Claim stages.
+- So `animate_claimed_tile` sees a beam result in the same frame, not one frame late.
+- And `tick_unclaim_reverts` (it turns tiles back to neutral after a reset) sees a tile claimed again in the same frame.
+- `animate_unclaimed_tile` is in the same set only to keep the three together.
+- The player systems and the tile setup are not in a set. Their order does not matter.
 
 ## Plugin Systems
 
 ### Initialize Player Animations
 
-Reacts to the `TiledEvent<ObjectCreated>` message emitted by the Tiled loader when a player object is created, and reads `Res<GameConfig>` for the idle per-frame duration `config.animation.player_idle_frame_ms` (200). For each matching `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the child entity carrying a `Sprite`, reads its image handle to build a `Spritesheet`, then creates idle animation handles for the three directional variants (`idle_x`, `idle_down`, `idle_up`) plus two single-cell 3/4 turn poses (`diag_front`, `diag_back`, drawn left-facing and mirrored at runtime for the right-facing side). It stores these handles in a per-player resource (`PlayerOneAnimations` or `PlayerTwoAnimations`) and inserts a `SpritesheetAnimation` on the child sprite entity with the initial idle clip.
+- Runs when Tiled creates a player object. Finds the player's child sprite.
+- Builds three idle clips (`idle_x`, `idle_down`, `idle_up`) and two 3/4 turn poses (`diag_front`, `diag_back`).
+- The turn poses are drawn facing left and mirrored for the right side.
+- Stores the clips in `PlayerOneAnimations` or `PlayerTwoAnimations`, and starts the idle clip.
 
 ### Animate Player
 
-Runs every frame. For each `Player`-marked `TiledObject` entity, it walks the entity hierarchy to find the descendant with a `Sprite` and `SpritesheetAnimation`, then switches the active animation clip. While the player carries an active `IsTurning` state, it selects the 3/4 pose from `IsTurning::pose()` (`diag_front` for the front-facing turn, `diag_back` for the back-facing one, with `flip_x` choosing the mirrored side); otherwise it picks the idle clip for the current `LookDirection`. It also sets `Sprite::flip_x` to mirror the horizontal idle sprite when the player faces left. A turn whose waypoint queue is already empty is treated as not turning, so the idle clip shows on the frame the turn completes.
-
-### Lit overlay frame sync (PostUpdate)
-
-The tile's `SpritesheetAnimation` only advances the `TextureAtlas.index` on the tile entity's own `Sprite`. The Effects plugin's `sync_lit_overlay_frames` runs in `PostUpdate`, ordered `.after(bevy_spritesheet_animation::plugin::AnimationSystemSet)`, and copies that index onto each visible lit overlay child so the overlay always shows the same frame as the tile. This plugin does not touch the overlay and has no code dependency on it.
+- Runs every frame. While turning, shows the 3/4 pose. Otherwise, shows the idle clip for the facing.
+- Mirrors the sprite (`flip_x`) when the player faces left.
+- A turn with no step left counts as finished, so the idle clip shows on the frame the turn ends.
 
 ### Initialize Claimed Tile Animations
 
-Reacts to `Added<ClaimedTile>` — fires once for each newly spawned claimed tile entity — and reads `Res<GameConfig>` for the flip per-frame duration `config.animation.tile_flip_frame_ms` (20). Builds the `ClaimedTileAnimations` resource (if not already present) containing animation clip handles for each player color variant. Inserts `SpritesheetAnimation` (with the neutral/default clip), `Sprite`, and `BounceEffect` on the claimed tile entity so it is ready to display ownership animations.
+- Runs once for each new tile. Builds `ClaimedTileAnimations` the first time.
+- Gives the tile its neutral clip, a `Sprite` and a `BounceEffect`.
 
 ### Animate Claimed Tile
 
-Reads `BeamResolved` messages. For each message, resolves the claimed tile entity from `MapInfo::claimed_entities` using the message's `GridCoords` position. Reads the `ClaimedTileAnimations` resource to select the correct player-color clip based on the owning player id, then switches the `SpritesheetAnimation` clip on the claimed tile entity. Also inserts `BounceEffectTarget` on the claimed tile entity to trigger the bounce visual effect. The Effects plugin's `apply_bounce_effect` then inserts the bounce `TweenAnim` directly on the tile and removes the marker. The claim bounce has no tag and no effect driver.
+- Runs for each beam result. Finds the tile in `MapInfo` and switches it to the owner's color clip.
+- Adds `BounceEffectTarget`. The Effects plugin then plays the bounce directly, with no effect driver.
 
 ### Animate Unclaimed Tile
 
-The counterpart to Animate Claimed Tile, keeping tile visuals in sync when ownership is *cleared* rather than gained — the round reset (see the Round plugin doc) sets every reverted tile's `owner` back to `None`, which the authoritative claim data reflects but the sprite would not. It does **not** revert the sprite directly: because the reset clears every tile in the same frame, an immediate switch would revert the whole board at once. Instead, runs on `Changed<ClaimedTile>` and, for each tile now owned by nobody and still showing a player color, inserts an `UnclaimRevert` timer whose delay grows with the tile's distance from the board center (`MapInfo::map_size`), scaled across the cascade window `config.animation.unclaim_cascade_secs` (2.5). This spreads the reverts into a radial wave from the center outward. It reads the currently-shown clip to confirm the tile is colored, so an already-unclaimed tile is skipped, and it never fights Animate Claimed Tile (which only handles ownership *gained*).
+- Runs when a tile loses its owner and still shows a color. Only the round reset does this.
+- It does not revert the sprite at once. The reset clears all tiles in the same frame, so the whole board would flip.
+- It adds an `UnclaimRevert` timer instead. Its delay grows with the distance from the board center.
+- The delays are spread over `unclaim_cascade_secs`, so the tiles revert in a wave from the center.
 
 ### Tick Unclaim Reverts
 
-Drives the staggered revert scheduled by Animate Unclaimed Tile. Each frame it ticks every `UnclaimRevert` timer; when one elapses it switches that tile's `SpritesheetAnimation` to the reverse of the player-color flip it is displaying (`from_player_one`/`from_player_two`), animating it back to the neutral sprite, then removes `UnclaimRevert`. It first rechecks `ClaimedTile::owner`: a tile re-claimed while its delay ran down (once play resumes) is left colored rather than wrongly un-colored.
+After a round reset, each colored tile waits a short time, then turns back to neutral. This system does the waiting and the turning back.
+
+- Runs every frame. When a timer ends, plays the reverse color clip and removes `UnclaimRevert`.
+- If the tile was claimed again during the wait, it stays colored.
+
+### Lit overlay frames
+
+- This plugin only animates the tile's own sprite. It does not touch the lit overlay.
+- The Effects plugin copies the tile frame onto the overlay later, in `PostUpdate`.
 
 ## Components, Resources and Messages CRUD
 
 ### Read TiledEvent ObjectCreated messages
 
 Used in the following systems:
-- **initialize_player_animations**: used to trigger animation setup when a player Tiled object is created
+- **initialize_player_animations**: starts the setup when a player object is created.
 
 ```mermaid
 ---
@@ -128,7 +96,7 @@ message_reader ---> |reads| object_created_message
 ### Read BeamResolved messages
 
 Used in the following systems:
-- **animate_claimed_tile**: used to trigger claimed tile animation switching when a beam resolves
+- **animate_claimed_tile**: one color switch for each beam result.
 
 ```mermaid
 ---
@@ -156,7 +124,7 @@ message_reader ---> |reads| beam_resolved_message
 ### Query Player entities (attach)
 
 Used in the following systems:
-- **initialize_player_animations**: used to get the `Entity` and `Player` of each `TiledObject`-marked player entity to look up the correct sprite child and build per-player animation handles
+- **initialize_player_animations**: all player objects.
 
 ```mermaid
 ---
@@ -190,7 +158,7 @@ players_query -..-> |filter With| pe_tiled_object
 ### Query Player entities (update)
 
 Used in the following systems:
-- **animate_player**: used to get `Entity`, `Player::player_id`, `LookDirection` and the optional `IsTurning` state of each `TiledObject`-marked player entity to decide which animation clip to activate
+- **animate_player**: all player objects, with their facing and turn state.
 
 ```mermaid
 ---
@@ -228,7 +196,7 @@ players_query -..-> |filter With| pe_tiled_object
 ### Query ClaimedTile entities (attach)
 
 Used in the following systems:
-- **initialize_claimed_tile_animations**: detects newly added `ClaimedTile` entities and initializes their animation components
+- **initialize_claimed_tile_animations**: tiles added this frame.
 
 ```mermaid
 ---
@@ -260,8 +228,8 @@ claimed_tiles_query -..-> |filter Added| ct_claimed
 ### Query Children hierarchy
 
 Used in the following systems:
-- **initialize_player_animations**: walks descendants via `iter_descendants` to find the child sprite entity
-- **animate_player**: walks descendants via `iter_descendants` to find the child sprite entity
+- **initialize_player_animations**: finds the child sprite.
+- **animate_player**: finds the child sprite.
 
 ```mermaid
 ---
@@ -294,7 +262,7 @@ children_query ---> |reads| ch_children
 ### Query child Sprite (attach)
 
 Used in the following systems:
-- **initialize_player_animations**: used to find the descendant entity carrying a `Sprite` and retrieve its `image` handle to build the `Spritesheet`
+- **initialize_player_animations**: reads the sprite image to build the spritesheet.
 
 ```mermaid
 ---
@@ -324,7 +292,7 @@ sprites_query ---> |reads| ce_sprite
 ### Query child Sprite and SpritesheetAnimation (update)
 
 Used in the following systems:
-- **animate_player**: used to mutably access `Sprite::flip_x` and switch the active `SpritesheetAnimation` clip on the child sprite entity
+- **animate_player**: sets the clip and the mirroring.
 
 ```mermaid
 ---
@@ -356,8 +324,8 @@ sprites_query ---> |reads/writes| ce_anim
 ### Read MapInfo resource
 
 Used in the following systems:
-- **animate_claimed_tile**: used to resolve the `GridCoords` in the `BeamResolved` message to a claimed tile entity via `MapInfo::claimed_entities`
-- **animate_unclaimed_tile**: reads `MapInfo::map_size` to find the board center when computing each tile's radial revert delay
+- **animate_claimed_tile**: finds the tile entity at the beam result position.
+- **animate_unclaimed_tile**: finds the board center.
 
 ```mermaid
 ---
@@ -387,7 +355,7 @@ animate_unclaimed_tile ---> |reads `map_size`| map_info_res
 ### Read PlayerOneAnimations and PlayerTwoAnimations resources
 
 Used in the following systems:
-- **animate_player**: used to retrieve the animation clip handles for each player; accessed via `If<Res<...>>` (optional — skipped if not yet inserted)
+- **animate_player**: reads the clips. Skipped while they do not exist yet.
 
 ```mermaid
 ---
@@ -440,9 +408,9 @@ animate_player ---> |reads| p2_res
 ### Read ClaimedTileAnimations resource
 
 Used in the following systems:
-- **animate_claimed_tile**: used to retrieve the correct player-color animation clip handle when switching a claimed tile's animation
-- **animate_unclaimed_tile**: reads the `to_player_one`/`to_player_two` handles to confirm a tile is currently showing a player color before scheduling its revert
-- **tick_unclaim_reverts**: reads the `from_player_one`/`from_player_two` reverse handles to switch a tile back to the neutral sprite when its delay elapses
+- **animate_claimed_tile**: picks the owner's color clip.
+- **animate_unclaimed_tile**: checks that the tile still shows a color.
+- **tick_unclaim_reverts**: picks the reverse clip.
 
 ```mermaid
 ---
@@ -465,12 +433,14 @@ update -.-> tick_unclaim_reverts
 world@{ shape: st-rect, label: "World" }
 ct_anims_res@{ shape: doc, label: "ClaimedTileAnimations" }
 
+ct_anims_unclaimed>"`**unclaimed**`"]
 ct_anims_to1>"`**to_player_one**`"]
 ct_anims_to2>"`**to_player_two**`"]
 ct_anims_from1>"`**from_player_one**`"]
 ct_anims_from2>"`**from_player_two**`"]
 
 ct_anims_res --> |belongs to| world
+ct_anims_unclaimed --> |field of| ct_anims_res
 ct_anims_to1 --> |field of| ct_anims_res
 ct_anims_to2 --> |field of| ct_anims_res
 ct_anims_from1 --> |field of| ct_anims_res
@@ -484,7 +454,7 @@ tick_unclaim_reverts ---> |reads| ct_anims_res
 ### Write PlayerOneAnimations and PlayerTwoAnimations resources
 
 Used in the following systems:
-- **initialize_player_animations**: inserts `PlayerOneAnimations` or `PlayerTwoAnimations` resource into the world after building animation handles from the player's spritesheet
+- **initialize_player_animations**: one resource for each player.
 
 ```mermaid
 ---
@@ -537,7 +507,7 @@ initialize_player_animations ---> |inserts resource| p2_res
 ### Write ClaimedTileAnimations resource
 
 Used in the following systems:
-- **initialize_claimed_tile_animations**: builds and inserts the `ClaimedTileAnimations` resource into the world with clip handles for each player color
+- **initialize_claimed_tile_animations**: built once, for all tiles.
 
 ```mermaid
 ---
@@ -556,12 +526,18 @@ update -.-> initialize_claimed_tile_animations
 world@{ shape: st-rect, label: "World" }
 ct_anims_res@{ shape: doc, label: "ClaimedTileAnimations" }
 
-ct_anims_player1>"`**player1_clip**`"]
-ct_anims_player2>"`**player2_clip**`"]
+ct_anims_unclaimed>"`**unclaimed**`"]
+ct_anims_to1>"`**to_player_one**`"]
+ct_anims_to2>"`**to_player_two**`"]
+ct_anims_from1>"`**from_player_one**`"]
+ct_anims_from2>"`**from_player_two**`"]
 
 ct_anims_res --> |belongs to| world
-ct_anims_player1 --> |field of| ct_anims_res
-ct_anims_player2 --> |field of| ct_anims_res
+ct_anims_unclaimed --> |field of| ct_anims_res
+ct_anims_to1 --> |field of| ct_anims_res
+ct_anims_to2 --> |field of| ct_anims_res
+ct_anims_from1 --> |field of| ct_anims_res
+ct_anims_from2 --> |field of| ct_anims_res
 
 initialize_claimed_tile_animations ---> |inserts resource| ct_anims_res
 ```
@@ -569,7 +545,7 @@ initialize_claimed_tile_animations ---> |inserts resource| ct_anims_res
 ### Write commands (attach player animations)
 
 Used in the following systems:
-- **initialize_player_animations**: inserts `SpritesheetAnimation` on the child sprite entity after building the animation handles
+- **initialize_player_animations**: starts the idle clip on the child sprite.
 
 ```mermaid
 ---
@@ -597,7 +573,7 @@ initialize_player_animations ---> |inserts component| ce_anim
 ### Write commands (attach claimed tile animations)
 
 Used in the following systems:
-- **initialize_claimed_tile_animations**: inserts `SpritesheetAnimation`, `Sprite`, and `BounceEffect` on each newly added `ClaimedTile` entity
+- **initialize_claimed_tile_animations**: sets up each new tile.
 
 ```mermaid
 ---
@@ -631,7 +607,7 @@ initialize_claimed_tile_animations ---> |inserts component| ct_bounce
 ### Write commands (update claimed tile animation)
 
 Used in the following systems:
-- **animate_claimed_tile**: switches the `SpritesheetAnimation` clip and inserts `BounceEffectTarget` on the resolved claimed tile entity when a `BeamResolved` message is received
+- **animate_claimed_tile**: switches the clip and asks for a bounce.
 
 ```mermaid
 ---
@@ -666,7 +642,7 @@ animate_claimed_tile ---> |inserts component| ct_bounce_target
 ### Query ClaimedTile entities (schedule revert)
 
 Used in the following systems:
-- **animate_unclaimed_tile**: reacts to `Changed<ClaimedTile>` to find tiles whose ownership was just cleared, reading their `GridCoords` and `SpritesheetAnimation` to compute the radial delay and confirm the tile is still colored
+- **animate_unclaimed_tile**: tiles whose owner changed this frame.
 
 ```mermaid
 ---
@@ -702,7 +678,7 @@ claimed_tiles_query -..-> |filter Changed| ct_claimed
 ### Query UnclaimRevert entities
 
 Used in the following systems:
-- **tick_unclaim_reverts**: iterates tiles carrying a scheduled `UnclaimRevert` timer, mutating the timer and (when it elapses) the `SpritesheetAnimation`, and reading `ClaimedTile` to confirm the tile is still unowned
+- **tick_unclaim_reverts**: tiles waiting to revert.
 
 ```mermaid
 ---
@@ -738,7 +714,7 @@ reverts_query ---> |reads/writes| rt_revert
 ### Write commands (schedule unclaim revert)
 
 Used in the following systems:
-- **animate_unclaimed_tile**: inserts an `UnclaimRevert` timer component on each just-unclaimed, still-colored tile, its duration set by the tile's distance from the board center
+- **animate_unclaimed_tile**: one timer for each tile to revert.
 
 ```mermaid
 ---
@@ -766,7 +742,7 @@ animate_unclaimed_tile ---> |inserts component| ct_revert
 ### Write commands (revert unclaimed tile)
 
 Used in the following systems:
-- **tick_unclaim_reverts**: when a tile's `UnclaimRevert` timer elapses, switches its `SpritesheetAnimation` to the reverse clip (only if still unowned) and removes the `UnclaimRevert` component
+- **tick_unclaim_reverts**: reverts the tile, then removes the timer.
 
 ```mermaid
 ---
