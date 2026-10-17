@@ -108,11 +108,6 @@ pub struct MovementSlide {
 #[derive(Component)]
 pub struct RestingTranslation(pub Vec3);
 
-#[derive(Component)]
-pub struct KnockbackEffect {
-    pub direction: GridCoords,
-}
-
 /// Locks input processing while an entity is knocked back.
 #[derive(Component)]
 pub struct IsKnockedBack(pub Timer);

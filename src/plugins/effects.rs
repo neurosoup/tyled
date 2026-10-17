@@ -150,10 +150,14 @@ pub(crate) fn plugin(app: &mut App) {
         (
             apply_damage_effect.in_set(EffectsSet::Request),
             trigger_parry_scale_effect.in_set(EffectsSet::Request),
+            request_knockback_effect
+                .before(apply_translate_effect)
+                .before(apply_movement_settle)
+                .in_set(EffectsSet::Request),
             apply_translate_effect.in_set(EffectsSet::Request),
             apply_movement_settle.in_set(EffectsSet::Request),
             apply_death_effect
-                .after(apply_knockback)
+                .after(request_knockback_effect)
                 .in_set(EffectsSet::Request),
             on_effect_completed.in_set(EffectsSet::Complete),
             resolve_effect_requests.in_set(EffectsSet::Resolve),
@@ -167,7 +171,6 @@ pub(crate) fn plugin(app: &mut App) {
             sync_resting_translation
                 .before(apply_bounce_effect)
                 .before(apply_wave_effect),
-            apply_knockback.in_set(GameplaySet::Displacement),
             apply_wave_effect,
             apply_bounce_effect,
             spawn_sprite_lit_overlays,
@@ -176,7 +179,6 @@ pub(crate) fn plugin(app: &mut App) {
                 .after(spawn_sprite_lit_overlays)
                 .after(spawn_tilemap_lit_overlays),
             update_lit_overlays.after(apply_glow_effect),
-            tick_knockback_lock,
         ),
     );
     app.add_systems(
@@ -304,35 +306,19 @@ fn make_lit_image(source: &Image, lightness: f32, chroma: f32) -> Option<Image> 
     Some(image)
 }
 
-/// Moves a knocked-back entity one tile and requests its slide.
-fn apply_knockback(
-    mut commands: Commands,
+/// Requests a slide for each entity that was knocked back.
+fn request_knockback_effect(
+    mut knocked_back_reader: MessageReader<EntityKnockedBack>,
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
-    mut query: Query<
-        (Entity, &mut GridCoords, &KnockbackEffect, Has<IsDead>, Option<&Health>),
-        Added<KnockbackEffect>,
-    >,
-    map_info: Res<MapInfo>,
 ) {
-    for (entity, mut coords, knockback, is_dead, health) in &mut query {
-        let target = *coords + knockback.direction;
-        let is_lethal = health.is_some_and(|health| health.current <= 0.0);
-        if !is_dead && !is_lethal && map_info.on_ground(target) {
-            *coords = target;
-            requests.write(EffectRequest {
-                owner: entity,
-                kind: EffectKind::Knockback {
-                    ms: config.effects.knockback_tween_ms,
-                },
-            });
-            commands.entity(entity).insert(IsKnockedBack(Timer::new(
-                Duration::from_millis(config.effects.knockback_tween_ms),
-                TimerMode::Once,
-            )));
-        }
-        // Always remove, even when dead or blocked, so the marker never strands.
-        commands.entity(entity).remove::<KnockbackEffect>();
+    for message in knocked_back_reader.read() {
+        requests.write(EffectRequest {
+            owner: message.entity,
+            kind: EffectKind::Knockback {
+                ms: config.effects.knockback_tween_ms,
+            },
+        });
     }
 }
 
@@ -674,20 +660,6 @@ fn apply_death_effect(
                 decay: 0.33,
             },
         });
-    }
-}
-
-/// Ticks the knockback input lock and removes it when it ends.
-fn tick_knockback_lock(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut knocked: Query<(Entity, &mut IsKnockedBack)>,
-) {
-    for (entity, mut knockback) in &mut knocked {
-        knockback.0.tick(time.delta());
-        if knockback.0.is_finished() {
-            commands.entity(entity).remove::<IsKnockedBack>();
-        }
     }
 }
 

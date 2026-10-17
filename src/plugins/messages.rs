@@ -14,6 +14,8 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<ParryTriggered>();
     app.add_message::<BeamParried>();
     app.add_message::<MovementStopped>();
+    app.add_message::<KnockbackRequested>();
+    app.add_message::<EntityKnockedBack>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -98,4 +100,17 @@ pub struct BeamParried {
     pub new_direction: GridCoords,
     #[allow(dead_code)] // read by ability resolvers in Stage F2
     pub parries: u32,
+}
+
+// Fired when something wants to push an entity one tile.
+#[derive(Message)]
+pub struct KnockbackRequested {
+    pub entity: Entity,
+    pub direction: GridCoords,
+}
+
+// Fired when a knockback actually moved an entity.
+#[derive(Message)]
+pub struct EntityKnockedBack {
+    pub entity: Entity,
 }

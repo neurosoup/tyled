@@ -378,7 +378,6 @@ fn reset_round(
                 IsDead,
                 IsTurning,
                 IsKnockedBack,
-                KnockbackEffect,
             )>();
     }
 

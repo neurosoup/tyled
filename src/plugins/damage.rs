@@ -3,6 +3,7 @@
  */
 use std::time::Duration;
 
+use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use bevy_ecs_tiled::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
@@ -11,6 +12,13 @@ use crate::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_timer);
+    app.add_systems(
+        Update,
+        apply_knockback
+            .in_set(GameplaySet::Displacement)
+            .run_if(in_state(RoundPhase::Playing)),
+    );
+    app.add_systems(Update, tick_knockback_lock);
     app.add_systems(
         Update,
         (
@@ -46,6 +54,51 @@ fn resync_damage_timer(config: Res<GameConfig>, timer: Option<ResMut<DamageTimer
     }
 }
 
+/// Moves each knocked-back entity one tile.
+fn apply_knockback(
+    mut commands: Commands,
+    mut requested_reader: MessageReader<KnockbackRequested>,
+    mut knocked_back_writer: MessageWriter<EntityKnockedBack>,
+    config: Res<GameConfig>,
+    mut query: Query<(&mut GridCoords, Has<IsDead>, Option<&Health>)>,
+    map_info: Res<MapInfo>,
+) {
+    let mut latest: EntityHashMap<GridCoords> = EntityHashMap::default();
+    for request in requested_reader.read() {
+        latest.insert(request.entity, request.direction);
+    }
+    for (entity, direction) in latest {
+        let Ok((mut coords, is_dead, health)) = query.get_mut(entity) else {
+            continue;
+        };
+        let target = *coords + direction;
+        let is_lethal = health.is_some_and(|health| health.current <= 0.0);
+        if is_dead || is_lethal || !map_info.on_ground(target) {
+            continue;
+        }
+        *coords = target;
+        commands.entity(entity).insert(IsKnockedBack(Timer::new(
+            Duration::from_millis(config.effects.knockback_tween_ms),
+            TimerMode::Once,
+        )));
+        knocked_back_writer.write(EntityKnockedBack { entity });
+    }
+}
+
+/// Ticks the knockback input lock and removes it when it ends.
+fn tick_knockback_lock(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut knocked: Query<(Entity, &mut IsKnockedBack)>,
+) {
+    for (entity, mut knockback) in &mut knocked {
+        knockback.0.tick(time.delta());
+        if knockback.0.is_finished() {
+            commands.entity(entity).remove::<IsKnockedBack>();
+        }
+    }
+}
+
 fn deal_damage(
     entity: Entity,
     health: &mut Health,
@@ -59,7 +112,7 @@ fn deal_damage(
 }
 
 fn apply_beam_damage(
-    mut commands: Commands,
+    mut knockback_writer: MessageWriter<KnockbackRequested>,
     config: Res<GameConfig>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
     mut damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
@@ -77,7 +130,8 @@ fn apply_beam_damage(
                     config.damage.beam_contact,
                     &mut damageable_died_writer,
                 );
-                commands.entity(entity).insert(KnockbackEffect {
+                knockback_writer.write(KnockbackRequested {
+                    entity,
                     direction: beam.direction,
                 });
             }
@@ -187,5 +241,47 @@ fn apply_owned_tile_damage(
                 &mut damageable_died_writer,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy_ecs_tiled::prelude::{TilemapGridSize, TilemapSize, TilemapTileSize};
+
+    #[test]
+    fn two_knockbacks_in_one_frame_move_one_tile_in_the_last_direction() {
+        let mut app = App::new();
+        app.add_message::<KnockbackRequested>();
+        app.add_message::<EntityKnockedBack>();
+        app.insert_resource(
+            ron::from_str::<GameConfig>(include_str!("../../assets/game_config.ron")).unwrap(),
+        );
+        let mut map_info = MapInfo {
+            map_size: TilemapSize::new(4, 4),
+            grid_size: TilemapGridSize::new(16.0, 16.0),
+            tile_size: TilemapTileSize::new(16.0, 16.0),
+            ..default()
+        };
+        for x in 0..4 {
+            for y in 0..4 {
+                map_info
+                    .ground_entities
+                    .insert(GridCoords { x, y }, Entity::PLACEHOLDER);
+            }
+        }
+        app.insert_resource(map_info);
+        app.add_systems(Update, apply_knockback);
+        let entity = app.world_mut().spawn(GridCoords { x: 1, y: 1 }).id();
+        for direction in [GridCoords { x: 1, y: 0 }, GridCoords { x: 0, y: 1 }] {
+            app.world_mut()
+                .write_message(KnockbackRequested { entity, direction });
+        }
+        app.update();
+        assert_eq!(
+            app.world().get::<GridCoords>(entity),
+            Some(&GridCoords { x: 1, y: 2 })
+        );
+        assert!(app.world().get::<IsKnockedBack>(entity).is_some());
     }
 }
