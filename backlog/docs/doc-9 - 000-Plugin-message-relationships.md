@@ -20,7 +20,7 @@ For the links through game states, see [doc-24 Plugin state relationships](/docu
 ## Notes
 
 - The Round plugin has three nodes, one per submodule (`state`, `intro`, `outcome`).
-- Maps and Round (outcome) have no edges. They react to state changes, not to messages.
+- Maps and Round (outcome) have no edges. They react only to state changes.
 - `EffectRequest` stays inside the Effects plugin, so the diagram does not show it.
 - `TileClaimed`, `ChargeSpent` and `ChargeRegen` have no readers yet. They are hooks for future beam abilities.
 - If one entity gets several `KnockbackRequested` in the same frame, only the last one applies.

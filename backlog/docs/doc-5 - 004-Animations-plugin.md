@@ -9,12 +9,12 @@ updated_date: '2026-10-17 12:00'
 
 This plugin plays the spritesheet animations of the players and the tiles. A player shows the clip for its facing, or a 3/4 pose while it turns. A tile flips to its owner's color when claimed, and flips back in a wave from the center when the round resets.
 
-HUD animations (bars and number counters) live in the HUD plugin, not here.
+HUD animations (bars and number counters) live in the HUD plugin.
 
 ## Ordering
 
 - The three tile systems that react to claims run in `GameplaySet::Presentation`, after the Beam and Claim stages.
-- So `animate_claimed_tile` sees a beam result in the same frame, not one frame late.
+- So `animate_claimed_tile` sees a beam result in the same frame.
 - And `tick_unclaim_reverts` (it turns tiles back to neutral after a reset) sees a tile claimed again in the same frame.
 - `animate_unclaimed_tile` is in the same set only to keep the three together.
 - The player systems and the tile setup are not in a set. Their order does not matter.
@@ -47,8 +47,8 @@ HUD animations (bars and number counters) live in the HUD plugin, not here.
 ### Animate Unclaimed Tile
 
 - Runs when a tile loses its owner and still shows a color. Only the round reset does this.
-- It does not revert the sprite at once. The reset clears all tiles in the same frame, so the whole board would flip.
-- It adds an `UnclaimRevert` timer instead. Its delay grows with the distance from the board center.
+- It adds an `UnclaimRevert` timer. Its delay grows with the distance from the board center.
+- The reset clears all tiles in the same frame. The timers spread the flips over time.
 - The delays are spread over `unclaim_cascade_secs`, so the tiles revert in a wave from the center.
 
 ### Tick Unclaim Reverts
@@ -60,7 +60,7 @@ After a round reset, each colored tile waits a short time, then turns back to ne
 
 ### Lit overlay frames
 
-- This plugin only animates the tile's own sprite. It does not touch the lit overlay.
+- This plugin animates only the tile's own sprite.
 - The Effects plugin copies the tile frame onto the overlay later, in `PostUpdate`.
 
 ## Components, Resources and Messages CRUD

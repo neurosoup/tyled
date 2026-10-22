@@ -7,7 +7,7 @@ updated_date: '2026-10-17 12:00'
 ---
 # Plugin State Relationships
 
-Some plugins are linked through game states, not through messages. A plugin can run only in one state, run once when a state starts or ends, or move the game to a new state. The diagram below shows each of these links.
+Some plugins are also linked through game states. A plugin can run only in one state, run once when a state starts or ends, or move the game to a new state. The diagram below shows each of these links.
 
 For the links through messages, see [doc-9 Plugin message relationships](/documentation/9/000-plugin-message-relationships).
 
@@ -22,6 +22,67 @@ For the links through messages, see [doc-9 Plugin message relationships](/docume
 
 - `AppState` (`menu.rs`): `MainMenu` → `InRound`. It never goes back.
 - `RoundPhase` (`round/state.rs`): `Loading` → `Starting` → `Playing` → `Outcome` → `Starting` again.
+
+## States and GameplaySet
+
+The two state machines decide *when* systems run. The `GameplaySet` chain (`schedule.rs`) decides *in which order* they run inside one frame.
+
+- `AppState` changes only once: from the menu to the round. `InRound` loads the maps, and that starts `RoundPhase`.
+- `RoundPhase` loops for each round: `Starting` (intro) → `Playing` → `Outcome` (result) → `Starting`.
+- In Bevy, a set (`SystemSet`) is a named group of systems. You can order a whole group with one rule.
+- `GameplaySet` is a list of stages in `Update`, from `BotThink` to `HudSync`. Each plugin puts its systems in a stage.
+- All stages run only during `Playing`, except `Presentation` and `HudSync`, which always run.
+- `RoundResolution` is the stage that ends a round. It moves the game to `Outcome`.
+- The systems that change `RoundPhase` are in `RoundPhaseWriter`. Each runs in a different phase, so their order does not matter.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef always stroke-dasharray: 5 5
+
+subgraph app ["AppState"]
+  main_menu(["MainMenu"]) --> in_round(["InRound"])
+end
+
+subgraph round ["RoundPhase"]
+  loading(["Loading"]) --> starting(["Starting"]) --> playing(["Playing"]) --> outcome(["Outcome"]) --> starting
+end
+
+in_round ---> |loads the maps| loading
+
+subgraph chain ["GameplaySet chain (Update, top to bottom)"]
+  bot_think["`**BotThink**
+  bots pick their keys`"]
+  input["`**Input**
+  keys become moves and shots`"]
+  movement["`**Movement**
+  characters move`"]
+  beam["`**Beam**
+  beams spawn, get parried, move`"]
+  claim["`**Claim**
+  tiles get an owner`"]
+  economy["`**Economy**
+  charges grow or shrink`"]
+  damage["`**Damage**
+  players lose health`"]
+  displacement["`**Displacement**
+  knockback pushes players`"]
+  presentation["`**Presentation**
+  animations and effects`"]:::always
+  round_resolution["`**RoundResolution**
+  checks if the round ends`"]
+  hud_sync["`**HudSync**
+  HUD bars and numbers`"]:::always
+  bot_think --> input --> movement --> beam --> claim --> economy --> damage --> displacement --> presentation --> round_resolution --> hud_sync
+end
+
+playing -.-> |"gates every stage except the dashed ones"| chain
+round_resolution ---> |"ends the round (Playing → Outcome)"| outcome
+```
 
 ## Notes
 

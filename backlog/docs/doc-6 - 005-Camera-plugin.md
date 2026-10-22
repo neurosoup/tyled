@@ -41,7 +41,7 @@ Four cameras are active at runtime:
 ### Initialize HUD Rendering
 
 - Runs when the HUD map is loaded. Puts the whole HUD map on layer 1.
-- So the HUD is drawn only by the HUD camera, never by the main camera.
+- So only the HUD camera draws the HUD.
 
 ### Update Camera
 

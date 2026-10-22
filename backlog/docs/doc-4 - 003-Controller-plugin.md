@@ -7,7 +7,7 @@ updated_date: '2026-10-17 12:00'
 ---
 # Controller Plugin
 
-This plugin moves a character to the tile it asked for, if the move is legal. A move into an enemy beam or into another character does not move anyone. It asks for a knockback instead, and the Damage plugin applies it.
+This plugin moves a character to the tile it asked for, if the move is legal. A move into an enemy beam or into another character asks for a knockback, and the Damage plugin applies it.
 
 ## Plugin Systems
 
@@ -29,7 +29,7 @@ This plugin moves a character to the tile it asked for, if the move is legal. A 
 
 ### Knockback order
 
-- This plugin never moves a character because of a knockback. The Damage plugin does that later.
+- The Damage plugin moves knocked-back characters, later in the frame.
 - If one entity gets several knockbacks in a frame, only the last one applies.
 - Beam damage writes its knockback after this plugin, so a beam hit wins over a walk-in or a bump.
 
