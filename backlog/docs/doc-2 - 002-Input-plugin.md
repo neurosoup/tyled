@@ -7,7 +7,7 @@ updated_date: '2026-10-17 12:00'
 ---
 # Input Plugin
 
-This plugin reads the player keys and turns them into move, shoot and stop messages. It also sets up the input on each new player and turns characters in place when they face a new direction. A bot player has no key map: the Bot plugin fills the same action state, earlier in the same frame.
+This plugin reads the player keys and turns them into move, shoot, parry and stop messages. It also sets up the input on each new player and turns characters in place when they face a new direction. A bot player has no key map: the Bot plugin fills the same action state, earlier in the same frame.
 
 The plugin also registers the `InputManagerPlugin` and the `TweeningPlugin`.
 
@@ -16,14 +16,16 @@ The plugin also registers the `InputManagerPlugin` and the `TweeningPlugin`.
 ### Attach Players Actions
 
 - Runs in `PreUpdate`, once for each new player.
-- A human seat gets an `InputMap`. A bot seat gets a bare `ActionState` and the `Bot` marker instead.
+- A human seat gets an `InputMap`. A bot seat gets a bare `ActionState` and the `Bot` marker.
 - Both kinds of seat also get `MoveRepeat` and `MovementSlide`.
 
 ### Handle Characters Input
 
 - Runs in `Update`, only during `Playing`. Skips knocked-back and dead characters.
-- **Lock** switches the direction lock on or off. A locked character never turns.
-- **Shoot** fires only if a charge is left. From a claimed tile it also needs `Lance`, else nothing is spent.
+- **Lock** keeps the facing locked while the key is held. A locked character never turns.
+- **Shoot** first looks for a beam to parry: an enemy beam about to hit the player, while the player faces it.
+- If it finds one, it writes `ParryTriggered`. No beam is fired and no charge is spent.
+- Else it fires if a charge is left. From a claimed tile it also needs `Lance`. A blocked shot spends nothing.
 - Lock and Shoot also work during a turn.
 - **Release** after moving asks for a settle effect and resets the repeat, so the next press steps at once.
 - **New facing** (unlocked): the facing changes at once and a turn starts.
@@ -258,6 +260,70 @@ update -.-> handle_characters_input
 beam_fired_message(["`**BeamFired**`"])
 
 handle_characters_input ---> |writes| beam_fired_message
+```
+
+### Read live beams (parry check)
+
+Used in the following systems:
+- **handle_characters_input**: looks for an enemy beam to parry when Shoot is pressed.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+handle_characters_input["`**handle_characters_input**`"]
+
+update -.-> handle_characters_input
+
+beams_query{{"`beams`"}}:::query
+handle_characters_input ---> beams_query
+
+beam_entity@{ shape: st-rect, label: "Beam" }
+be_entity>"`**Entity**`"] --> |belongs to| beam_entity
+be_grid_coords>"`**GridCoords**`"] --> |belongs to| beam_entity
+be_beam>"`**Beam**`"] --> |belongs to| beam_entity
+be_character>"`**Character**`"]
+
+beams_query ---> |reads| be_entity
+beams_query ---> |reads| be_grid_coords
+beams_query ---> |"reads owner, direction, behavior, step_timer"| be_beam
+beams_query -..-> |filter Without| be_character
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+config_res --> |belongs to| world
+handle_characters_input ---> |"reads `parry.window_fraction`"| config_res
+```
+
+### Write ParryTriggered messages
+
+Used in the following systems:
+- **handle_characters_input**: one message for each parry.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+handle_characters_input["`**handle_characters_input**`"]
+
+update -.-> handle_characters_input
+
+parry_triggered_message(["`**ParryTriggered**`"])
+
+handle_characters_input ---> |writes| parry_triggered_message
 ```
 
 ### Write MovementStopped messages
