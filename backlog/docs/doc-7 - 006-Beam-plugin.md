@@ -3,78 +3,84 @@ id: doc-7
 title: '[006] Beam plugin'
 type: other
 created_date: '2026-03-08 17:04'
-updated_date: '2026-09-15 12:00'
+updated_date: '2026-10-17 12:00'
 ---
 # Beam Plugin
 
-Contains systems responsible for spawning and stepping beam projectiles fired by players, and for spending the firing player's beam charges. Tile ownership is handled separately by the Claim plugin, which reacts to the `BeamResolved` messages this plugin emits. When a player shoots, a `Beam` entity is created at the player's current grid position and advances one tile per beam-step timer tick in the firing direction. Each beam carries a resolved execution mode, `Beam::behavior` (`BeamBehavior`). `spawn_beam` resolves the shot with `resolve_fire`, which yields one of three outcomes based on firing context and the player's drafted abilities:
+This plugin spawns a beam when a player shoots, moves it one tile at a time, and ends it on the tile it claims. It also handles parries: a parried beam turns around, changes owner and gets faster. The Claim plugin then changes the tile owner.
 
-- **No beam** — firing from an already-claimed tile is refused: `resolve_fire` returns nothing and `spawn_beam` skips the spawn entirely, spending no charge. The Input plugin applies the same check before writing `BeamFired`, so a refused shot normally never reaches `spawn_beam` at all; `spawn_beam` still re-checks `resolve_fire` itself, since the origin's claim state can change between the input tick and the message being read, and that `None` branch spends nothing. The `Lance` ability is the sole exception (below).
-- **Straight** (the baseline): the mode for any shot fired from unclaimed ground. It advances until it leaves the map bounds or the next tile is already claimed, resolving at the last unclaimed position (at minimum its own origin).
-- **Lance** (a drafted ability): advances through claimed and forbidden tiles until the next tile would be unclaimed, resolving on that unclaimed tile; despawns silently if none is found before the edge. `spawn_beam` selects it only when the beam is fired from already-claimed ground **and** the firing player's `AbilityList` contains `AbilityDescriptor::Lance` (see the Abilities plugin doc) — it is what lets a player fire from their own territory at all.
+## Key ideas
 
-Charges are spent **on fire**, not on resolve: once `resolve_fire` yields a behavior, `spawn_beam` decrements the owner's `BeamCharges::current`, increments `InFlightBeamCount::current`, and emits `ChargeSpent`, all before the `Beam` entity is spawned. A shot refused by `resolve_fire` costs nothing; the only shot that spends a charge without claiming anything is a `Lance` that reaches the map edge unclaimed. `InFlightBeamCount` is a per-player component, synchronously maintained (incremented here, decremented in `beam_step` via `end_beam`) so other plugins can read an always-current in-flight count instead of scanning `Query<&Beam>`, which lags a frame behind `Commands::spawn`/`despawn` (see the lifecycle section below). When a beam resolves, `BeamResolved` is emitted and the beam is despawned via `end_beam` (which also releases the in-flight slot); the Claim plugin reads that message to update ownership and emit `TileClaimed`; `claim_tile` runs in `GameplaySet::Claim`, which the shared `GameplaySet` chain (`schedule.rs`) orders after this plugin's `GameplaySet::Beam`, so a same-frame claim is visible to anything reading `ClaimedTileCount` later that frame.
+- A beam is an invisible logic object. The tiles bounce under it to show where it is.
+- `caster` is the player who fired the beam. `owner` is the player it claims for. A parry changes only `owner`.
+- A charge is spent when a beam spawns. A blocked shot and a parry cost nothing.
+- `InFlightBeamCount` is the number of beams that a player has on the board right now (see the lifecycle below).
 
-## Plugin workflow
+## Beam abilities
 
-- Startup phase
-    - `setup_beam_step_timer` inserts the `BeamStepTimer` resource (repeating, period `config.timing.beam_step_secs`, default 0.0625 s).
-- Update phase
-    - Spawn Beam:
-        - Reacts to `BeamFired` message
-            - Reads:
-                - `BeamFired` message fields (`owner`, `origin`, `direction`)
-                - `Beam` and `GridCoords` components on active beams (to detect lane overlap)
-                - `AbilityList` on the firing player (to check for the `Lance` descriptor)
-                - `MapInfo` resource and `ClaimedTile` components (to check whether the origin tile is already claimed)
-                - `BeamCharges` and `InFlightBeamCount` on the firing player entity
-            - Writes:
-                - Calls `resolve_fire`; when it returns no behavior (origin already claimed and no `Lance`), skips the message — no `Beam` is spawned and nothing is spent
-                - Otherwise, decrements the owner's `BeamCharges::current` (saturating at zero), increments the owner's `InFlightBeamCount::current`, and emits a `ChargeSpent` message (`owner`, `amount`)
-                - Spawns a `Beam` entity with `GridCoords` and `Beam{owner,direction,speed,behavior}`, where `behavior` is `BeamBehavior::Lance` when the origin is claimed **and** the owner has drafted `Lance`, otherwise `BeamBehavior::Straight`
-                - Also inserts `WaveSource` and `BounceEffect` together unless the owner already has an active beam on the same row (horizontal fire) or same column (vertical fire) — a lane-suppressed beam gets neither, so it triggers no tile bounce (the beam glow telegraph is unaffected; see Spawn Beam below)
-    - Beam Step:
-        - Runs on every `BeamStepTimer` tick (62.5 ms)
-            - Reads:
-                - `Beam` component (`owner`, `direction`, `behavior`)
-                - `MapInfo` resource (for bounds check and tile entity lookup)
-                - `ClaimedTile` component on ground tile entities (for claimed-tile check)
-            - Writes:
-                - Advances `GridCoords` of the beam if the next tile is valid and unclaimed
-                - Writes a `BeamResolved` message and, via the shared `end_beam` helper, decrements the beam's owner's `InFlightBeamCount::current` and despawns the beam when it must stop (a `Straight` beam is only ever fired from unclaimed ground, so it always resolves on an unclaimed tile; a `Lance` beam that finds no unclaimed tile before the edge despawns silently, still releasing its owner's in-flight slot)
+- `Lance`: the player can shoot from a claimed tile. The beam goes over claimed tiles and claims the first free one.
+- `BorderGrinder`: a `Straight` beam that hits an enemy tile claims that enemy tile.
+
+## Ordering
+
+- `spawn_beam`, `resolve_parry` and `beam_step` run in this order, in `GameplaySet::Beam`, only during `Playing`.
+- The Claim stage runs after this one, so a tile claimed in this frame is already visible later in the frame.
 
 ## Plugin Systems
 
-### Setup Beam Step Timer
-
-Runs once at startup. Inserts the `BeamStepTimer` resource — a repeating `Timer` whose period is `config.timing.beam_step_secs` (default 0.0625 s) — that gates how frequently each beam advances by one tile.
-
 ### Spawn Beam
 
-Reacts to `BeamFired` messages. `resolve_fire` decides the behavior from whether the origin tile is already claimed (`MapInfo` + `ClaimedTile`) and whether the firing player's `AbilityList` has `AbilityDescriptor::Lance`: claimed-without-`Lance` yields no behavior and `spawn_beam` skips the spawn entirely, spending nothing; claimed-with-`Lance` yields `BeamBehavior::Lance`; unclaimed yields `BeamBehavior::Straight`. Only once a behavior is resolved does `spawn_beam` spend anything: it decrements `BeamCharges::current` (saturating at zero), increments `InFlightBeamCount::current`, and emits `ChargeSpent` (`owner`, `amount`) — all before the `Beam` entity is spawned, so spend, in-flight bump, and spawn happen atomically. The resulting `Changed<BeamCharges>` drives the digit flip-counter animation in the Animations plugin. A spawned beam carries `GridCoords` (set to `origin`) and `Beam{owner, direction, speed, behavior}`. `WaveSource` and `BounceEffect` are inserted together, only when the owner has no existing beam on the same lane — suppressed for a horizontal beam if another of the owner's beams shares the same row and is also horizontal, and likewise for a vertical beam sharing a column — preventing overlapping visual effects on shared paths. `WaveSource` (Effects plugin) is what makes the beam eligible to bounce the claimed tile beneath it (`apply_wave_effect`); a lane-suppressed beam gets neither component, so it never triggers a tile bounce, but it is unaffected for the beam glow telegraph, which reacts to any `With<Beam>` entity regardless of lane suppression. No sprite or transform is set up here; visual representation is handled by the effects/animations plugins reacting to `BounceEffect`/`WaveSource` and to the beam's own `GridCoords`.
+- Runs for each fire message. `resolve_fire` picks the beam type from the tile the player stands on:
+- The player stands on a free tile: the beam is a `Straight` beam.
+- The player stands on a claimed tile and has the `Lance` ability: the beam is a `Lance` beam.
+- The player stands on a claimed tile without the `Lance` ability: no beam, and no charge is spent.
+- A `Straight` beam goes forward until a claimed tile or the map edge. It claims the last free tile before it stops.
+- A `Lance` beam goes over claimed tiles. It claims the first free tile it finds, or nothing if it reaches the edge.
+- The Input plugin does the same check, but the tile can change before this system runs, so it checks again.
+- When a beam spawns: one charge is spent, `InFlightBeamCount` goes up, and `ChargeSpent` is written.
+- The beam starts with zero parries and its own step timer. It takes its first step on its spawn frame.
+- It gets `WaveSource` and `BounceEffect` (the tile bounce), unless its caster already has a beam in the same lane.
+- `WaveSource` makes each tile bounce when the beam steps on it. This bounce is the wave that players see.
+- Same lane means the same row for horizontal beams, or the same column for vertical ones. The glow shows for every beam.
+
+### Resolve Parry
+
+- Reads `ParryTriggered`. The Input plugin writes it when a player shoots while facing a beam that is about to hit them.
+- "About to hit" means: in the first `window_fraction` of the beam's step, and the beam can claim the player's tile.
+- The beam turns around, its `owner` becomes the parrier, and its parry count goes up by one.
+- Each parry divides the step time by `speed_multiplier`, but never below `min_step_secs`.
+- Its timer restarts, ready to step. Then `BeamParried` is written for the Effects and Hitstop plugins.
+- Only the first parry of a beam in a frame counts. A player cannot parry a beam they already own.
 
 ### Beam Step
 
-Runs every `BeamStepTimer` tick. For each `Beam`, computes the next grid position (`current + direction`) and matches on `Beam::behavior` for the stopping rules. Every stopping path ends the beam via the shared `end_beam(commands, beam_entity, owner, in_flight)` helper rather than a bare despawn: it decrements `InFlightBeamCount::current` (saturating at zero) synchronously, then queues the despawn via `Commands` — so the in-flight release always happens in lockstep with the despawn, whether or not that stop also emits `BeamResolved`.
+- Ticks the timer of each beam. A beam moves one tile each time its timer ends.
+- A beam always ends through `end_beam`: it lowers the caster's `InFlightBeamCount`, then despawns the beam.
+- `end_beam` is a small helper function. Every case where a beam stops calls it, so the count always stays right.
 
-**Straight** (`BeamBehavior::Straight` — the default mode):
-1. **Out of bounds** — if the next position is not on ground, back up through any forbidden areas; if the current position is unclaimed emit `BeamResolved` for it, then end the beam via `end_beam`.
-2. **Already claimed** — if the `ClaimedTile` entity at the next position already has an owner, back up through forbidden areas; if the current position is unclaimed emit `BeamResolved` for it, then end the beam via `end_beam`.
-3. Otherwise — advance: `GridCoords` is overwritten with the next position (which triggers `apply_translate_effect` in the Effects plugin to tween the sprite).
+**Straight**
 
-   A `Straight` beam is only ever fired from unclaimed ground (a claimed-tile shot is refused unless the player has `Lance`, which fires `Lance` instead), so it always resolves on an unclaimed tile and always emits `BeamResolved`.
+- Next tile is off the map: step back out of forbidden tiles, then claim the current tile if it is free.
+- Next tile is claimed: same as above. But if the caster has `BorderGrinder` and the tile is an enemy's, claim that tile.
+- Otherwise: move one tile.
 
-**Lance** (`BeamBehavior::Lance` — selected contextually; see Spawn Beam above):
-1. **Out of bounds** — if the next position is neither on ground nor in forbidden areas, end the beam via `end_beam` with no `BeamResolved` emitted (no tile claimed) — the owner's in-flight slot is still released.
-2. **Next tile is unclaimed ground** — emit `BeamResolved` for `next_position` (the unclaimed tile itself), then end the beam via `end_beam`.
-3. Otherwise (claimed or forbidden tile ahead) — advance.
+**Lance**
+
+- Next tile is off the map (not ground, not forbidden): the beam ends and claims nothing.
+- Next tile is free ground: claim it, then end.
+- Otherwise (claimed or forbidden tile): move one tile.
+
+### Resync Beam Step Timers (dev only)
+
+- Only in dev builds. When the config reloads, it gives every live beam its new step time.
+- Runs before `beam_step`, because both change `Beam`.
 
 ## Components, Resources and Messages CRUD
 
 ### Read BeamFired messages
 
 Used in the following systems:
-- **spawn_beam**: used to trigger beam entity creation, the charge spend, and the `InFlightBeamCount` increment
+- **spawn_beam**: one shot for each message.
 
 ```mermaid
 ---
@@ -102,7 +108,7 @@ message_reader ---> |reads| beam_fired_message
 ### Query Beam entities (spawn)
 
 Used in the following systems:
-- **spawn_beam**: reads `Beam.owner`, `Beam.direction`, and `GridCoords` of all active beams to detect lane overlap before deciding whether to insert `WaveSource` + `BounceEffect`
+- **spawn_beam**: checks the caster's live beams for one in the same lane.
 
 ```mermaid
 ---
@@ -134,7 +140,7 @@ beams_query ---> |reads| be_grid_coords
 ### Read behavior-selection inputs (spawn)
 
 Used in the following systems:
-- **spawn_beam**: to resolve the shot via `resolve_fire`, reads the firing player's `AbilityList` (for the `Lance` descriptor) and `MapInfo.claimed_entities` + the `ClaimedTile.owner` at the origin (to test whether the origin tile is already claimed). A claimed origin without `Lance` yields no beam; a claimed origin with `Lance` yields `Lance`; an unclaimed origin yields `Straight`.
+- **spawn_beam**: checks the tile under the player and the `Lance` ability.
 
 ```mermaid
 ---
@@ -173,7 +179,7 @@ spawn_beam ---> |reads `claimed_entities`| map_info_res
 ### Read MapInfo resource (beam step)
 
 Used in the following systems:
-- **beam_step**: checks `on_ground()` and `on_forbidden_areas()` for the next position and resolves tile entities via `claimed_entities`
+- **beam_step**: checks the next tile: ground, forbidden or off the map.
 
 ```mermaid
 ---
@@ -196,12 +202,13 @@ map_info_res --> |belongs to| world
 
 beam_step ---> |reads `on_ground`| map_info_res
 beam_step ---> |reads `claimed_entities`| map_info_res
+beam_step ---> |reads `on_forbidden_areas`| map_info_res
 ```
 
-### Write commands — spawn Beam entity
+### Write commands: spawn Beam entity
 
 Used in the following systems:
-- **spawn_beam**: spawns a new `Beam` entity with grid position, beam data, and (unless lane-suppressed) `WaveSource` + `BounceEffect`
+- **spawn_beam**: the bounce components are left out when the lane is already used.
 
 ```mermaid
 ---
@@ -238,7 +245,7 @@ spawn_beam ---> |spawns entity with| be_bounce
 ### Query Beam entities
 
 Used in the following systems:
-- **beam_step**: reads `Beam` (owner + direction) and writes `GridCoords` on all active beam entities each timer tick
+- **beam_step**: all live beams. It ticks their timers and moves them.
 
 ```mermaid
 ---
@@ -265,14 +272,14 @@ be_beam>"`**Beam**`"] --> |belongs to| beam_entity
 be_grid_coords>"`**GridCoords**`"] --> |belongs to| beam_entity
 
 beams_query ---> |reads| be_entity
-beams_query ---> |reads| be_beam
+beams_query ---> |"reads, ticks step_timer"| be_beam
 beams_query ---> |writes| be_grid_coords
 ```
 
 ### Query ClaimedTile (beam step)
 
 Used in the following systems:
-- **beam_step**: checks whether the next ground tile's `ClaimedTile` already has an owner to decide if the beam must stop (Straight mode) or is unclaimed and should trigger resolution (Lance mode)
+- **beam_step**: checks if the next tile has an owner.
 
 ```mermaid
 ---
@@ -303,7 +310,7 @@ claimed_query ---> |reads| ct_claimed
 ### Write BeamResolved messages
 
 Used in the following systems:
-- **beam_step**: emits a `BeamResolved` message with the beam's current position and owner when the beam stops (out of bounds or claimed tile hit)
+- **beam_step**: one message for each claimed tile.
 
 ```mermaid
 ---
@@ -324,10 +331,10 @@ beam_resolved_message(["`**BeamResolved**`"])
 beam_step ---> |writes| beam_resolved_message
 ```
 
-### Write commands — despawn Beam entity
+### Write commands: despawn Beam entity
 
 Used in the following systems:
-- **beam_step**: via the shared `end_beam` helper, despawns the beam entity when a stopping condition is met (after emitting `BeamResolved`, if any), synchronously decrementing the owner's `InFlightBeamCount` in the same call
+- **beam_step**: through `end_beam`, which also lowers the caster's in-flight count.
 
 ```mermaid
 ---
@@ -351,7 +358,7 @@ beam_step ---> |despawns via end_beam| beam_entity
 ### Query BeamCharges and InFlightBeamCount (spawn_beam)
 
 Used in the following systems:
-- **spawn_beam**: reads and mutably decrements `BeamCharges::current`, and increments `InFlightBeamCount::current`, on the firing player entity — once per committed shot (i.e. only when `resolve_fire` yields a behavior)
+- **spawn_beam**: one charge less and one in-flight beam more, for each beam spawned.
 
 ```mermaid
 ---
@@ -385,7 +392,7 @@ owner_state_query ---> |"writes (increments)"| pe_in_flight_current
 ### Write ChargeSpent messages
 
 Used in the following systems:
-- **spawn_beam**: emits a `ChargeSpent` message (`owner`, `amount`) each time a charge is spent on fire, i.e. each time `resolve_fire` yields a behavior (no consumers yet)
+- **spawn_beam**: one message for each beam spawned. No plugin reads it yet.
 
 ```mermaid
 ---
@@ -406,15 +413,119 @@ charge_spent_message(["`**ChargeSpent**`"])
 spawn_beam ---> |writes| charge_spent_message
 ```
 
+### Read AbilityList (beam step)
+
+Used in the following systems:
+- **beam_step**: checks if the caster has `BorderGrinder`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+beam_step["`**beam_step**`"]
+
+update -.-> beam_step
+
+ability_query{{"Query#60;#38;AbilityList#62;"}}:::query
+beam_step ---> ability_query
+
+caster_entity@{ shape: st-rect, label: "Player (caster)" }
+ce_ability>"`**AbilityList**`"] --> |belongs to| caster_entity
+ability_query ---> |reads| ce_ability
+```
+
+### Read ParryTriggered, write Beam and BeamParried (resolve_parry)
+
+Used in the following systems:
+- **resolve_parry**: turns the parried beam around, gives it to the parrier, and writes `BeamParried`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+resolve_parry["`**resolve_parry**`"]
+
+update -.-> resolve_parry
+
+message_reader{{"MessageReader#60;ParryTriggered#62;"}}:::reader
+resolve_parry ---> message_reader
+parry_triggered_message(["`**ParryTriggered**`"])
+message_reader ---> |reads| parry_triggered_message
+
+beams_query{{"`beams`"}}:::query
+resolve_parry ---> beams_query
+
+beam_entity@{ shape: st-rect, label: "Beam" }
+be_beam>"`**Beam**`"] --> |belongs to| beam_entity
+beams_query ---> |"writes direction, owner, parries, step_timer"| be_beam
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+config_res --> |belongs to| world
+resolve_parry ---> |reads `parry` + `timing`| config_res
+
+beam_parried_message(["`**BeamParried**`"])
+resolve_parry ---> |writes| beam_parried_message
+```
+
+### Write Beam step timers (resync_beam_step_timers, dev only)
+
+Used in the following systems:
+- **resync_beam_step_timers**: sets the new step time on every live beam when the config changes.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+resync_beam_step_timers["`**resync_beam_step_timers**`"]
+
+update -.-> resync_beam_step_timers
+
+beams_query{{"`beams`"}}:::query
+resync_beam_step_timers ---> beams_query
+
+beam_entity@{ shape: st-rect, label: "Beam" }
+be_beam>"`**Beam**`"] --> |belongs to| beam_entity
+beams_query ---> |"writes step_timer duration"| be_beam
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+config_res --> |belongs to| world
+resync_beam_step_timers ---> |"reads (only when changed)"| config_res
+```
+
 ### InFlightBeamCount component lifecycle
 
-`InFlightBeamCount { current: u32 }` (`src/components/beam.rs`) is a per-player counter, synchronously maintained so readers never see the `Commands` spawn/despawn latency of `Beam` entities. Its full lifecycle:
-- **Inserted** by `initialize_players` (Maps plugin), defaulted to `0`, alongside `BeamCharges` and `ClaimedTileCount`.
-- **Incremented** by `spawn_beam` (this plugin), in the same loop iteration as the charge spend, only when `resolve_fire` yields a behavior.
-- **Decremented** by `beam_step` (this plugin), via the shared `end_beam` helper, at each of its despawn call-sites — unconditionally, whether or not that stop also emits `BeamResolved`.
-- **Reset to `0`** by `reset_round` (Round plugin), alongside the other per-player counters, on every round reset.
-- **Read** by `animate_charges_bar` (HUD plugin), added into that player's charges-bar ratio so a fired-but-unresolved beam still counts toward it without the frame-lag a live `Query<&Beam>` scan would introduce.
-- **Read** by `resolve_charge_exhaustion` (Round plugin), in place of a `Query<With<Beam>>` scan, to wait for the board to fully settle (no player's beams still in flight) before ending a round on mutual charge exhaustion.
+- The number of beams that a player has on the board right now.
+- Bevy applies the spawn or despawn of a `Beam` entity later. So counting `Beam` entities can give an old number.
+- This counter changes in the same system that spawns or ends the beam. Every system that reads it after that gets the right number.
+- **Inserted** at 0 by `initialize_players` (Maps plugin).
+- **Increased** by `spawn_beam` when a beam spawns. **Decreased** by `beam_step` (through `end_beam`) on the caster.
+- **Reset** to 0 by `reset_round` (Round plugin).
+- **Read** by `animate_charges_bar` (HUD), so a beam still in flight counts in the charges bar.
+- **Read** by `resolve_charge_exhaustion` (Round), to wait until no beam is in flight before ending the round.
 
 ```mermaid
 ---
