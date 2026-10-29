@@ -3,226 +3,216 @@ id: doc-10
 title: '[008] Effects plugin'
 type: other
 created_date: '2026-06-15 12:00'
-updated_date: '2026-10-16 12:00'
+updated_date: '2026-10-22 12:00'
 ---
 # Effects Plugin
 
-Contains systems responsible for all visual effects applied to game entities: smooth translation tweens for moving entities, knockback and death-bounce animations for players, bounce and wave animations for beams and claimed tiles, color-flash feedback when a player takes damage, a beam glow telegraph that crossfades each tile a beam crosses to a lit copy of its own colors (with a weaker glow on the four orthogonal neighbors and on the tile two steps ahead, and a matching glow on the floor under each of those tiles), and a scale punch that briefly enlarges a sprite (a landed parry is the current source). Every player effect tween (translate, settle, knockback, death bounce, damage flash, scale punch) runs as a driver entity, and one resolver decides which effect owns each animated channel. Claimed tiles keep direct `TweenAnim` inserts for their wave and claim bounces.
+This plugin plays the visual effects. Players slide when they move or get knocked back, bounce when they die, flash red when they are hit, and grow for a short time after a parry. Tiles bounce when a beam passes over them or when they are claimed. Tiles also glow when a beam crosses them.
 
-## Transform effect ownership
+## Key ideas
 
-All player root-translation effects (Translate, Settle, Knockback, DeathBounce) are requests (`EffectRequest`) that `resolve_effect_requests` turns into driver entities. The resolver is the only writer of a player's position tween. It follows this policy table. The rows are the incoming effect. The columns are the effect that runs now on the `RootTranslation` channel.
+- An **effect request** (`EffectRequest`) asks for one player effect. Systems write requests. They never start a player tween themselves.
+- An **effect driver** is a small entity that plays one tween for one player. It points at the animated component with `AnimTarget`.
+- A **channel** is the value that an effect animates: `RootTranslation` (player position), `SpriteScale` or `SpriteColor`. A player has at most one driver per channel.
+- `resolve_effect_requests` (the resolver) turns requests into drivers. It is the only system that starts a player tween.
+- Tiles do not use requests. Their bounces put a `TweenAnim` directly on the tile.
+- The glow uses a **lit overlay**: a brighter copy of the tile, drawn on top of it, that fades in and out. `Sprite::color` can only make a sprite darker, so the glow needs this copy.
 
-| Incoming / current | none | Translate or Settle | Knockback | DeathBounce |
+## Position effect rules
+
+The resolver uses this table for the `RootTranslation` channel. The rows are the new effect. The columns are the effect that runs now.
+
+| New / running | none | Translate or Settle | Knockback | DeathBounce |
 |---|---|---|---|---|
 | Translate or Settle | Start | Replace | Queue | Drop |
 | Knockback | Start | Replace | Replace | Drop |
 | DeathBounce | Start | Replace | Queue | Drop |
 
-- `Start`: spawn a driver.
-- `Replace`: despawn the running driver and spawn the new one.
-- `Queue`: keep the running driver and store the new effect as its `then`. It starts when the running driver completes.
+- `Start`: start a new driver.
+- `Replace`: stop the running driver and start the new one.
+- `Queue`: keep the running driver. The new effect waits in its `then` slot and starts when the running one ends.
 - `Drop`: ignore the request.
+- `ScalePunch` and `DamageFlash` have their own channels. They always start or replace, so a new parry or hit restarts them.
 
-`ScalePunch` and `DamageFlash` have their own channels and are always `Start` or `Replace`.
+How requests combine:
 
-Fold rules (how the requests of one frame are combined):
-- One queued slot per driver (`then`). `merge_queued` replaces the old queued effect when the new one has a higher or equal rank. A DeathBounce beats any queued movement. A later Translate or Settle replaces an earlier one.
-- On `Replace`, the old `then` goes through `decide(old_then, Some(new_kind))`. `Queue` keeps it on the new driver. `Drop` discards it. So a DeathBounce queued behind a drag survives every drag step.
-- Same frame: requests are grouped by (owner, channel) and stable-sorted by rank, lowest first. Requests of equal rank keep their write order, so the latest one wins. They are folded through `decide`, starting from the live (kind, then). At most one spawn happens per channel per frame. Examples: Translate and Knockback give Knockback. Knockback and DeathBounce give Knockback with DeathBounce queued. Settle and Translate give Settle.
-- Owners with `IsDead`: every `RootTranslation` request except `DeathBounce` is dropped before the fold. Sprite flashes still play.
-- Translate under Knockback is `Queue`, not `Drop`. The input lock timer and the knockback tween are not ordered, so input can unlock one frame before the slide ends. The queued Translate builds its tween from the current position when it starts. It does nothing visible if the player has not moved.
+- Rank: Translate 0, Settle 1, Knockback 2, DeathBounce 3.
+- A driver has one `then` slot. A new queued effect takes the slot when its rank is higher or equal (`merge_queued`).
+- On `Replace`, the old `then` moves to the new driver only if the table gives `Queue` for it. So a death bounce waiting behind a knockback stays when a new knockback replaces the first one.
+- In one frame, the requests for one player and one channel are sorted by rank and applied in that order. Equal ranks keep their write order.
+- At most one driver starts per channel per frame. Examples: Translate + Knockback gives Knockback. Knockback + DeathBounce gives Knockback, then DeathBounce. Settle + Translate gives Settle.
+- A dead player (`IsDead`) gets only `DeathBounce` on this channel. Its flashes still play.
+- A Translate during a Knockback is queued. The input lock can end one frame before the knockback slide ends.
+- The queued slide starts from the current position. If the player did not move, it shows nothing.
+- A lethal hit plays no knockback slide. The Damage plugin writes no `EntityKnockedBack` for it.
+- `IsKnockedBack` is the input lock of the Damage plugin. These rules do not read it.
 
-Death and knockback follow the same rules. A death bounce that arrives during a knockback is queued, so the slide finishes first. A lethal hit plays no slide, because the damage plugin's `apply_knockback` skips it and never writes `EntityKnockedBack`. `IsKnockedBack` is only the input lock, owned by the damage plugin, and plays no part in these rules.
+## Ordering
 
-## Plugin workflow
-
-- Update phase (ordered)
-    - `sync_resting_translation` (before `apply_bounce_effect` and `apply_wave_effect`):
-        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities (players)
-            - Writes `RestingTranslation` to the new grid position's world translation
-    - `request_knockback_effect` (`EffectsSet::Request`, before `apply_translate_effect` and `apply_movement_settle`):
-        - Reads `EntityKnockedBack` messages (written by the damage plugin's `apply_knockback` after it moved the entity)
-            - Writes `EffectRequest { owner: entity, kind: Knockback { ms } }`, with `ms` from `config.effects.knockback_tween_ms`
-    - `apply_translate_effect` (`EffectsSet::Request`):
-        - Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities
-            - Writes `EffectRequest { owner, kind: Translate { ms } }`, with `ms` from the entity's `MovementSlide` (or `config.timing.move_repeat_rate_ms` if absent)
-    - `apply_movement_settle` (`EffectsSet::Request`):
-        - Reads `MovementStopped` messages (written by the Input plugin)
-            - Writes `EffectRequest { owner: entity, kind: Settle { ms } }` with `ms` from `config.timing.move_repeat_rate_ms`
-    - `apply_death_effect` (`EffectsSet::Request`, after `request_knockback_effect`):
-        - Reads `DamageableDied` messages, matched against entities with `DamageEffectTarget` and `Health` but without `IsDead`
-            - Inserts `IsDead`
-            - Writes `EffectRequest { owner, kind: DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 } }`
-    - `apply_wave_effect`:
-        - Reacts to `Changed<GridCoords>` on entities carrying both `WaveSource` and `BounceEffect` (in practice, beams that are not lane-suppressed — see the Beam plugin doc)
-            - Resolves the source's `GridCoords` to a `WaveEffectTarget` claimed-tile entity via `MapInfo::claimed_entities`
-            - Inserts a bounce `TweenAnim` directly on that tile
-    - `apply_bounce_effect` (claim bounce, tiles only):
-        - Reacts to `Added<BounceEffectTarget>`
-            - Inserts a bounce `TweenAnim` directly on the tile and removes `BounceEffectTarget`
-    - `apply_damage_effect` (`EffectsSet::Request`):
-        - Reacts to `Changed<Health>` on `DamageEffectTarget` entities
-            - Writes `EffectRequest { owner, kind: DamageFlash { sprite, ms } }` for the first child sprite entity
-    - `spawn_sprite_lit_overlays`:
-        - For every `GlowEffectTarget` tile that has a `Sprite` but no `LitOverlayLink`, spawns a persistent `SpriteLitOverlay` child (lit image, the tile's atlas, local z `SPRITE_LIT_OVERLAY_Z` = 0.5, `Visibility::Hidden`) and inserts the link on the tile; records the first tile's image as the `LitAtlases::tiles` source
-    - `spawn_tilemap_lit_overlays` (Update, `run_if(resource_changed::<MapInfo>)`):
-        - For every cell in `MapInfo::ground_entities` and `MapInfo::forbidden_areas` that has no `LitOverlayLink`, spawns a `TilemapLitOverlay` child of the cell's tilemap (ground lit image, one shared `TextureAtlasLayout`, the cell's `TileTextureIndex`, local z `TILEMAP_LIT_OVERLAY_Z` = 0.5, `Visibility::Hidden`) and inserts the link on the cell; records the tilemap's `TilemapTexture::Single` image as the `LitAtlases::ground` source
-    - `build_lit_atlas`:
-        - Rebuilds both the tile and the ground lit atlas images when the config lightness/chroma pair changes or an `AssetEvent<Image>` fires for the source image
-    - `apply_glow_effect` (after `spawn_sprite_lit_overlays` and `spawn_tilemap_lit_overlays`):
-        - Reacts to `Changed<GridCoords>` on `Beam` entities (every step of the beam's travel, not just its origin)
-            - Pushes a peak-1.0 `GlowPulse` onto the overlay of the tile under the beam, and a `beam_glow_neighbor_peak` pulse (delayed by `beam_glow_neighbor_delay_ms`) onto each orthogonal neighbor and onto the tile two steps ahead along `Beam::direction` (skipped when the direction is zero); each pulse goes to both the claimed tile's overlay and the ground cell's overlay, even when the beam's own position has no claimed tile
-    - `update_lit_overlays` (after `apply_glow_effect`):
-        - Advances every overlay's pulses by the frame delta, sets the overlay alpha to the maximum pulse strength, prunes finished pulses, and toggles the overlay's visibility
-    - `trigger_parry_scale_effect` (`EffectsSet::Request`):
-        - Reads `BeamParried` messages
-            - Finds the parrier's sprite child with `sprite_child`; if found, writes `EffectRequest { owner: parrier, kind: ScalePunch { sprite, peak, secs } }`
-    - `on_effect_completed` (`EffectsSet::Complete`):
-        - Reads `AnimCompletedEvent`; despawns the `EffectDriver` entity whose tween finished and starts its queued `then` effect, if any
-            - When the finished effect was a `DeathBounce`, inserts `Visibility::Hidden` on the owner
-    - `resolve_effect_requests` (`EffectsSet::Resolve`, before `AnimationSystem::AnimationUpdate`):
-        - Reads every `EffectRequest`, drops `RootTranslation` requests except `DeathBounce` on `IsDead` owners, groups by (owner, channel) and folds each group against the live driver with `fold_requests`
-            - Spawns at most one new `EffectDriver` per owner and channel (despawning the old one), or updates the live driver's `then` in place
-            - Builds root tweens when the driver starts, from the owner's `Transform`, `GridCoords`, `RestingTranslation` and `MapInfo`
-- `PostUpdate` (after `AnimationSystemSet`)
-    - `sync_lit_overlay_frames`: copies each visible overlay's atlas index from its tile's sprite (it queries only `SpriteLitOverlay`, so the `TilemapLitOverlay` floor overlays are never touched; floor cells do not animate)
-- `OnExit(RoundPhase::Playing)`
-    - `clear_glow`: empties every overlay's pulses, sets alpha to 0 and hides it, so a round boundary can't strand a lit tile
-- `OnExit(RoundPhase::Outcome)`
-    - `clear_root_effect_drivers`: despawns every `EffectDriver` on the `RootTranslation` channel, including any queued `then`, so no position tween or death bounce carries into the next round
+- The request systems are in `EffectsSet::Request`. The chain is `Request`, `Complete`, `Resolve`, inside `GameplaySet::Presentation`.
+- Bevy applies commands between `Complete` and `Resolve`. So the resolver sees the drivers that `on_effect_completed` started.
+- `Resolve` runs before `bevy_tweening::AnimationSystem::AnimationUpdate`.
+- `request_knockback_effect` runs before `apply_translate_effect`, `apply_movement_settle` and `apply_death_effect`.
+- `sync_resting_translation` runs before the wave and claim bounces.
+- `apply_glow_effect` runs after both overlay spawn systems. `update_lit_overlays` runs after it.
+- `sync_lit_overlay_frames` runs in `PostUpdate`, after the sprite animations (`AnimationSystemSet`).
+- No `Update` system here is gated on `RoundPhase`. Two systems run on state exit: `clear_glow` and `clear_root_effect_drivers`.
 
 ## Plugin Systems
 
 ### Request Knockback Effect
 
-Runs in `EffectsSet::Request`. It is ordered before `apply_translate_effect` and `apply_movement_settle`, and `apply_death_effect` runs after it. Reads `EntityKnockedBack { entity }` messages. For each one, writes a `Knockback { ms: config.effects.knockback_tween_ms }` `EffectRequest` (default `200`) with `owner` set to the message entity. This is only the visual half of knockback. The damage plugin owns the gameplay half: its `apply_knockback` moves `GridCoords`, sets the `IsKnockedBack` input lock, and writes `EntityKnockedBack` only when the entity really moved. A dead, lethal or blocked knockback writes no message, so no slide plays. The tween itself is built later by the driver, not here.
+- Reads `EntityKnockedBack`. The Damage plugin writes it after it moves the player.
+- Writes a `Knockback` request. Duration: `effects.knockback_tween_ms` (200 ms).
+- The Damage plugin owns the move and the input lock. This system only asks for the slide.
 
 ### Apply Translate Effect
 
-Runs in `EffectsSet::Request`. Reacts to `Changed<GridCoords>` on entities that carry `TranslateEffectTarget`. The query has no `Without` filters. The resolver decides what happens when a knockback or a death bounce is running. Writes a `Translate { ms }` `EffectRequest`, where `ms` is the entity's `MovementSlide` duration if present, otherwise `config.timing.move_repeat_rate_ms`. The driver builds a linear tween (`EaseFunction::Linear`, `create_movement_tween`) from the current `Transform` to the `GridCoords` position. This gives smooth movement for players without any coupling to the input or controller plugins.
+- When a player's `GridCoords` changes, writes a `Translate` request.
+- Duration: the player's `MovementSlide`, or `timing.move_repeat_rate_ms` if it has none.
+- The tween is linear, from the current position to the new tile.
 
 ### Apply Movement Settle
 
-Runs in `EffectsSet::Request`. Reads `MovementStopped { entity }` messages. For each message, writes a `Settle { ms: config.timing.move_repeat_rate_ms }` `EffectRequest` with `owner` set to the message entity. The system has no query and no marker component, so nothing needs to be removed. It does not check `IsKnockedBack` or `IsDead`. The resolver does this work: a Settle under a running Knockback is queued, and a Settle on a dead owner is dropped. The driver builds an ease-out tween (`EaseFunction::QuadraticOut`) toward the current `GridCoords` position.
+- Reads `MovementStopped` from the Input plugin. Writes a `Settle` request.
+- The tween eases out (`QuadraticOut`) to the current tile, over `timing.move_repeat_rate_ms`.
 
 ### Sync Resting Translation
 
-Reacts to `Changed<GridCoords>` on `TranslateEffectTarget` entities — only players carry this marker, since claimed tiles never move and never receive a `RestingTranslation` component at all. Writes `RestingTranslation` to the world translation of the new `GridCoords`. Ordered before `apply_bounce_effect` and `apply_wave_effect`, both of which read a `RestingTranslation` when present (falling back to `Transform::translation` for tiles, which have none) so a bounce origin is always the authoritative resting position rather than a `Transform` that may still be mid-tween.
+- When a player's `GridCoords` changes, writes `RestingTranslation`: the world position of the new tile.
+- Bounces start from this position. The `Transform` can be in the middle of a tween, so it is not a safe start point.
+- Tiles never move and have no `RestingTranslation`. Their bounces start from their `Transform`.
 
 ### Apply Wave Effect
 
-Reacts to `Changed<GridCoords>` on entities that carry both `WaveSource` and `BounceEffect`. `WaveSource` is inserted only on beams (see the Beam plugin doc), and only on the same condition as `BounceEffect` itself — a lane-suppressed beam gets neither, so it never triggers a wave, though it still triggers glow (`apply_glow_effect` is gated only on `With<Beam>`). Resolves the source's `GridCoords` to a claimed tile entity via `MapInfo::claimed_entities`, then reads that tile's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation` if absent) as the bounce origin, and inserts a bounce `TweenAnim` (built by `create_bounce_tween`) directly on the tile. This causes the tile underneath the beam to "ripple" as the beam passes over it.
+- Runs when a beam with `WaveSource` and `BounceEffect` moves. Finds the claimed tile under it with `MapInfo::claimed_entities`.
+- Puts a bounce `TweenAnim` on that tile. This makes the wave that follows the beam.
+- A beam without `WaveSource` (see the Beam plugin doc) makes no wave. It still makes the glow.
 
 ### Apply Bounce Effect
 
-Reacts to `Added<BounceEffectTarget>`. This is the claim bounce for tiles only. Players do not use it, because their death bounce goes through the resolver. Reads the entity's `Transform` and optional `RestingTranslation` (falling back to `Transform::translation`) as the bounce origin, inserts a bounce `TweenAnim` directly on the tile, then removes `BounceEffectTarget` so the effect fires once per insertion. The Animations plugin inserts the marker when a tile is claimed. No tag is added to the tile.
+- The claim bounce, for tiles only. The Animations plugin adds `BounceEffectTarget` when a tile is claimed.
+- Puts a bounce `TweenAnim` on the tile, then removes the marker, so the bounce plays once.
 
 ### Apply Damage Effect
 
-Reacts to `Changed<Health>` on entities that carry a `DamageEffectTarget` marker. Walks the entity's children to find the first child sprite entity and writes an `EffectRequest` with `EffectKind::DamageFlash { sprite, ms }` (`ms` is `config.effects.damage_flash_ms`, default `150`). The resolver then runs the red color-flash tween (`create_color_flash_tween`: `Sprite::color` to red over a quarter of `ms`, then back to white over `ms`). Runs in `EffectsSet::Request`. A second hit before the flash ends restarts it.
+- When a player's `Health` changes, writes a `DamageFlash` request for its first sprite child.
+- The sprite turns red over a quarter of `effects.damage_flash_ms` (150 ms), then back to white over `damage_flash_ms`.
 
 ### Apply Death Effect
 
-Runs in `EffectsSet::Request`, after `request_knockback_effect`. Reads `DamageableDied` messages, matched against a query filtered to entities with `DamageEffectTarget` and `Health` but without `IsDead` (so a duplicate death message on an already-dead entity is a no-op). For each message, inserts `IsDead` on the dying entity and writes a `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }` `EffectRequest`. The system does not check for a running knockback. The resolver queues the death bounce behind a knockback, so the slide finishes first. It has no `RoundPhase` gate, so it can still catch a `DamageableDied` message written on the last `Playing` frame, after the phase has changed to `Outcome`.
-
-### Spawn Sprite Lit Overlays
-
-Runs every frame over `GlowEffectTarget` tiles that have a `Sprite` and no `LitOverlayLink`. For each, spawns one persistent child (`ChildOf(tile)`) carrying the `SpriteLitOverlay` marker, an empty `GlowPulses`, and a `Sprite` that uses the `LitAtlases::tiles` lit image handle and a clone of the tile's `TextureAtlas`, with a fully transparent color, a local `Transform` at z `SPRITE_LIT_OVERLAY_Z` (0.5, which must stay below 1.0, the spacing between tile rows), and `Visibility::Hidden`. Inserts `LitOverlayLink(overlay)` on the tile. Because the overlay is a child, it inherits the bounce and wave transforms of the tile. The first tile's `Sprite::image` becomes `LitAtlases::tiles.source`.
-
-### Spawn Tilemap Lit Overlays
-
-Runs when the `MapInfo` resource changed. For each entity in `MapInfo::ground_entities` and `MapInfo::forbidden_areas` without a `LitOverlayLink`, reads its `TilePos`, `TilemapId` and `TileTextureIndex`, and takes the image from the tilemap's `TilemapTexture::Single` (any other variant logs one warning and skips the cell). The first image becomes `LitAtlases::ground.source`. A single 12 by 12 `TextureAtlasLayout` (cell size from `MapInfo::tile_size`) is built once and stored in the resource. The overlay is a `ChildOf` the tilemap entity, with the `TilemapLitOverlay` marker, empty `GlowPulses`, a transparent `Sprite` using the ground lit image, the cell's atlas index, `Visibility::Hidden`, and a `Transform` at `GridCoords::to_world_pos` with z `TILEMAP_LIT_OVERLAY_Z` (0.5). The tilemap's own translation is only the tileset offset (zero for this map), so the world-space tile centre is also the tilemap-local position, the same assumption the `ClaimedTile` sprites rely on. Z of 0.5 sits above the floor and below the claimed tiles, because the layers are spaced 100 apart by `TiledMapLayerZOffset`.
-
-### Build Lit Atlas
-
-Runs every frame but only works when needed. For each of the tile and ground atlases (`LitAtlas::rebuild`), once `source` is known and the source image has loaded, it builds the lit image with `make_lit_image` whenever `built_with` differs from the current `(beam_glow_lightness, beam_glow_chroma)` pair, or an `AssetEvent<Image>` (modified or loaded) names the source image, which keeps RON tuning and `tiles.png` edits live. The result is stored with `Assets<Image>::insert` at the reserved lit handle id (an `Err` is logged). If the format is not `Rgba8UnormSrgb`/`Rgba8Unorm` or has no pixel data, it logs one warning and the overlay never shows.
-
-`make_lit_image(&Image, lightness, chroma) -> Option<Image>` is a pure function: it clones the source (keeping sampler, format and usage), and for every pixel with non-zero alpha converts to `Oklcha`, applies `L += (1 - L) * lightness` and `C *= chroma`, converts back to `Srgba`, clamps the channels to 0..1 and restores the original alpha.
-
-### Apply Glow Effect
-
-Reacts to `Changed<GridCoords>` on `Beam` entities — every tile a beam crosses, not only its spawn position. For each beam, pushes a `GlowPulse` with peak `1.0` and no delay onto the overlay of the tile at the beam's position, and a pulse with peak `beam_glow_neighbor_peak` and delay `beam_glow_neighbor_delay_ms` onto each of the four orthogonal neighbors and onto the tile at `position + 2 * direction` (the lookahead, same peak and delay; skipped when `Beam::direction` is zero). Each position is resolved to the claimed tile (`MapInfo::get_claimed_entity_by_position`) and to the ground cell (`ground_entities`, else `forbidden_areas`), and the pulse goes onto the overlay linked from each; forbidden cells have no claimed tile but their floor still glows. A position with neither is skipped, but the neighbor pulses are still pushed when the beam's own position has none. The pulse timings come from `beam_glow_fade_in_ms` / `beam_glow_hold_ms` / `beam_glow_fade_out_ms`. There is no per-player tint: the effect is purely the lit crossfade.
-
-### Update Lit Overlays
-
-Runs every frame after `apply_glow_effect`. For each overlay with pulses (or one still visible), advances every pulse by `Time::delta_secs()` (virtual time, so hitstop slows it), computes each pulse's strength with `GlowPulse::alpha` (delay, then fade-in `QuadraticOut`, hold, fade-out `1 - QuadraticIn`; fades are clamped to at least 0.001 s; `None` means finished), prunes finished pulses, sets `Sprite::color` to white with the maximum strength as alpha, and sets the visibility to `Inherited` when the strength is above zero and `Hidden` otherwise. Both are written only when the value differs (`set_if_neq` for `Visibility`, a compare for the color), so idle values do not trigger change detection. Pulses never add up: a strong pulse fading below a weak one lets the weak one show again.
-
-### Sync Lit Overlay Frames
-
-Runs in `PostUpdate`, `.after(AnimationSystemSet)`. For each visible `SpriteLitOverlay` (the `TilemapLitOverlay` floor overlays are not queried, because floor cells do not animate), reads the tile through the overlay's `ChildOf` parent and copies its `TextureAtlas.index` to the overlay's atlas so the overlay matches the current flip-animation frame. The two `Sprite` queries are kept disjoint with `Without<SpriteLitOverlay>` on the tile side.
-
-### Clear Glow
-
-Runs on `OnExit(RoundPhase::Playing)`. Empties every overlay's `GlowPulses`, sets its sprite color alpha to 0 and sets it `Visibility::Hidden`.
+- Reads `DamageableDied`. It skips players that already have `IsDead`, so a second death message does nothing.
+- Adds `IsDead` and writes a `DeathBounce` request (intensity 8, 3 bounces, decay 0.33).
+- It has no phase gate, so it still sees a death written on the last `Playing` frame.
 
 ### Trigger Parry Scale Effect
 
-Runs in `EffectsSet::Request`. Reads `BeamParried` messages. For each one, it finds the parrier's sprite child with `sprite_child`. If a sprite child exists, it writes an `EffectRequest { owner: parrier, kind: ScalePunch { sprite, peak, secs } }`. The values come from `config.parry.scale_punch_peak` (default `1.3`) and `config.parry.scale_punch_secs` (default `0.25`, measured in hitstop-dilated time, per `assets/game_config.ron`). If the parrier has no sprite child, nothing is written. The request is written in the same frame as the message, so there is no marker and no frame delay. The resolver builds the tween with `create_scale_punch_tween`: a `TransformScaleLens` from the peak down to `Vec3::ONE` with `EaseFunction::CubicIn`. A second parry before the punch ends restarts it.
+- Reads `BeamParried`. Writes a `ScalePunch` request for the sprite child of the parrier.
+- The sprite starts at `parry.scale_punch_peak` (1.1) and shrinks to normal size over `parry.scale_punch_secs` (0.15 s, in hitstop time).
+- Any system can write a `ScalePunch` request. The parry is the only source today.
 
-The scale punch is a generic effect. Any system can write a `ScalePunch` request for any sprite. The parry is only one source.
+### Resolve Effect Requests
 
-### Effect drivers and resolver
+- Reads all `EffectRequest` messages. Drops the position requests of dead players, except `DeathBounce`.
+- Groups the requests by player and channel, and applies the rules above against the running driver.
+- Starts, replaces or updates at most one driver per channel.
+- `start_effect` builds the tween from the player's `Transform`, `GridCoords`, `RestingTranslation` and `MapInfo`. If these are missing, no driver starts.
 
-An effect driver is a carrier entity that runs one effect tween on an owner's channel. It carries `EffectDriver { kind, then }`, `DriverOf(owner)`, an `AnimTarget` pointing at the animated component, and the `TweenAnim`. The owner holds the matching `EffectDrivers` relationship target (`linked_spawn`, so despawning the owner despawns its drivers). The link does not use `ChildOf`, because `sprite_child` reads `Children::first()`.
+### On Effect Completed
 
-Each driver owns one `EffectChannel`: `RootTranslation`, `SpriteScale` or `SpriteColor`. Two effects on the same sprite (a punch and a flash) run together, because they use different channels and different drivers. The channel of each kind:
-- `RootTranslation`: `Translate`, `Settle`, `Knockback`, `DeathBounce`. The driver targets the owner `Transform`.
-- `SpriteScale`: `ScalePunch`. The driver targets the sprite child `Transform`.
-- `SpriteColor`: `DamageFlash`. The driver targets the sprite child `Sprite`.
+- Reads `AnimCompletedEvent`. Despawns the driver whose tween ended, then starts its `then` effect, if there is one.
+- After a `DeathBounce`, it hides the player (`Visibility::Hidden`). The player keeps `IsDead` until the round reset.
 
-Every write to a player's position tween goes through a driver. No other system inserts a `TweenAnim` on a player root. Tiles are the exception: `apply_wave_effect` and `apply_bounce_effect` insert `TweenAnim` directly on a claimed tile. A tile has one channel and every new bounce replaces the old one.
+### Clear Root Effect Drivers
 
-The three `EffectsSet` sets are chained inside `GameplaySet::Presentation`: `Request` (writers), `Complete`, `Resolve`. `Resolve` runs before `bevy_tweening::AnimationSystem::AnimationUpdate`. A sync point sits between `Complete` and `Resolve`, so the resolver sees drivers spawned by `on_effect_completed`.
+- Runs on exit of `Outcome`. Despawns every position driver and its queued `then`. So no slide or death bounce goes into the next round.
+- Sprite drivers stay. Stopping one halfway would leave the sprite red or too big.
+- It needs no order against `reset_round`.
+- In dev builds, `warn_duplicate_channel_drivers` logs a warning when a player has two drivers on one channel.
 
-`EffectRequest { owner, kind }` is a message internal to the effects plugin. It is registered in `effects::plugin` and declared in `src/plugins/effects.rs`, not in `messages.rs`.
+### Spawn Sprite Lit Overlays
 
-Pure functions (unit-tested):
-- `decide(incoming, current) -> Decision` (`Start`, `Replace`, `Queue`, `Drop`) implements the policy table in "Transform effect ownership" above. The sprite channels are always `Start` or `Replace`.
-- `merge_queued(existing, incoming)` keeps one queued slot; a new item replaces the old one when its rank is higher or equal.
-- `fold_requests(live, requests) -> ChannelPlan` stable-sorts the requests by rank, folds them through `decide` from the live (kind, then), and returns at most one spawn or one in-place `then` update. On `Replace`, the old `then` survives only if `decide(old_then, Some(new_kind))` is `Queue`.
+- For each `GlowEffectTarget` tile with a `Sprite` and no `LitOverlayLink`: spawns a hidden overlay child (`SpriteLitOverlay`) and links it with `LitOverlayLink`.
+- The overlay uses the lit tile image and the tile's atlas. It is a child, so it moves with the tile bounces.
+- Its z is 0.5. It must stay below 1.0, the space between tile rows.
 
-Rank: Translate 0, Settle 1, Knockback 2, DeathBounce 3, sprite kinds 0.
+### Spawn Tilemap Lit Overlays
 
-Tween shapes (built in `start_effect` when the effect starts):
-- `Translate`: linear, from the current `Transform` to the `GridCoords` position, over its `ms` (the `MovementSlide` duration).
-- `Settle`: `QuadraticOut`, same start and end, over `config.timing.move_repeat_rate_ms`.
-- `Knockback`: `QuadraticOut`, same start and end, over `config.effects.knockback_tween_ms`.
-- `DeathBounce`: a bounce tween from `RestingTranslation` (or the current `Transform` if there is none).
-- `ScalePunch`: `CubicIn` scale from the peak down to `Vec3::ONE`.
-- `DamageFlash`: color to red over a quarter of `ms`, then back to white over `ms`.
+- Runs when `MapInfo` changes. For each ground and forbidden cell, spawns a hidden overlay (`TilemapLitOverlay`) as a child of the ground tilemap.
+- It uses the lit floor image and the cell's texture index. Its z is 0.5: above the floor, below the claimed tiles.
+- Only a tilemap with one image (`TilemapTexture::Single`) works. Any other kind logs one warning and is skipped.
 
-### Resolver systems
+### Build Lit Atlas
 
-`resolve_effect_requests` applies the drop rule for dead owners, groups the requests by (owner, channel), finds the live driver through `EffectDrivers`, and applies the plan. It despawns the old driver and calls `start_effect` for the new one, or updates `then` in place. `start_effect` spawns `(Name::new("Fx:<Kind>"), EffectDriver, DriverOf(owner), AnimTarget, TweenAnim)`. It builds the tween with the `RootTweenSources` system param: the owner `Transform`, `GridCoords`, `RestingTranslation` and the `MapInfo` resource. If the owner has none of the needed components, no driver is spawned.
+- Builds the lit images for tiles and floor with `make_lit_image`.
+- Rebuilds when `beam_glow_lightness` or `beam_glow_chroma` changes, or when the source image changes. So tuning and `tiles.png` edits show live.
+- `make_lit_image` makes each pixel lighter (`beam_glow_lightness`) and keeps part of its color strength (`beam_glow_chroma`). Alpha does not change.
+- An unsupported image format logs one warning, and the glow never shows.
 
-`on_effect_completed` reads `AnimCompletedEvent`, despawns the finished driver, and starts its `then`. When the finished effect was a `DeathBounce`, it also inserts `Visibility::Hidden` on the owner. The owner stays alive and keeps `IsDead` until the round reset.
+### Apply Glow Effect
 
-`clear_root_effect_drivers` runs on `OnExit(RoundPhase::Outcome)`. It despawns every driver on the `RootTranslation` channel, with its queued `then`. It does not need any order against `reset_round`. Sprite drivers are not cleared: despawning one halfway would leave the sprite red or scaled. In dev builds, `warn_duplicate_channel_drivers` logs a warning when an owner has two drivers on one channel.
+- Runs each time a beam moves one tile. Adds a full-strength glow pulse (1.0) to the tile under the beam.
+- Adds weaker pulses (`beam_glow_neighbor_peak`, after `beam_glow_neighbor_delay_ms`) to the four neighbor tiles and to the tile two steps ahead.
+- Each pulse goes to the claimed tile overlay and to the floor overlay. Forbidden cells have only a floor overlay.
+- Pulse timing: `beam_glow_fade_in_ms`, `beam_glow_hold_ms`, `beam_glow_fade_out_ms`. The glow has no player color.
 
-### Tile effects and the resolver
+### Update Lit Overlays
 
-Tiles do not use the resolver. The wave bounce and the claim bounce insert `TweenAnim` directly on the tile. Both animate the tile translation, start from `RestingTranslation`, and the latest one wins, which the single `TweenAnim` slot already gives.
+- Each frame, moves every pulse forward in time and removes the finished ones.
+- The overlay alpha is the value of the strongest pulse. Pulses never add up.
+- It uses game time, so hitstop slows the glow.
+- Shows the overlay when the alpha is above zero and hides it otherwise. Values are written only when they change.
 
-Rule for new tile visuals: a tile must never get a second direct `TweenAnim` that animates a different value. An entity has one `TweenAnim` slot, so the next wave bounce would replace it. This is the same bug that commit `9770b6d` fixed for the player's punch and flash.
+### Sync Lit Overlay Frames
 
-Use one of these instead:
-- **A visual that lasts while a state is true** (for example an armed Landmine, an armed Barrier, a pending Contested Ground tile): a child overlay sprite on the tile, shown while the state holds, with its own animation or tween. This is the lit overlay pattern. The child has its own `TweenAnim` slot and moves with the tile.
-- **A one-shot effect that competes with the bounce** (for example a Barrier hit, a regen pulse): move tiles onto the resolver. Add the `EffectKind` variants and a channel; `EffectRequest { owner, kind }` already works for any owner entity.
+- Copies the tile's animation frame to its visible overlay, so both match during the flip animation.
+- Floor overlays are skipped, because floor cells do not animate.
 
-How an overlay splits between state and requests:
-- **The overlay's existence and visibility come from state.** A system shows the overlay only while the state component is present (for example `LandmineArmed`), and re-reads it every frame. Do not start and stop it with requests: a missed stop (round reset, tile flip, despawn) would leave the marker stuck.
-- **Animations on the overlay go through requests.** The owner is the tile and the target is the overlay sprite, the same way `ScalePunch` and `DamageFlash` target the player's sprite child. Use a channel for the overlay. This gives the replace, queue and drop rules, and `then` covers "play the hit flash, then go back to the armed loop". It needs two additions: looping tweens (they never send `AnimCompletedEvent`) and a way to stop a channel.
-- **The beam glow stays separate.** `GlowPulses` keeps every pulse and shows the strongest one, while the resolver keeps one effect per channel, so a weak neighbor pulse would cut off a strong center pulse. The glow also pushes many pulses per beam step, which would mean many driver spawns.
+### Clear Glow
 
-Abilities in `DECKBUILDING.md` that will need this: Landmine (#17), Barrier (#33) and Bulwark (#34), Contested Ground (#15), and the regen pulse (§6 "Visuals"). Burst claims (Splitter, Chain Reaction, Full Draw, Ricochet, Juggernaut, Beachhead) may also want a small delay between bounces, like `GlowPulse.delay`.
+- Runs on exit of `Playing`. Clears all pulses and hides every overlay. Overlays are never despawned.
+
+## Effect drivers
+
+- A driver has `EffectDriver { kind, then }`, `DriverOf(owner)`, `AnimTarget` and a `TweenAnim`.
+- The player has `EffectDrivers`. Despawning the player also despawns its drivers.
+- Drivers do not use `ChildOf`. `sprite_child` reads the first child, and a driver child would break it.
+- `RootTranslation`: Translate, Settle, Knockback, DeathBounce. The driver animates the player `Transform`.
+- `SpriteScale`: ScalePunch. The driver animates the `Transform` of the sprite child.
+- `SpriteColor`: DamageFlash. The driver animates the `Sprite` of the sprite child.
+- A punch and a flash can play together, because they use different channels.
+- `EffectRequest` is internal to this plugin. It is declared in `effects.rs`.
+- `decide`, `merge_queued` and `fold_requests` are pure functions with unit tests.
+
+Tween shapes:
+
+- Translate is linear. Settle and Knockback use `QuadraticOut`. All three go from the current position to the tile.
+- DeathBounce is a bounce from `RestingTranslation`. ScalePunch uses `CubicIn`. DamageFlash goes to red, then back to white.
+
+## Tile effects
+
+- A tile has one `TweenAnim` slot. A new bounce replaces the old one. Both bounces move the tile, so this is fine.
+- A tile must never get a second direct `TweenAnim` for another value. The next bounce would remove it. Commit `9770b6d` fixed the same bug on players.
+
+For a new tile visual, use one of these:
+
+- **A visual that lasts while a state is true** (armed Landmine, pending Contested Ground): a child overlay sprite, like the lit overlay. It has its own `TweenAnim` slot.
+- **A one-shot effect** (Barrier hit, regen pulse): move tiles to the resolver. Add the `EffectKind` and a channel.
+
+For an overlay:
+
+- The state decides if it shows. A system reads the state component every frame. A start or stop message could be missed (round reset, tile flip, despawn).
+- Its animations use requests, with the tile as owner and the overlay as target. This needs looping tweens and a way to stop a channel.
+- The glow stays outside the resolver. It keeps many pulses and shows the strongest one. The resolver keeps only one effect per channel.
+
+Abilities in `DECKBUILDING.md` that need this: Landmine (#17), Barrier (#33), Bulwark (#34), Contested Ground (#15) and the regen pulse. Burst claims may want a small delay between bounces, like `GlowPulse.delay`.
 
 ## Components, Resources and Messages CRUD
 
 ### Read EntityKnockedBack messages and write EffectRequest (request_knockback_effect)
 
 Used in the following systems:
-- **request_knockback_effect**: reads `EntityKnockedBack` (written by the damage plugin) and writes a `Knockback` `EffectRequest` for each entity. It reads `config.effects.knockback_tween_ms`. It touches no component.
+- **request_knockback_effect**: writes one `Knockback` request for each `EntityKnockedBack`. It touches no component.
 
 ```mermaid
 ---
@@ -248,7 +238,7 @@ request_knockback_effect ---> |writes Knockback| effect_request
 ### Query TranslateEffectTarget entities
 
 Used in the following systems:
-- **apply_translate_effect**: reads the optional `MovementSlide` on entities whose `GridCoords` changed and that carry `TranslateEffectTarget`; writes a `Translate` `EffectRequest`
+- **apply_translate_effect**: for each player that moved, reads `MovementSlide` (if present) and writes a `Translate` request.
 
 ```mermaid
 ---
@@ -285,7 +275,7 @@ apply_translate_effect ---> |writes Translate| effect_request
 ### Read MovementStopped messages
 
 Used in the following systems:
-- **apply_movement_settle**: reads `MovementStopped` messages from the Input plugin and writes a `Settle` `EffectRequest` for each one
+- **apply_movement_settle**: writes one `Settle` request for each `MovementStopped`.
 
 ```mermaid
 ---
@@ -312,7 +302,7 @@ apply_movement_settle ---> |writes Settle| effect_request
 ### Sync Resting Translation
 
 Used in the following systems:
-- **sync_resting_translation**: reads `GridCoords`, writes `RestingTranslation`, on `TranslateEffectTarget` entities whose `GridCoords` changed; runs before `apply_bounce_effect` and `apply_wave_effect` so their bounce origin is never stale
+- **sync_resting_translation**: for each player that moved, writes the new tile position to `RestingTranslation`.
 
 ```mermaid
 ---
@@ -347,7 +337,7 @@ resting_query ---> |writes| pe_resting
 ### Query WaveSource + BounceEffect entities (wave effect)
 
 Used in the following systems:
-- **apply_wave_effect**: detects beam entities whose `GridCoords` changed and that carry both `WaveSource` and `BounceEffect`, so it can propagate a bounce to the tile below
+- **apply_wave_effect**: finds the beams that moved and have `WaveSource` and `BounceEffect`.
 
 ```mermaid
 ---
@@ -383,7 +373,7 @@ bounce_query ---> |reads| be_bounce
 ### Query WaveEffectTarget entities and write commands (wave effect)
 
 Used in the following systems:
-- **apply_wave_effect**: looks up the `WaveEffectTarget` entity at the source's current grid position via `MapInfo::claimed_entities`, reads its `Transform` and optional `RestingTranslation` as the bounce origin, and inserts a bounce `TweenAnim` directly on it (no `BounceEffectTarget` indirection)
+- **apply_wave_effect**: finds the tile under the beam and puts a bounce `TweenAnim` on it.
 
 ```mermaid
 ---
@@ -424,7 +414,7 @@ apply_wave_effect ---> |resolves via `claimed_entities`| map_info_res
 ### Query BounceEffectTarget entities (bounce effect)
 
 Used in the following systems:
-- **apply_bounce_effect**: detects newly added `BounceEffectTarget` markers (claimed tiles only), reads `Transform` and optional `RestingTranslation`, plays the bounce tween directly on the tile, and removes the marker
+- **apply_bounce_effect**: puts a bounce `TweenAnim` on each newly marked tile, then removes the marker.
 
 ```mermaid
 ---
@@ -461,7 +451,7 @@ apply_bounce_effect ---> |removes| be_target
 ### Query DamageEffectTarget entities (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: detects entities whose `Health` has changed and that carry `DamageEffectTarget`, then requests a color-flash on the first child sprite
+- **apply_damage_effect**: finds the players whose `Health` changed.
 
 ```mermaid
 ---
@@ -494,7 +484,7 @@ damage_query ---> |reads| pe_health
 ### Query Children hierarchy (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: walks descendants to find the first child entity carrying a `Sprite` for the color-flash request
+- **apply_damage_effect**: looks through the children to find the first sprite.
 
 ```mermaid
 ---
@@ -524,7 +514,7 @@ children_query ---> |reads| ch_children
 ### Query child Sprite and write EffectRequest (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: reads the `Sprite` on the first child entity to confirm it is a sprite, and writes an `EffectRequest` with `DamageFlash { sprite, ms }`
+- **apply_damage_effect**: checks that the child has a `Sprite`, then writes a `DamageFlash` request.
 
 ```mermaid
 ---
@@ -557,7 +547,7 @@ apply_damage_effect ---> |writes DamageFlash| effect_request
 ### Read DamageableDied messages
 
 Used in the following systems:
-- **apply_death_effect**: triggers the death animation sequence on the dying entity, matched against a query filtered `Without<IsDead>` so a duplicate death message is a no-op
+- **apply_death_effect**: one death effect for each `DamageableDied`. Players already dead are skipped.
 
 ```mermaid
 ---
@@ -585,7 +575,7 @@ message_reader ---> |reads| damageable_died_message
 ### Write IsDead and EffectRequest (apply_death_effect)
 
 Used in the following systems:
-- **apply_death_effect**: inserts `IsDead` on the dying entity (matched by a query filtered `Without<IsDead>`) and writes an `EffectRequest` with `DeathBounce { intensity: 8.0, bounce_count: 3, decay: 0.33 }`
+- **apply_death_effect**: adds `IsDead` and writes a `DeathBounce` request.
 
 ```mermaid
 ---
@@ -624,7 +614,7 @@ apply_death_effect ---> |writes DeathBounce| effect_request
 ### Query Beam entities (glow)
 
 Used in the following systems:
-- **apply_glow_effect**: reacts to `Changed<GridCoords>` on `Beam` entities to find the tile under the beam, its four orthogonal neighbors and the tile two steps ahead, and pushes pulses onto their overlays
+- **apply_glow_effect**: finds the beams that moved, then the tile under each beam, its four neighbors and the tile two steps ahead.
 
 ```mermaid
 ---
@@ -662,7 +652,7 @@ apply_glow_effect ---> |resolves tile, neighbors and lookahead via `get_claimed_
 ### Write GlowPulses (apply_glow_effect)
 
 Used in the following systems:
-- **apply_glow_effect**: reads `LitOverlayLink` on the resolved claimed tile and ground cell and pushes `GlowPulse` values onto the linked overlay's `GlowPulses`
+- **apply_glow_effect**: follows `LitOverlayLink` from the tile and the floor cell, and adds pulses to the overlay's `GlowPulses`.
 
 ```mermaid
 ---
@@ -696,7 +686,7 @@ overlays_query ---> |pushes into| oe_pulses
 ### Read BeamParried messages
 
 Used in the following systems:
-- **trigger_parry_scale_effect**: reads `BeamParried` messages, finds the parrier's sprite child with `sprite_child` (reads `Children` and `Sprite`), and writes an `EffectRequest` with `ScalePunch`
+- **trigger_parry_scale_effect**: finds the sprite child of the parrier and writes a `ScalePunch` request.
 
 ```mermaid
 ---
@@ -741,7 +731,7 @@ trigger_parry_scale_effect ---> |writes ScalePunch| effect_request
 ### Read EffectRequest and spawn drivers (resolve_effect_requests)
 
 Used in the following systems:
-- **resolve_effect_requests**: reads every `EffectRequest`, finds the live driver per (owner, channel) through `EffectDrivers`, and spawns, replaces or updates drivers
+- **resolve_effect_requests**: finds the running driver of each player and channel, then starts, replaces or updates drivers.
 
 ```mermaid
 ---
@@ -793,7 +783,7 @@ resolve_effect_requests ---> |spawns with DriverOf, AnimTarget, TweenAnim| drive
 ### Read AnimCompletedEvent (on_effect_completed)
 
 Used in the following systems:
-- **on_effect_completed**: despawns the `EffectDriver` entity whose tween just finished, inserts `Visibility::Hidden` on the owner when the finished effect was a `DeathBounce`, and starts the queued `then` effect (through `start_effect`, which reads `RootTweenSources`: owner `Transform`, `GridCoords`, `RestingTranslation` and `MapInfo`)
+- **on_effect_completed**: despawns the finished driver, starts its `then` effect, and hides the player after a `DeathBounce`.
 
 ```mermaid
 ---
@@ -835,7 +825,7 @@ on_effect_completed ---> |inserts Hidden| oe_visibility
 ### Query EffectDriver entities (clear_root_effect_drivers)
 
 Used in the following systems:
-- **clear_root_effect_drivers**: reads every `EffectDriver` and despawns those whose kind is on the `RootTranslation` channel
+- **clear_root_effect_drivers**: despawns every driver on the `RootTranslation` channel.
 
 ```mermaid
 ---
@@ -864,15 +854,12 @@ clear_root_effect_drivers ---> |despawns| driver_entity
 
 ### SpriteLitOverlay and TilemapLitOverlay lifecycle
 
-`SpriteLitOverlay` marks the lit overlay child of a claimed tile, and `TilemapLitOverlay` marks the lit overlay of a floor cell, spawned as a child of the ground tilemap (both in `src/components/effects.rs`). They exist because `Sprite::color` is multiplicative and cannot make a tile lit; the overlay shows a lit copy of the tile atlas on top of the tile instead. Its full lifecycle:
-- **Spawned** once per tile by `spawn_sprite_lit_overlays`, with `GlowPulses` empty and `Visibility::Hidden`; the tile gets a `LitOverlayLink(overlay)`.
-- **Fed** by `apply_glow_effect`, which pushes `GlowPulse { elapsed, delay, peak, fade_in, hold, fade_out }` values.
-- **Driven** by `update_lit_overlays`, which advances pulses, sets alpha to the maximum strength, prunes finished pulses and toggles visibility; `sync_lit_overlay_frames` copies the tile's atlas index in `PostUpdate`.
-- **Reset** on `OnExit(RoundPhase::Playing)` by `clear_glow` (pulses cleared, alpha 0, hidden). The overlay itself is never despawned.
-
-`LitAtlases` (resource, private to the Effects plugin) holds two `LitAtlas` values, `tiles` and `ground`, and the shared `ground_layout` handle. Each `LitAtlas` holds the reserved `lit` image handle (created in `FromWorld`), the `source` image handle, and `built_with`, the `(lightness, chroma)` pair the current lit image was built with.
-
-`TilemapLitOverlay` overlays follow the same lifecycle but are spawned by `spawn_tilemap_lit_overlays` as children of the ground tilemap, and are never frame-synced.
+- `SpriteLitOverlay` is the lit overlay of a claimed tile. `TilemapLitOverlay` is the lit overlay of a floor cell, a child of the ground tilemap.
+- **Spawned** once per tile or cell, hidden and with no pulses. The tile or cell gets `LitOverlayLink(overlay)`.
+- **Fed** by `apply_glow_effect`, which adds `GlowPulse` values.
+- **Updated** by `update_lit_overlays` (alpha and visibility). `sync_lit_overlay_frames` copies the tile frame, for `SpriteLitOverlay` only.
+- **Reset** on exit of `Playing` by `clear_glow`. An overlay is never despawned.
+- `LitAtlases` is a resource of this plugin. It holds the `tiles` and `ground` lit images, their source images, the shared floor atlas layout, and the `(lightness, chroma)` pair each image was built with.
 
 ```mermaid
 ---
@@ -919,13 +906,12 @@ clear_glow ---> |clears pulses, hides| overlay_entity
 
 ### EffectDriver component lifecycle
 
-`EffectDriver { kind, then }` (`src/components/effects.rs`) is a transient carrier entity whose `TweenAnim` is redirected at the animated component through `AnimTarget`, so several effects can run on one sprite without sharing a `TweenAnim` slot. Its full lifecycle:
-- **Spawned** by `resolve_effect_requests` (or by `on_effect_completed` for a queued `then`) through `start_effect`, linked to its owner with `DriverOf`. Root effects build their tween at this moment, from the owner's current `Transform` to the `GridCoords` position (Translate, Settle, Knockback) or from `RestingTranslation` (DeathBounce).
-- **Replaced** by `resolve_effect_requests` when a new effect on the same channel wins `decide` with `Replace`: the old driver is despawned and the new one spawned in the same frame, so a repeated hit, parry or drag step restarts its tween.
-- **Updated in place** by `resolve_effect_requests` when a request is queued: only `then` changes.
-- **Despawned on completion** by `on_effect_completed`, reading `AnimCompletedEvent`. A queued `then` starts at that moment. When a DeathBounce driver completes, the owner gets `Visibility::Hidden`.
-- **Despawned on round end** by `clear_root_effect_drivers` (`OnExit(RoundPhase::Outcome)`), for root translation drivers only, including a queued `then`.
-- **Not cleared on round end** for sprite drivers.
+- `EffectDriver { kind, then }` is on a driver entity. Its `TweenAnim` animates another component through `AnimTarget`. So several effects can play on one sprite.
+- **Spawned** by `start_effect`, from the resolver or from `on_effect_completed` for a queued `then`. A position tween is built at this moment.
+- **Replaced** when a new effect on the same channel gets `Replace`. A new hit, parry or knockback restarts the tween.
+- **Updated** when a request is queued: only `then` changes.
+- **Despawned** when its tween ends (`on_effect_completed`). Its queued `then` starts at this moment.
+- **Despawned** on exit of `Outcome` (`clear_root_effect_drivers`), for position drivers only. Sprite drivers stay.
 
 ```mermaid
 ---
