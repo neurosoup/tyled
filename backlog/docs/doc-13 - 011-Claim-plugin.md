@@ -3,41 +3,41 @@ id: doc-13
 title: '[011] Claim plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-09-15 12:00'
+updated_date: '2026-10-30 12:00'
 ---
 # Claim Plugin
 
-Owns the authoritative tile-ownership write. When a beam stops, the Beam plugin emits `BeamResolved` (landing position, firing player); this plugin reads it, mutates the matching `ClaimedTile::owner`, and emits `TileClaimed` to record the flip. Splitting this from the Beam plugin gives `ClaimedTile::owner` a single write site — the chokepoint future claim-side ability resolvers (`on_resolve`/`on_claim`) will attach to.
+This plugin changes the owner of a tile when a beam ends on it. It is the only place in the code that writes `ClaimedTile::owner`.
 
-The only coupling to the Beam plugin is the `BeamResolved` message: this plugin never queries `Beam` entities. It is registered immediately after the Beam plugin in `AppPlugin`, and `claim_tile` runs in `GameplaySet::Claim`, which the shared `GameplaySet` chain (`schedule.rs`) orders after `GameplaySet::Beam` — so a `BeamResolved` written this frame is folded into `ClaimedTile::owner`/`ClaimedTileCount` before anything reading them later that same frame (the Charge plugin's regen/cap pair, the HUD's territory and charges bars).
+## Key ideas
 
-## Plugin workflow
+- The Beam plugin writes `BeamResolved` when a beam ends on a tile. This plugin reads it. It never reads `Beam` entities.
+- A **flip** is a claim that changes the owner. Claiming a tile that the player already owns is not a flip.
+- Each player has a `ClaimedTileCount`: the number of tiles they own. This plugin keeps it correct after each flip.
+- `TileClaimed` is written for every claim, flip or not. No system reads it yet. Future abilities will use it.
 
-- Update phase
-    - Claim Tile (`in_set(GameplaySet::Claim)`):
-        - Reacts to `BeamResolved` message
-            - Reads:
-                - `BeamResolved` message fields (`position`, `owner`)
-                - `MapInfo` resource (to resolve `GridCoords` → claimed tile `Entity` via `claimed_entities`)
-            - Writes:
-                - Mutates `ClaimedTile::owner` on the matched entity in `MapInfo::claimed_entities`
-                - On a real flip (owner actually changes), increments the new owner's `ClaimedTileCount` and decrements the previous owner's (if any)
-                - Emits a `TileClaimed` message (`position`, `old_owner`, `new_owner`) recording the ownership flip
+## Ordering
+
+- `claim_tile` runs in `GameplaySet::Claim`, only during `Playing`.
+- `GameplaySet::Claim` runs after `GameplaySet::Beam`. So a beam that ends in a frame claims its tile in the same frame.
+- A new system that writes `BeamResolved` must also run only during `Playing`, before `GameplaySet::Claim`. Otherwise its message can be lost.
 
 ## Plugin Systems
 
 ### Claim Tile
 
-Reads `BeamResolved` messages. For each, looks up the claimed tile entity from `MapInfo::claimed_entities` by the message's `GridCoords`, mutates `ClaimedTile::owner` to the new owner, and emits `TileClaimed` (`old_owner`, `new_owner`). The Animations plugin reads the ownership change to switch the tile's sprite; `TileClaimed` is the ability-system hook for a real flip vs. a no-op resolve (no consumers yet).
-
-The same system keeps each player's `ClaimedTileCount` in sync: on a real ownership flip it increments the new owner's count and decrements the previous owner's (saturating at zero); a no-op reclaim leaves counts untouched. The HUD plugin reads this count to render each player's claimed-tile percentage.
+- Reads `BeamResolved`. Finds the tile entity at the message position with `MapInfo::claimed_entities`.
+- Sets `ClaimedTile::owner` to the player of the message.
+- On a flip, adds 1 to the new owner's `ClaimedTileCount` and removes 1 from the old owner's count, if there was an old owner.
+- Writes `TileClaimed` with the position, the old owner and the new owner.
+- The Animations plugin sees the changed `ClaimedTile` and plays the tile flip.
 
 ## Components, Resources and Messages CRUD
 
 ### Read BeamResolved messages
 
 Used in the following systems:
-- **claim_tile**: used to trigger tile ownership mutation when a beam stops
+- **claim_tile**: each message is one claim.
 
 ```mermaid
 ---
@@ -65,7 +65,7 @@ message_reader ---> |reads| beam_resolved_message
 ### Read MapInfo resource (claim tile)
 
 Used in the following systems:
-- **claim_tile**: used to look up the claimed tile entity via `MapInfo::claimed_entities` for the resolved `GridCoords`
+- **claim_tile**: finds the tile entity at a position.
 
 ```mermaid
 ---
@@ -92,7 +92,7 @@ claim_tile ---> |reads `claimed_entities`| map_info_res
 ### Write ClaimedTile (claim tile)
 
 Used in the following systems:
-- **claim_tile**: mutates `ClaimedTile::owner` on the matched claimed tile entity to record the new owning player
+- **claim_tile**: sets the new owner.
 
 ```mermaid
 ---
@@ -123,7 +123,7 @@ claimed_tiles_query ---> |writes| ct_owner
 ### Write TileClaimed messages
 
 Used in the following systems:
-- **claim_tile**: emits a `TileClaimed` message (`position`, `old_owner`, `new_owner`) whenever a tile's ownership is set, recording the flip for ability resolvers (no consumers yet)
+- **claim_tile**: writes one message per claim. No system reads it yet.
 
 ```mermaid
 ---
@@ -147,7 +147,7 @@ claim_tile ---> |writes| tile_claimed_message
 ### Write ClaimedTileCount (claim tile)
 
 Used in the following systems:
-- **claim_tile**: on a real ownership flip, increments the new owner's `ClaimedTileCount::current` and decrements the previous owner's (saturating at zero)
+- **claim_tile**: on a flip, adds 1 for the new owner and removes 1 for the old owner.
 
 ```mermaid
 ---
