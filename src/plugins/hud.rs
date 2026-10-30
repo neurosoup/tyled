@@ -327,7 +327,72 @@ fn animate_countdown(
     }
 }
 
-pub fn initialize_digit_animations(
+/// Builds the 90 from→to digit roll animations.
+fn build_digit_animations(
+    image: &Handle<Image>,
+    animations: &mut Assets<Animation>,
+    frame_ms: u32,
+) -> DigitAnimations {
+    let spritesheet = Spritesheet::new(image, 40, 3);
+
+    const DIGIT_ROW: usize = 2;
+
+    let mut make_anim = |from: usize, to: usize| -> Handle<Animation> {
+        let (builder, direction) = match (from, to) {
+            // 9→0: col 39 (last of 9) then cols 0-3 (all of 0)
+            (9, 0) => (
+                spritesheet
+                    .create_animation()
+                    .add_cell(39, DIGIT_ROW)
+                    .add_partial_row(DIGIT_ROW, 0..=3),
+                AnimationDirection::Forwards,
+            ),
+            // 0→9: same cells as 9→0 played backwards → 3, 2, 1, 0, 39
+            (0, 9) => (
+                spritesheet
+                    .create_animation()
+                    .add_cell(39, DIGIT_ROW)
+                    .add_partial_row(DIGIT_ROW, 0..=3),
+                AnimationDirection::Backwards,
+            ),
+            _ => {
+                let direction = if to > from {
+                    AnimationDirection::Forwards
+                } else {
+                    AnimationDirection::Backwards
+                };
+                let (start, end) = (from.min(to) * 4 + 3, from.max(to) * 4 + 3);
+                (
+                    spritesheet
+                        .create_animation()
+                        .add_partial_row(DIGIT_ROW, start..=end),
+                    direction,
+                )
+            }
+        };
+        animations.add(
+            builder
+                .set_repetitions(AnimationRepeat::Times(1))
+                .set_duration(AnimationDuration::PerFrame(frame_ms))
+                .set_direction(direction)
+                .set_easing(Easing::In(EasingVariety::Quintic))
+                .build(),
+        )
+    };
+
+    let handles = std::array::from_fn(|from| {
+        std::array::from_fn(|to| {
+            if from == to {
+                return Handle::default();
+            }
+            make_anim(from, to)
+        })
+    });
+
+    DigitAnimations { handles }
+}
+
+fn initialize_digit_animations(
     mut commands: Commands,
     mut messages: MessageReader<TiledEvent<ObjectCreated>>,
     digits_query: Query<Entity, With<Digit>>,
@@ -335,7 +400,11 @@ pub fn initialize_digit_animations(
     sprites: Query<&Sprite>,
     mut animations: ResMut<Assets<Animation>>,
     config: Res<GameConfig>,
+    existing: Option<Res<DigitAnimations>>,
 ) {
+    let mut digit_animations: Option<DigitAnimations> = existing.map(|r| (*r).clone());
+    let mut built = false;
+
     for message in messages.read() {
         let Ok(entity) = digits_query.get(message.origin) else {
             continue;
@@ -354,68 +423,18 @@ pub fn initialize_digit_animations(
             continue;
         };
 
-        let spritesheet = Spritesheet::new(&image, 40, 3);
-
-        let frame_ms = config.animation.digit_roll_frame_ms;
-        const DIGIT_ROW: usize = 2;
-
-        let mut make_anim = |from: usize, to: usize| -> Handle<Animation> {
-            let (builder, direction) = match (from, to) {
-                // 9→0: col 39 (last of 9) then cols 0-3 (all of 0)
-                (9, 0) => (
-                    spritesheet
-                        .create_animation()
-                        .add_cell(39, DIGIT_ROW)
-                        .add_partial_row(DIGIT_ROW, 0..=3),
-                    AnimationDirection::Forwards,
-                ),
-                // 0→9: same cells as 9→0 played backwards → 3, 2, 1, 0, 39
-                (0, 9) => (
-                    spritesheet
-                        .create_animation()
-                        .add_cell(39, DIGIT_ROW)
-                        .add_partial_row(DIGIT_ROW, 0..=3),
-                    AnimationDirection::Backwards,
-                ),
-                _ => {
-                    let direction = if to > from {
-                        AnimationDirection::Forwards
-                    } else {
-                        AnimationDirection::Backwards
-                    };
-                    let (start, end) = (from.min(to) * 4 + 3, from.max(to) * 4 + 3);
-                    (
-                        spritesheet
-                            .create_animation()
-                            .add_partial_row(DIGIT_ROW, start..=end),
-                        direction,
-                    )
-                }
-            };
-            animations.add(
-                builder
-                    .set_repetitions(AnimationRepeat::Times(1))
-                    .set_duration(AnimationDuration::PerFrame(frame_ms))
-                    .set_direction(direction)
-                    .set_easing(Easing::In(EasingVariety::Quintic))
-                    .build(),
-            )
-        };
-
-        let handles = std::array::from_fn(|from| {
-            std::array::from_fn(|to| {
-                if from == to {
-                    return Handle::default();
-                }
-                make_anim(from, to)
-            })
+        let digit_animations = digit_animations.get_or_insert_with(|| {
+            built = true;
+            build_digit_animations(&image, &mut animations, config.animation.digit_roll_frame_ms)
         });
 
-        let initial_handle = handles[9][0].clone();
-        commands.insert_resource(DigitAnimations { handles });
-
+        // 9→0 is the shortest roll that ends on 0, the starting digit value.
         commands
             .entity(sprite_entity)
-            .insert(SpritesheetAnimation::new(initial_handle));
+            .insert(SpritesheetAnimation::new(digit_animations.handles[9][0].clone()));
+    }
+
+    if built && let Some(digit_animations) = digit_animations {
+        commands.insert_resource(digit_animations);
     }
 }

@@ -38,7 +38,12 @@ None.
 
 ## Components, Resources and Messages CRUD
 
-### Who reads the ability data
+This plugin has no systems. The sections below show where other plugins use its data.
+
+### Insert PlayerLoadouts resource
+
+Used in the following systems:
+- **plugin build**: inserts the starting abilities of both players.
 
 ```mermaid
 ---
@@ -47,51 +52,142 @@ config:
 ---
 
 flowchart TD
+classDef system-group stroke-dasharray: 5 5
 
-loadouts[("`**PlayerLoadouts**
-resource`")]
-list["`**AbilityList**
-component on each player`"]
+build(("`Plugin build`")):::system-group
 
+world@{ shape: st-rect, label: "World" }
+loadouts_res@{ shape: doc, label: "PlayerLoadouts" }
+
+pl_player1>"`**player1**`"]
+pl_player2>"`**player2**`"]
+
+loadouts_res --> |belongs to| world
+pl_player1 --> |field of| loadouts_res
+pl_player2 --> |field of| loadouts_res
+
+build ---> |inserts resource| loadouts_res
+```
+
+### Read PlayerLoadouts resource
+
+Used in the following systems:
+- **initialize_players** (Maps plugin): gets the list of each player with `for_player`.
+- **open_sink** (Telemetry plugin): writes both loadouts in the session record.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+exit_loading(("`OnExit(Loading)`")):::system-group
+startup(("`Startup`")):::system-group
 initialize_players["`**initialize_players**
 Maps plugin`"]
 open_sink["`**open_sink**
 Telemetry plugin`"]
 
-loadouts --> |read by| initialize_players
-list --> |inserted by| initialize_players
-loadouts --> |read by| open_sink
+exit_loading -.-> initialize_players
+startup -.-> open_sink
 
-subgraph lance ["Lance"]
-  handle_characters_input["`**handle_characters_input**
-  Input plugin`"]
-  spawn_beam["`**spawn_beam**
-  Beam plugin`"]
-  bot_think_lance["`**bot_think**
-  Bot plugin`"]
-end
+world@{ shape: st-rect, label: "World" }
+loadouts_res@{ shape: doc, label: "PlayerLoadouts" }
 
-subgraph grinder ["Border Grinder"]
-  beam_step["`**beam_step**
-  Beam plugin`"]
-  bot_think_grinder["`**bot_think**
-  Bot plugin`"]
-end
+loadouts_res --> |belongs to| world
 
-subgraph solar ["Solar Panels"]
-  regen["`**regen_charges_from_solar_panels**
-  Charge plugin`"]
-end
+initialize_players ---> |"reads for_player(player_id)"| loadouts_res
+open_sink ---> |reads player1, player2| loadouts_res
+```
 
+### Insert AbilityList component
+
+Used in the following systems:
+- **initialize_players** (Maps plugin): adds `AbilityList` to each player, from `PlayerLoadouts`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+exit_loading(("`OnExit(Loading)`")):::system-group
+initialize_players["`**initialize_players**
+Maps plugin`"]
+
+exit_loading -.-> initialize_players
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+al_list>"`**AbilityList**`"]
+
+al_list --> |inserted on| player_entity
+
+initialize_players ---> |inserts component| al_list
+```
+
+### Query AbilityList
+
+Used in the following systems:
+- **handle_characters_input** (Input plugin), **spawn_beam** (Beam plugin): check `Lance` before a shot.
+- **beam_step** (Beam plugin): checks `BorderGrinder` on the caster.
+- **bot_think** (Bot plugin): checks `Lance` and `BorderGrinder` to choose a move.
+- **regen_charges_from_solar_panels** (Charge plugin): checks `SolarPanels`.
+- **record_outcome** (Telemetry plugin): writes each player's abilities when the round ends.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+handle_characters_input["`**handle_characters_input**
+Input plugin`"]
+spawn_beam["`**spawn_beam**
+Beam plugin`"]
+beam_step["`**beam_step**
+Beam plugin`"]
+bot_think["`**bot_think**
+Bot plugin`"]
+regen["`**regen_charges_from_solar_panels**
+Charge plugin`"]
 record_outcome["`**record_outcome**
 Telemetry plugin`"]
 
-list --> |read by| lance
-list --> |read by| grinder
-list --> |read by| solar
-list --> |read by| record_outcome
+update -.-> handle_characters_input
+update -.-> spawn_beam
+update -.-> beam_step
+update -.-> bot_think
+update -.-> regen
+enter_outcome(("`OnEnter(Outcome)`")):::system-group
+enter_outcome -.-> record_outcome
+
+ability_query{{"`AbilityList query`"}}:::query
+handle_characters_input ---> ability_query
+spawn_beam ---> ability_query
+beam_step ---> ability_query
+bot_think ---> ability_query
+regen ---> ability_query
+record_outcome ---> ability_query
+
+player_entity@{ shape: st-rect, label: "Player" }
+
+al_list>"`**AbilityList**`"] --> |belongs to| player_entity
+
+ability_query ---> |reads| al_list
 ```
 
 - `AbilityList`: `Component`, `Reflect`, `Default`, `Clone`.
 - `AbilityDescriptor`: `Reflect`, `Clone`, `Debug`, `PartialEq`, `Eq`.
-- `PlayerLoadouts`: `Resource`, `Clone`. `for_player(player_id)` returns the list for player 0 or player 1.
+- `PlayerLoadouts`: `Resource`, `Clone`.
