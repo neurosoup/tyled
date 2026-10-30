@@ -281,8 +281,7 @@ fn resolve_timeout(
 fn resolve_charge_exhaustion(
     mut died_reader: MessageReader<DamageableDied>,
     countdown: Option<Res<Countdown>>,
-    in_flight: Query<&InFlightBeamCount>,
-    players: Query<(&Player, &ClaimedTileCount, &Health, &BeamCharges)>,
+    players: Query<(&Player, &ClaimedTileCount, &Health, &BeamCharges, &InFlightBeamCount)>,
     mut result: ResMut<RoundResult>,
     mut score: ResMut<MatchScore>,
     mut next_phase: ResMut<NextState<RoundPhase>>,
@@ -293,12 +292,12 @@ fn resolve_charge_exhaustion(
     if countdown.is_some_and(|countdown| countdown.remaining == 0) {
         return;
     }
-    if in_flight.iter().any(|count| count.current > 0) {
+    if players.iter().any(|(.., in_flight)| in_flight.current > 0) {
         return;
     }
 
     let mut any_player = false;
-    let all_exhausted = players.iter().all(|(.., charges)| {
+    let all_exhausted = players.iter().all(|(.., charges, _)| {
         any_player = true;
         charges.is_empty()
     });
@@ -309,7 +308,7 @@ fn resolve_charge_exhaustion(
     let winner = winner_by_standing(
         players
             .iter()
-            .map(|(player, count, health, _)| (player, count, health)),
+            .map(|(player, count, health, ..)| (player, count, health)),
     );
     conclude_round(winner, &mut result, &mut score, &mut next_phase);
 }
