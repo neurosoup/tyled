@@ -3,44 +3,95 @@ id: doc-12
 title: '[010] Abilities plugin'
 type: other
 created_date: '2026-07-12 12:00'
-updated_date: '2026-08-13 12:00'
+updated_date: '2026-10-30 12:00'
 ---
 # Abilities Plugin
 
-The home of the beam-ability substrate. Its job is to let each player carry an ordered list of draftable abilities that modify beam behaviour, the charge economy, and tile contests through resolver systems.
+This plugin gives each player a list of abilities. The abilities change how beams and charges work. Other plugins read the list and apply the effects.
 
-The plugin registers the ability component types (so the `bevy-inspector-egui` world inspector can display each player's loadout) *and* owns `PlayerLoadouts`, the hardcoded per-player starting kits read by the Maps plugin's `initialize_players`. There is no draft UI, so loadouts are assigned in code and swapped between runs by editing `PlayerLoadouts`. The `Lance` ability is handed to players via `PlayerLoadouts` and, in the Beam plugin, both drives `BeamBehavior::Lance` selection **and** is what lets a player fire at all from an already-claimed tile — without it, firing from a claimed tile is refused (no beam, no charge). Beam-behavior selection and this fire gate (both via `resolve_fire`, reading a player's `AbilityList` at fire/spawn time) are Beam plugin concerns; charge-economy resolvers (Solar Panels' regen tick) are Charge plugin concerns (`backlog/docs/doc-23 - 021-Charge-plugin.md`); this plugin holds no resolver systems itself.
+## Key ideas
 
-## Concepts
+- `AbilityList` is the list of abilities of one player. The Maps plugin adds it to each player.
+- `AbilityDescriptor` is one ability: `Lance`, `BorderGrinder` or `SolarPanels`. It is plain data, so a loadout can later be written in a file.
+- Straight Shot is the base beam. Every player has it, so it is not in the list. An empty list means "Straight Shot only".
+- `PlayerLoadouts` holds the starting abilities of each player. There is no draft screen yet, so the loadouts are set in code.
+- Today, player 1 starts with `SolarPanels` and player 2 starts with `BorderGrinder`.
+- This plugin has no systems. Other plugins read `AbilityList` and apply each ability.
 
-Three types make up the substrate (the split is intentional):
+## Abilities
 
-- `AbilityList(Vec<AbilityDescriptor>)` (`src/components/abilities.rs`) — the **per-player, persistent, draftable** list. It is attached to every player in the Maps plugin's `initialize_players` from `PlayerLoadouts`. Straight Shot is the *implicit baseline* applied first and is **not** stored here, so an empty list means "Straight-only" — the layer-1 balancing control. Later stages append drafted descriptors.
-- `AbilityDescriptor` (`src/components/abilities.rs`) — a single draftable ability, kept as pure, `Reflect`-serialisable data (no `Entity` or runtime handles) so a future loadout can be authored in RON, hot-reloaded via `file_watcher`, and persisted across sessions. Declares three variants: `Lance`, `BorderGrinder`, `SolarPanels`.
-- `PlayerLoadouts` (`src/components/abilities.rs`) — a **resource** holding the hardcoded P1/P2 starting descriptor lists (there is no draft UI). Inserted by this plugin's build — currently **empty for P1 (Straight-only) and `[BorderGrinder]` for P2** — and read by `initialize_players` via `for_player(player_id)`. It is the single place to assign or swap kits between runs; adding a descriptor to a player's list grants that player the ability.
+- **Lance**: lets a player fire from a claimed tile. The beam then uses `BeamBehavior::Lance`. Without Lance, a player on a claimed tile cannot fire, and no charge is spent.
+- **Border Grinder**: when a straight beam reaches an enemy tile, it claims that tile and ends there.
+- **Solar Panels**: gives back charges on a timer (`charge.solar_panels_tick_secs`, 5 s). The player gains one charge for every `charge.solar_panels_tiles_per_charge` (10) tiles that they own.
 
-Related but owned by the Beam plugin: `BeamBehavior { Straight, Lance }` (`src/components/beam.rs`) is the **per-beam, transient** resolved execution mode carried on each `Beam`. `spawn_beam` selects `BeamBehavior::Lance` when a beam is fired from already-claimed ground **and** the firing player's `AbilityList` contains `AbilityDescriptor::Lance`; from unclaimed ground it stays `Straight`. Firing from a claimed tile **without** `Lance` is refused outright — no beam, no charge (see the Beam plugin doc).
-
-`BorderGrinder` is also resolved in the Beam plugin, reading a player's `AbilityList`: it lets a `Straight`-behavior beam punch through an enemy-claimed tile it would otherwise stop short of, flipping that tile instead of stopping at its border (see `beam.rs`'s `border_grinder_flips_tile`; the Bot plugin's decision logic also weighs chasing down a Border Grinder flip). `SolarPanels` passively regenerates a player's `BeamCharges` on a fixed tick, gaining one charge per `config.charge.solar_panels_tiles_per_charge` tiles the player currently owns — resolved in the Charge plugin (`charge.rs`'s `regen_charges_from_solar_panels`), the home for `BeamCharges` regen/refund/cost-policy resolvers.
+See the [Beam plugin](/documentation/7/006-beam-plugin) for Lance and Border Grinder, and the [Charge plugin](/documentation/23/021-charge-plugin) for Solar Panels.
 
 ## Plugin workflow
 
-- Startup phase
-    - (none)
-- Registration (at plugin build)
-    - `register_type::<AbilityList>()` and `register_type::<AbilityDescriptor>()` — makes the loadout visible in the world inspector.
-    - `insert_resource(PlayerLoadouts { .. })` — the hardcoded default kits (currently empty for P1, `[BorderGrinder]` for P2).
-- Update phase
-    - (none — this plugin has no Update systems.)
+- At plugin build:
+    - Registers `AbilityList` and `AbilityDescriptor`, so the world inspector shows each player's abilities.
+    - Inserts `PlayerLoadouts`.
 
 ## Plugin Systems
 
-None. The plugin only registers reflected component types and inserts the `PlayerLoadouts` resource. None of the three abilities need a resolver here: beam-behavior selection, the fire gate, and the Border Grinder flip check are spawn/step-side logic living in the Beam plugin; the SolarPanels regen tick lives in the Charge plugin.
+None.
 
 ## Components, Resources and Messages CRUD
 
-The plugin has no systems, so there are no per-frame read/write flows to diagram. Definitions and where they are used:
+### Who reads the ability data
 
-- `AbilityList` — `#[derive(Component, Reflect, Default, Clone)]`, attached to each player by `initialize_players` (Maps plugin) from `PlayerLoadouts::for_player`. Read in the Beam plugin (by `spawn_beam` to select `BeamBehavior`, and by `border_grinder_flips_tile`) and in the Input plugin (by `handle_characters_input` to gate firing), both via `resolve_fire`; also read in the Charge plugin (by `regen_charges_from_solar_panels` to gate the regen tick on `AbilityDescriptor::SolarPanels`).
-- `AbilityDescriptor` — `#[derive(Reflect, Clone, Debug, PartialEq, Eq)]`, three variants: `Lance`, `BorderGrinder`, `SolarPanels`.
-- `PlayerLoadouts` — `#[derive(Resource, Clone)]`, inserted here, read by `initialize_players` (Maps plugin).
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+loadouts[("`**PlayerLoadouts**
+resource`")]
+list["`**AbilityList**
+component on each player`"]
+
+initialize_players["`**initialize_players**
+Maps plugin`"]
+open_sink["`**open_sink**
+Telemetry plugin`"]
+
+loadouts --> |read by| initialize_players
+list --> |inserted by| initialize_players
+loadouts --> |read by| open_sink
+
+subgraph lance ["Lance"]
+  handle_characters_input["`**handle_characters_input**
+  Input plugin`"]
+  spawn_beam["`**spawn_beam**
+  Beam plugin`"]
+  bot_think_lance["`**bot_think**
+  Bot plugin`"]
+end
+
+subgraph grinder ["Border Grinder"]
+  beam_step["`**beam_step**
+  Beam plugin`"]
+  bot_think_grinder["`**bot_think**
+  Bot plugin`"]
+end
+
+subgraph solar ["Solar Panels"]
+  regen["`**regen_charges_from_solar_panels**
+  Charge plugin`"]
+end
+
+record_outcome["`**record_outcome**
+Telemetry plugin`"]
+
+list --> |read by| lance
+list --> |read by| grinder
+list --> |read by| solar
+list --> |read by| record_outcome
+```
+
+- `AbilityList`: `Component`, `Reflect`, `Default`, `Clone`.
+- `AbilityDescriptor`: `Reflect`, `Clone`, `Debug`, `PartialEq`, `Eq`.
+- `PlayerLoadouts`: `Resource`, `Clone`. `for_player(player_id)` returns the list for player 0 or player 1.
