@@ -148,17 +148,12 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            apply_damage_effect.in_set(EffectsSet::Request),
-            trigger_parry_scale_effect.in_set(EffectsSet::Request),
-            request_knockback_effect
-                .before(apply_translate_effect)
-                .before(apply_movement_settle)
-                .in_set(EffectsSet::Request),
-            apply_translate_effect.in_set(EffectsSet::Request),
-            apply_movement_settle.in_set(EffectsSet::Request),
-            apply_death_effect
-                .after(request_knockback_effect)
-                .in_set(EffectsSet::Request),
+            request_damage_effect.in_set(EffectsSet::Request),
+            request_parry_scale_effect.in_set(EffectsSet::Request),
+            request_knockback_effect.in_set(EffectsSet::Request),
+            request_translate_effect.in_set(EffectsSet::Request),
+            request_settle_effect.in_set(EffectsSet::Request),
+            request_death_effect.in_set(EffectsSet::Request),
             on_effect_completed.in_set(EffectsSet::Complete),
             resolve_effect_requests.in_set(EffectsSet::Resolve),
         ),
@@ -323,7 +318,7 @@ fn request_knockback_effect(
 }
 
 /// Requests a slide for each player whose grid position changed.
-fn apply_translate_effect(
+fn request_translate_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     moving_objects: Query<
@@ -341,7 +336,7 @@ fn apply_translate_effect(
 }
 
 /// Requests an ease-out settle for each player that stopped moving.
-fn apply_movement_settle(
+fn request_settle_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     mut movement_stopped_reader: MessageReader<MovementStopped>,
@@ -611,7 +606,7 @@ fn warn_duplicate_channel_drivers(
 }
 
 /// Requests a damage flash for each entity whose health changed.
-fn apply_damage_effect(
+fn request_damage_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     damageable_query: Query<
@@ -640,7 +635,7 @@ fn sprite_child(children: Option<&Children>, sprite_query: &Query<&Sprite>) -> O
 }
 
 /// Marks a died entity dead and requests its death effect.
-fn apply_death_effect(
+fn request_death_effect(
     mut commands: Commands,
     mut requests: MessageWriter<EffectRequest>,
     mut damageable_died_reader: MessageReader<DamageableDied>,
@@ -724,7 +719,7 @@ fn apply_bounce_effect(
 }
 
 /// Requests a scale punch on the sprite of each player that landed a parry.
-fn trigger_parry_scale_effect(
+fn request_parry_scale_effect(
     mut requests: MessageWriter<EffectRequest>,
     config: Res<GameConfig>,
     mut beam_parried_reader: MessageReader<BeamParried>,

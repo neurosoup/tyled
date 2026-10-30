@@ -7,7 +7,7 @@ updated_date: '2026-10-22 12:00'
 ---
 # Effects Plugin
 
-This plugin plays the visual effects. Players slide when they move or get knocked back, bounce when they die, flash red when they are hit, and grow for a short time after a parry. Tiles bounce when a beam passes over them or when they are claimed. Tiles also glow when a beam crosses them.
+This plugin plays the visual effects of players and tiles.
 
 ## Key ideas
 
@@ -34,29 +34,118 @@ The resolver uses this table for the `RootTranslation` channel. The rows are the
 - `Drop`: ignore the request.
 - `ScalePunch` and `DamageFlash` have their own channels. They always start or replace, so a new parry or hit restarts them.
 
-How requests combine:
+How requests combine, in two examples. In one frame, the requests are sorted by rank (Translate 0, Settle 1, Knockback 2, DeathBounce 3) and go through the table one by one.
 
-- Rank: Translate 0, Settle 1, Knockback 2, DeathBounce 3.
-- A driver has one `then` slot. A new queued effect takes the slot when its rank is higher or equal (`merge_queued`).
-- On `Replace`, the old `then` moves to the new driver only if the table gives `Queue` for it. So a death bounce waiting behind a knockback stays when a new knockback replaces the first one.
-- In one frame, the requests for one player and one channel are sorted by rank and applied in that order. Equal ranks keep their write order.
-- At most one driver starts per channel per frame. Examples: Translate + Knockback gives Knockback. Knockback + DeathBounce gives Knockback, then DeathBounce. Settle + Translate gives Settle.
-- A dead player (`IsDead`) gets only `DeathBounce` on this channel. Its flashes still play.
-- A Translate during a Knockback is queued. The input lock can end one frame before the knockback slide ends.
-- The queued slide starts from the current position. If the player did not move, it shows nothing.
-- A lethal hit plays no knockback slide. The Damage plugin writes no `EntityKnockedBack` for it.
-- `IsKnockedBack` is the input lock of the Damage plugin. These rules do not read it.
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+subgraph ex1 ["Example 1: the player moves and is knocked back in the same frame"]
+  e1_requests["`**Requests this frame**
+  Knockback, Translate`"]
+  e1_sorted["`**Sorted by rank**
+  Translate, Knockback`"]
+  e1_translate["`**Translate** vs none
+  Start`"]
+  e1_knockback["`**Knockback** vs Translate
+  Replace`"]
+  e1_result["`**Result**
+  one driver: Knockback`"]
+  e1_requests --> e1_sorted --> e1_translate --> e1_knockback --> e1_result
+end
+
+subgraph ex2 ["Example 2: the player is knocked onto an enemy tile and dies"]
+  e2_running["`**Running driver**
+  Knockback`"]
+  e2_new["`**New request** (next frame)
+  DeathBounce vs Knockback
+  Queue`"]
+  e2_result["`**Result**
+  the knockback slide ends, then the death bounce plays`"]
+  e2_running --> e2_new --> e2_result
+end
+
+ex1 ~~~ ex2
+```
 
 ## Ordering
 
-- The request systems are in `EffectsSet::Request`. The chain is `Request`, `Complete`, `Resolve`, inside `GameplaySet::Presentation`.
-- Bevy applies commands between `Complete` and `Resolve`. So the resolver sees the drivers that `on_effect_completed` started.
-- `Resolve` runs before `bevy_tweening::AnimationSystem::AnimationUpdate`.
-- `request_knockback_effect` runs before `apply_translate_effect`, `apply_movement_settle` and `apply_death_effect`.
-- `sync_resting_translation` runs before the wave and claim bounces.
-- `apply_glow_effect` runs after both overlay spawn systems. `update_lit_overlays` runs after it.
-- `sync_lit_overlay_frames` runs in `PostUpdate`, after the sprite animations (`AnimationSystemSet`).
-- No `Update` system here is gated on `RoundPhase`. Two systems run on state exit: `clear_glow` and `clear_root_effect_drivers`.
+An arrow means "runs before". Systems with no arrow between them have no fixed order.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+subgraph presentation ["GameplaySet::Presentation (Update)"]
+  subgraph request ["EffectsSet::Request"]
+    request_knockback_effect["`**request_knockback_effect**`"]
+    request_translate_effect["`**request_translate_effect**`"]
+    request_settle_effect["`**request_settle_effect**`"]
+    request_death_effect["`**request_death_effect**`"]
+    request_damage_effect["`**request_damage_effect**`"]
+    request_parry_scale_effect["`**request_parry_scale_effect**`"]
+  end
+  subgraph complete ["EffectsSet::Complete"]
+    on_effect_completed["`**on_effect_completed**`"]
+  end
+  subgraph resolve ["EffectsSet::Resolve"]
+    resolve_effect_requests["`**resolve_effect_requests**`"]
+  end
+  request --> complete --> |"spawns and despawns run here"| resolve
+end
+
+animation_update["`**AnimationSystem::AnimationUpdate**
+(bevy_tweening)`"]
+resolve --> animation_update
+
+subgraph tiles ["Update, no set"]
+  sync_resting_translation["`**sync_resting_translation**`"]
+  apply_wave_effect["`**apply_wave_effect**`"]
+  apply_bounce_effect["`**apply_bounce_effect**`"]
+  sync_resting_translation --> apply_wave_effect
+  sync_resting_translation --> apply_bounce_effect
+
+  spawn_sprite_lit_overlays["`**spawn_sprite_lit_overlays**`"]
+  spawn_tilemap_lit_overlays["`**spawn_tilemap_lit_overlays**
+  when MapInfo changes`"]
+  build_lit_atlas["`**build_lit_atlas**`"]
+  apply_glow_effect["`**apply_glow_effect**`"]
+  update_lit_overlays["`**update_lit_overlays**`"]
+  spawn_sprite_lit_overlays --> apply_glow_effect
+  spawn_tilemap_lit_overlays --> apply_glow_effect
+  apply_glow_effect --> update_lit_overlays
+end
+
+subgraph post ["PostUpdate"]
+  animation_system_set["`**AnimationSystemSet**
+  (sprite animations)`"]
+  sync_lit_overlay_frames["`**sync_lit_overlay_frames**`"]
+  animation_system_set --> sync_lit_overlay_frames
+end
+
+subgraph exits ["State exits"]
+  clear_glow["`**clear_glow**
+  on exit of Playing`"]
+  clear_root_effect_drivers["`**clear_root_effect_drivers**
+  on exit of Outcome`"]
+end
+
+animation_update ~~~ tiles
+apply_wave_effect ~~~ spawn_sprite_lit_overlays
+tiles ~~~ post ~~~ exits
+clear_glow ~~~ clear_root_effect_drivers
+```
+
+- When a tween ends, `on_effect_completed` despawns its driver and spawns a new driver for its `then` effect. Bevy runs these spawns and despawns between `Complete` and `Resolve`, so the resolver sees the new driver.
+- No `Update` system here is gated on `RoundPhase`.
 
 ## Plugin Systems
 
@@ -66,13 +155,13 @@ How requests combine:
 - Writes a `Knockback` request. Duration: `effects.knockback_tween_ms` (200 ms).
 - The Damage plugin owns the move and the input lock. This system only asks for the slide.
 
-### Apply Translate Effect
+### Request Translate Effect
 
 - When a player's `GridCoords` changes, writes a `Translate` request.
 - Duration: the player's `MovementSlide`, or `timing.move_repeat_rate_ms` if it has none.
 - The tween is linear, from the current position to the new tile.
 
-### Apply Movement Settle
+### Request Settle Effect
 
 - Reads `MovementStopped` from the Input plugin. Writes a `Settle` request.
 - The tween eases out (`QuadraticOut`) to the current tile, over `timing.move_repeat_rate_ms`.
@@ -94,18 +183,18 @@ How requests combine:
 - The claim bounce, for tiles only. The Animations plugin adds `BounceEffectTarget` when a tile is claimed.
 - Puts a bounce `TweenAnim` on the tile, then removes the marker, so the bounce plays once.
 
-### Apply Damage Effect
+### Request Damage Effect
 
 - When a player's `Health` changes, writes a `DamageFlash` request for its first sprite child.
 - The sprite turns red over a quarter of `effects.damage_flash_ms` (150 ms), then back to white over `damage_flash_ms`.
 
-### Apply Death Effect
+### Request Death Effect
 
 - Reads `DamageableDied`. It skips players that already have `IsDead`, so a second death message does nothing.
 - Adds `IsDead` and writes a `DeathBounce` request (intensity 8, 3 bounces, decay 0.33).
 - It has no phase gate, so it still sees a death written on the last `Playing` frame.
 
-### Trigger Parry Scale Effect
+### Request Parry Scale Effect
 
 - Reads `BeamParried`. Writes a `ScalePunch` request for the sprite child of the parrier.
 - The sprite starts at `parry.scale_punch_peak` (1.1) and shrinks to normal size over `parry.scale_punch_secs` (0.15 s, in hitstop time).
@@ -238,7 +327,7 @@ request_knockback_effect ---> |writes Knockback| effect_request
 ### Query TranslateEffectTarget entities
 
 Used in the following systems:
-- **apply_translate_effect**: for each player that moved, reads `MovementSlide` (if present) and writes a `Translate` request.
+- **request_translate_effect**: for each player that moved, reads `MovementSlide` (if present) and writes a `Translate` request.
 
 ```mermaid
 ---
@@ -251,12 +340,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_translate_effect["`**apply_translate_effect**`"]
+request_translate_effect["`**request_translate_effect**`"]
 
-update -.-> apply_translate_effect
+update -.-> request_translate_effect
 
 translate_query{{"`translate_query`"}}:::query
-apply_translate_effect ---> translate_query
+request_translate_effect ---> translate_query
 
 moving_entity@{ shape: st-rect, label: "Moving Entity" }
 
@@ -269,13 +358,13 @@ translate_query ---> |"reads (optional)"| me_slide
 translate_query -..-> |filter With| me_marker
 
 effect_request(["`**EffectRequest**`"])
-apply_translate_effect ---> |writes Translate| effect_request
+request_translate_effect ---> |writes Translate| effect_request
 ```
 
 ### Read MovementStopped messages
 
 Used in the following systems:
-- **apply_movement_settle**: writes one `Settle` request for each `MovementStopped`.
+- **request_settle_effect**: writes one `Settle` request for each `MovementStopped`.
 
 ```mermaid
 ---
@@ -288,15 +377,15 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_movement_settle["`**apply_movement_settle**`"]
+request_settle_effect["`**request_settle_effect**`"]
 
-update -.-> apply_movement_settle
+update -.-> request_settle_effect
 
 movement_stopped_message(["`**MovementStopped**`"])
-movement_stopped_message ---> |read by| apply_movement_settle
+movement_stopped_message ---> |read by| request_settle_effect
 
 effect_request(["`**EffectRequest**`"])
-apply_movement_settle ---> |writes Settle| effect_request
+request_settle_effect ---> |writes Settle| effect_request
 ```
 
 ### Sync Resting Translation
@@ -451,7 +540,7 @@ apply_bounce_effect ---> |removes| be_target
 ### Query DamageEffectTarget entities (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: finds the players whose `Health` changed.
+- **request_damage_effect**: finds the players whose `Health` changed.
 
 ```mermaid
 ---
@@ -464,12 +553,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_damage_effect["`**apply_damage_effect**`"]
+request_damage_effect["`**request_damage_effect**`"]
 
-update -.-> apply_damage_effect
+update -.-> request_damage_effect
 
 damage_query{{"`damage_query`"}}:::query
-apply_damage_effect ---> damage_query
+request_damage_effect ---> damage_query
 
 player_entity@{ shape: st-rect, label: "Player" }
 
@@ -484,7 +573,7 @@ damage_query ---> |reads| pe_health
 ### Query Children hierarchy (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: looks through the children to find the first sprite.
+- **request_damage_effect**: looks through the children to find the first sprite.
 
 ```mermaid
 ---
@@ -497,12 +586,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_damage_effect["`**apply_damage_effect**`"]
+request_damage_effect["`**request_damage_effect**`"]
 
-update -.-> apply_damage_effect
+update -.-> request_damage_effect
 
 children_query{{"`children_query`"}}:::query
-apply_damage_effect ---> children_query
+request_damage_effect ---> children_query
 
 child_entity@{ shape: st-rect, label: "Any Child Entity" }
 
@@ -514,7 +603,7 @@ children_query ---> |reads| ch_children
 ### Query child Sprite and write EffectRequest (damage effect)
 
 Used in the following systems:
-- **apply_damage_effect**: checks that the child has a `Sprite`, then writes a `DamageFlash` request.
+- **request_damage_effect**: checks that the child has a `Sprite`, then writes a `DamageFlash` request.
 
 ```mermaid
 ---
@@ -527,12 +616,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_damage_effect["`**apply_damage_effect**`"]
+request_damage_effect["`**request_damage_effect**`"]
 
-update -.-> apply_damage_effect
+update -.-> request_damage_effect
 
 sprites_query{{"`sprite_query`"}}:::query
-apply_damage_effect ---> sprites_query
+request_damage_effect ---> sprites_query
 
 child_entity@{ shape: st-rect, label: "Player Child (Sprite)" }
 
@@ -541,13 +630,13 @@ ce_sprite>"`**Sprite**`"] --> |belongs to| child_entity
 sprites_query ---> |reads| ce_sprite
 
 effect_request(["`**EffectRequest**`"])
-apply_damage_effect ---> |writes DamageFlash| effect_request
+request_damage_effect ---> |writes DamageFlash| effect_request
 ```
 
 ### Read DamageableDied messages
 
 Used in the following systems:
-- **apply_death_effect**: one death effect for each `DamageableDied`. Players already dead are skipped.
+- **request_death_effect**: one death effect for each `DamageableDied`. Players already dead are skipped.
 
 ```mermaid
 ---
@@ -560,22 +649,22 @@ classDef system-group stroke-dasharray: 5 5
 classDef reader stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_death_effect["`**apply_death_effect**`"]
+request_death_effect["`**request_death_effect**`"]
 
-update -.-> apply_death_effect
+update -.-> request_death_effect
 
 message_reader{{"MessageReaderDamageableDied#62;"}}:::reader
-apply_death_effect ---> message_reader
+request_death_effect ---> message_reader
 
 damageable_died_message(["`**DamageableDied**`"])
 
 message_reader ---> |reads| damageable_died_message
 ```
 
-### Write IsDead and EffectRequest (apply_death_effect)
+### Write IsDead and EffectRequest (request_death_effect)
 
 Used in the following systems:
-- **apply_death_effect**: adds `IsDead` and writes a `DeathBounce` request.
+- **request_death_effect**: adds `IsDead` and writes a `DeathBounce` request.
 
 ```mermaid
 ---
@@ -588,12 +677,12 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-apply_death_effect["`**apply_death_effect**`"]
+request_death_effect["`**request_death_effect**`"]
 
-update -.-> apply_death_effect
+update -.-> request_death_effect
 
 dying_query{{"`damageable_query`"}}:::query
-apply_death_effect ---> dying_query
+request_death_effect ---> dying_query
 
 dying_entity@{ shape: st-rect, label: "Dying Entity" }
 
@@ -605,10 +694,10 @@ dying_query -..-> |filter With| de_marker
 dying_query -..-> |filter With| de_health
 dying_query -..-> |filter Without| de_is_dead
 
-apply_death_effect ---> |inserts| de_is_dead
+request_death_effect ---> |inserts| de_is_dead
 
 effect_request(["`**EffectRequest**`"])
-apply_death_effect ---> |writes DeathBounce| effect_request
+request_death_effect ---> |writes DeathBounce| effect_request
 ```
 
 ### Query Beam entities (glow)
@@ -686,7 +775,7 @@ overlays_query ---> |pushes into| oe_pulses
 ### Read BeamParried messages
 
 Used in the following systems:
-- **trigger_parry_scale_effect**: finds the sprite child of the parrier and writes a `ScalePunch` request.
+- **request_parry_scale_effect**: finds the sprite child of the parrier and writes a `ScalePunch` request.
 
 ```mermaid
 ---
@@ -700,12 +789,12 @@ classDef reader stroke-dasharray: 3 3
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
+request_parry_scale_effect["`**request_parry_scale_effect**`"]
 
-update -.-> trigger_parry_scale_effect
+update -.-> request_parry_scale_effect
 
 message_reader{{"MessageReader#60;BeamParried#62;"}}:::reader
-trigger_parry_scale_effect ---> message_reader
+request_parry_scale_effect ---> message_reader
 
 beam_parried_message(["`**BeamParried**`"])
 
@@ -713,8 +802,8 @@ message_reader ---> |reads| beam_parried_message
 
 children_query{{"`children_query`"}}:::query
 sprite_query{{"`sprite_query`"}}:::query
-trigger_parry_scale_effect ---> children_query
-trigger_parry_scale_effect ---> sprite_query
+request_parry_scale_effect ---> children_query
+request_parry_scale_effect ---> sprite_query
 
 parrier_entity@{ shape: st-rect, label: "Parrier Entity" }
 pe_children>"`**Children**`"] --> |"belongs to (optional)"| parrier_entity
@@ -725,7 +814,7 @@ se_sprite>"`**Sprite**`"] --> |belongs to| sprite_entity
 sprite_query ---> |reads| se_sprite
 
 effect_request(["`**EffectRequest**`"])
-trigger_parry_scale_effect ---> |writes ScalePunch| effect_request
+request_parry_scale_effect ---> |writes ScalePunch| effect_request
 ```
 
 ### Read EffectRequest and spawn drivers (resolve_effect_requests)
@@ -925,22 +1014,22 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 exit_outcome(("`OnExit(Outcome)`")):::system-group
 
-trigger_parry_scale_effect["`**trigger_parry_scale_effect**`"]
-apply_damage_effect["`**apply_damage_effect**`"]
-apply_translate_effect["`**apply_translate_effect**`"]
-apply_movement_settle["`**apply_movement_settle**`"]
+request_parry_scale_effect["`**request_parry_scale_effect**`"]
+request_damage_effect["`**request_damage_effect**`"]
+request_translate_effect["`**request_translate_effect**`"]
+request_settle_effect["`**request_settle_effect**`"]
 request_knockback_effect["`**request_knockback_effect**`"]
-apply_death_effect["`**apply_death_effect**`"]
+request_death_effect["`**request_death_effect**`"]
 on_effect_completed["`**on_effect_completed**`"]
 resolve_effect_requests["`**resolve_effect_requests**`"]
 clear_root_effect_drivers["`**clear_root_effect_drivers**`"]
 
-update -.-> trigger_parry_scale_effect
-update -.-> apply_damage_effect
-update -.-> apply_translate_effect
-update -.-> apply_movement_settle
+update -.-> request_parry_scale_effect
+update -.-> request_damage_effect
+update -.-> request_translate_effect
+update -.-> request_settle_effect
 update -.-> request_knockback_effect
-update -.-> apply_death_effect
+update -.-> request_death_effect
 update -.-> on_effect_completed
 update -.-> resolve_effect_requests
 exit_outcome -.-> clear_root_effect_drivers
@@ -950,16 +1039,16 @@ driver_entity@{ shape: st-rect, label: "Effect Driver" }
 sprite_entity@{ shape: st-rect, label: "Owner Child (Sprite, Transform)" }
 player_entity@{ shape: st-rect, label: "Player Entity (Transform)" }
 
-trigger_parry_scale_effect ---> |writes ScalePunch| effect_request
-apply_damage_effect ---> |writes DamageFlash| effect_request
-apply_translate_effect ---> |writes Translate| effect_request
+request_parry_scale_effect ---> |writes ScalePunch| effect_request
+request_damage_effect ---> |writes DamageFlash| effect_request
+request_translate_effect ---> |writes Translate| effect_request
 movement_stopped_message(["`**MovementStopped**`"])
-movement_stopped_message ---> |read by| apply_movement_settle
-apply_movement_settle ---> |writes Settle| effect_request
+movement_stopped_message ---> |read by| request_settle_effect
+request_settle_effect ---> |writes Settle| effect_request
 entity_knocked_back_message(["`**EntityKnockedBack**`"])
 entity_knocked_back_message ---> |read by| request_knockback_effect
 request_knockback_effect ---> |writes Knockback| effect_request
-apply_death_effect ---> |writes DeathBounce| effect_request
+request_death_effect ---> |writes DeathBounce| effect_request
 effect_request ---> |read by| resolve_effect_requests
 resolve_effect_requests ---> |spawns or replaces| driver_entity
 driver_entity ---> |animates sprite effects via AnimTarget| sprite_entity

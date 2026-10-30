@@ -3,104 +3,115 @@ id: doc-11
 title: '[009] Damage plugin'
 type: other
 created_date: '2026-06-02 00:00'
-updated_date: '2026-10-16 12:00'
+updated_date: '2026-10-29 12:00'
 ---
 # Damage Plugin
 
-Contains systems responsible for dealing damage to entities and emitting `DamageableDied` messages when an entity's HP reaches zero. The plugin also owns knockback: it moves knocked-back entities and holds the `IsKnockedBack` input lock. Three sources of damage are handled: on-enter tile damage the moment a character moves onto an opponent-owned tile *from a non-hostile tile*, periodic tile damage while a character stays on such a tile, and per-step beam damage for any entity sharing a grid position with a moving beam. A private `deal_damage` helper centralises the decrement-and-emit logic used by every source, and a private `is_hostile_tile` helper centralises the "is this coord an opponent-owned claimed tile" check shared by both tile systems.
+This plugin removes health from players and writes `DamageableDied` when a player reaches zero health. It also moves players that are knocked back.
 
-The on-enter spike fires only on a *fresh incursion* — a step whose destination is hostile but whose origin was not. It reads the origin from a `PreviousGridCoords` component that the entry system updates on every observed move, so crossing a contiguous run of enemy tiles costs a single spike plus the ongoing standing tick, not a spike per tile.
+## Key ideas
 
-The two tile systems are complementary and chained (entry before poll): on-enter (`Changed<GridCoords>`) cannot phase-miss a tile the way the timer poll can when a character crosses faster than the 500 ms sample, while the poll covers the case on-enter cannot — a tile becoming hostile *beneath* a stationary character, whose `GridCoords` never changes. Damage amounts come from the `GameConfig` resource: `config.damage.on_enter` (default 5.0) per hostile tile entered and `config.damage.standing` (default 1.0) per 500 ms poll tick.
+- **Hostile tile**: a tile claimed by another player (`is_hostile_tile`). The Bot plugin uses this helper too.
+- **Entry damage** (`damage.on_enter`, 5): a player steps onto a hostile tile from a tile that is not hostile.
+- **Standing damage** (`damage.standing`, 1): a player is on a hostile tile when `DamageTimer` ends (every `damage.tick_secs`, 0.5 s).
+- **Beam damage** (`damage.beam_contact`, 1): a beam steps onto the tile of a player who does not own the beam. The player is also knocked back.
+- **Collision damage** (`damage.collision`, 5): the loser of a collision between two players.
+- `deal_damage` removes the health and writes `DamageableDied` when the health reaches zero. All four damage systems use it.
+- **Knockback**: a push of one tile. Only `apply_knockback` moves a player because of a knockback.
 
-## Plugin workflow
+## Ordering
 
-- Startup phase
-    - `setup_timer` inserts the `DamageTimer` resource (500 ms repeating).
-- Update phase
-    - Apply Owned Tile Entry Damage (chained before the poll):
-        - Triggers when a `Character`'s `GridCoords` changes (moved onto, or knocked onto, a tile)
-            - Reads:
-                - `GridCoords`, `PreviousGridCoords`, and `Health` on `Character` entities (filtered by `Changed<GridCoords>`)
-                - `ClaimedTile` component on ground tile entities (to identify the owner)
-                - `MapInfo` resource (to resolve a `GridCoords` → claimed tile entity)
-            - Writes:
-                - Updates `PreviousGridCoords` to the current `GridCoords` on every observed move
-                - Decrements `Health::current` by `config.damage.on_enter` on a character that moved onto an opponent-owned tile *from a non-hostile tile*
-                - Resets `DamageTimer` so the poll below cannot double-hit the same frame
-                - Writes a `DamageableDied` message if `Health::current` drops to zero
-    - Apply Owned Tile Damage:
-        - Runs every `DamageTimer` tick (500 ms)
-            - Reads:
-                - `DamageTimer` resource (for tick gating)
-                - `GridCoords` and `Health` on `Character` entities
-                - `ClaimedTile` component on ground tile entities (to identify the owner)
-                - `MapInfo` resource (to resolve a `GridCoords` → claimed tile entity)
-            - Writes:
-                - Decrements `Health::current` by `config.damage.standing` on characters standing on an opponent-owned tile
-                - Writes a `DamageableDied` message if `Health::current` drops to zero
-    - Apply Beam Damage:
-        - Triggers when any `Beam` entity's `GridCoords` changes (i.e. each beam step)
-            - Reads:
-                - `Beam.owner`, `Beam.direction`, and `GridCoords` on beam entities (filtered by `Changed<GridCoords>`)
-                - `Entity`, `GridCoords`, and `Health` on all damageable entities
-            - Writes:
-                - Decrements `Health::current` on any entity whose `GridCoords` matches the beam head, excluding the beam's owner
-                - Writes a `DamageableDied` message if `Health::current` drops to zero
-                - Writes a `KnockbackRequested` message (direction = the beam direction) for the hit entity; `apply_knockback` handles it in `GameplaySet::Displacement` the same frame, so `apply_owned_tile_entry_damage` sees the resulting `GridCoords` change one frame later
-    - Apply Knockback (`GameplaySet::Displacement`, `in_state(RoundPhase::Playing)`):
-        - Reads:
-            - All `KnockbackRequested` messages (from the controller and from `apply_beam_damage`); only the last one per entity is used
-            - `GridCoords`, `Has<IsDead>`, and `Option<&Health>` on the target entity
-            - `MapInfo` resource (`on_ground`) and `config.effects.knockback_tween_ms`
-        - Writes:
-            - Skips the entity if it is dead, has `Health::current <= 0`, or the target tile is not ground
-            - Otherwise sets `GridCoords` to the target tile
-            - Inserts a fresh `IsKnockedBack(Timer)` on the entity
-            - Writes an `EntityKnockedBack` message
-    - Tick Knockback Lock (every frame, no state gate):
-        - Ticks each `IsKnockedBack` timer and removes the component when it finishes
+An arrow means "runs before". Systems with no arrow between them have no fixed order.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+setup_timer["`**setup_timer**
+Startup`"]
+
+subgraph playing ["Update, only during Playing"]
+  subgraph damage ["GameplaySet::Damage"]
+    apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
+    apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
+    apply_beam_damage["`**apply_beam_damage**`"]
+    apply_collision_damage["`**apply_collision_damage**`"]
+    apply_owned_tile_entry_damage --> apply_owned_tile_damage
+  end
+  subgraph displacement ["GameplaySet::Displacement"]
+    apply_knockback["`**apply_knockback**`"]
+  end
+  damage --> displacement
+end
+
+subgraph always ["Update, every phase"]
+  tick_knockback_lock["`**tick_knockback_lock**`"]
+  resync_damage_timer["`**resync_damage_timer**
+  dev only`"]
+end
+
+setup_timer ~~~ playing
+playing ~~~ always
+tick_knockback_lock ~~~ resync_damage_timer
+```
+
+- `tick_knockback_lock` runs in every phase. So a lock still ends after the phase changes.
 
 ## Plugin Systems
 
 ### Setup Timer
 
-Runs once at startup. Inserts the `DamageTimer` resource — a repeating `Timer` whose period is `config.damage.tick_secs` (default 0.5 s) — that gates how frequently tile damage is applied.
+- Runs at `Startup`. Inserts `DamageTimer`, a repeating timer of `damage.tick_secs`.
 
 ### Apply Owned Tile Entry Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter on `Character` entities — runs only for characters whose position changed this frame (moved by the controller, or knocked back by `apply_knockback`). For each live character it first records the current `GridCoords` into `PreviousGridCoords` (on every move, hostile or not), then applies the spike only on a *fresh incursion*: the destination is hostile (via `is_hostile_tile`) **and** the tile it came from — read from the pre-update `PreviousGridCoords` — was not. On such an entry it calls `deal_damage` with `config.damage.on_enter` and resets `DamageTimer` so the poll system chained after it cannot apply standing damage the same frame. Gating on the origin tile means a character walking through a contiguous enemy region is charged once, not per tile, while the standing poll keeps ticking as it traverses. Reading and updating `PreviousGridCoords` in the same system keeps it order-independent of the controller plugin and of knockback. This is also the fix for a character crossing a claimed tile faster than the 500 ms poll samples — change detection cannot phase-miss the entered tile. Runs *before* `apply_owned_tile_damage` in a `chain()`.
+- Runs for players whose `GridCoords` changed this frame: after a move or a knockback.
+- Saves the new position in `PreviousGridCoords`. It does this on every move.
+- Deals entry damage only when the new tile is hostile and the old tile was not.
+- So a player who crosses many enemy tiles in a row takes entry damage once. The standing damage still applies.
+- After entry damage, it resets `DamageTimer`. So the standing damage cannot hit in the same frame.
+- It sees every tile that a player enters. The 0.5 s timer alone can miss a tile that the player crosses fast.
 
 ### Apply Owned Tile Damage
 
-Runs every `DamageTimer` tick. Iterates over all `Character` entities with `Health` and checks (via `is_hostile_tile`) whether their current `GridCoords` maps to a `ClaimedTile` owned by a different entity. If so, calls `deal_damage` to decrement `Health::current` by `config.damage.standing` and emit `DamageableDied` if the entity is now dead. Entities with `Health::current <= 0` are skipped up front so already-dead entities do not generate duplicate death messages. Besides standing damage-over-time, this covers the case the entry system cannot: a tile becoming hostile beneath a stationary character (no `GridCoords` change, so no entry trigger).
+- Ticks `DamageTimer`. When the timer ends, deals standing damage to each player on a hostile tile.
+- It also catches a tile that becomes hostile under a player who does not move. That player's `GridCoords` does not change, so the entry system does not run for them.
 
 ### Apply Beam Damage
 
-Triggered by Bevy's `Changed<GridCoords>` filter — runs only for beam entities whose position changed this frame (i.e. each beam step). For every such beam, iterates all entities with `Health`, skipping dead entities and the beam's own owner, and calls `deal_damage` for any whose `GridCoords` matches the beam head position. On a hit, also writes a `KnockbackRequested` message for the damaged entity (direction = `beam.direction`). `apply_knockback` below turns it into the move.
+- Runs for beams that moved this frame. Any player on the beam's tile takes beam damage, except the beam's owner.
+- It also writes `KnockbackRequested` in the beam's direction.
+
+### Apply Collision Damage
+
+- Reads `CharacterCollision` from the Controller plugin. The loser takes collision damage.
 
 ### Apply Knockback
 
-Runs in `GameplaySet::Displacement`, gated by `in_state(RoundPhase::Playing)`. It is the only place that moves an entity because of a knockback. It reads every `KnockbackRequested` message of the frame, from the controller plugin (walking into a beam, collision bumps) and from `apply_beam_damage`. It keeps only the last request for each entity (latest wins, in write order: controller in `Movement`, then damage in `Damage`). Earlier requests for the same entity are ignored. For each entity it skips the knockback when the entity is dead (`IsDead`), has `Health::current <= 0`, or the target tile is not on ground (`MapInfo::on_ground`). Otherwise it sets `GridCoords` to the target tile, inserts a fresh `IsKnockedBack` timer of `config.effects.knockback_tween_ms`, and writes `EntityKnockedBack`. The effects plugin reads that message to play the slide. `apply_owned_tile_entry_damage` sees the `GridCoords` change on the next frame.
+- Reads all `KnockbackRequested` of the frame, from the Controller plugin and from `apply_beam_damage`.
+- For each player, only the last request counts. The Controller writes in `Movement`, and this plugin writes later in `Damage`.
+- Skips a dead player, a player with zero health, or a target tile that is not ground.
+- Else it moves the player one tile, inserts a new `IsKnockedBack` lock (`effects.knockback_tween_ms`) and writes `EntityKnockedBack`.
+- The Effects plugin reads `EntityKnockedBack` and plays the slide. The entry damage sees the move on the next frame.
 
 ### Tick Knockback Lock
 
-Runs every frame, not gated by `RoundPhase`. Ticks the timer of every `IsKnockedBack` entity and removes the component when the timer finishes. This is the only removal path during normal play.
+- Ticks each `IsKnockedBack` timer. Removes the lock when the timer ends.
 
-### deal_damage (helper)
+### Resync Damage Timer (dev only)
 
-Private helper, not a system. Decrements `Health::current` by the given `amount` and, if the result is ≤ 0, writes a `DamageableDied` message via the provided `MessageWriter`. All three damage systems delegate to this function to avoid duplicating the decrement-and-emit pattern.
-
-### is_hostile_tile (helper)
-
-Private helper, not a system. Given `MapInfo`, the `ClaimedTile` query, a `GridCoords`, and a character `Entity`, returns whether that coord holds a claimed tile owned by a *different* entity. Resolves the coord via `MapInfo::get_claimed_entity_by_position`, looks up the `ClaimedTile`, and checks `owner.is_some_and(|o| o != character)`. Shared by `apply_owned_tile_entry_damage` and `apply_owned_tile_damage`.
+- When the config changes, sets the `DamageTimer` duration to the new `damage.tick_secs`.
 
 ## Components, Resources and Messages CRUD
 
 ### Insert DamageTimer resource
 
 Used in the following systems:
-- **setup_timer**: inserts the `DamageTimer` resource at startup
+- **setup_timer**: inserts `DamageTimer` at startup.
 
 ```mermaid
 ---
@@ -127,8 +138,8 @@ setup_timer ---> |inserts| damage_timer_res
 ### Read/Write DamageTimer resource
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: resets the timer on a hostile-tile entry so the poll cannot double-hit the same frame
-- **apply_owned_tile_damage**: ticks the timer and gates damage application to every 500 ms
+- **apply_owned_tile_entry_damage**: resets the timer after entry damage.
+- **apply_owned_tile_damage**: ticks the timer. Standing damage applies when it ends.
 
 ```mermaid
 ---
@@ -158,8 +169,8 @@ apply_owned_tile_damage ---> |ticks| damage_timer_res
 ### Query Character entities (tile damage)
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: reads `GridCoords` (filtered by `Changed<GridCoords>`) to locate the entered tile and `PreviousGridCoords` for the origin tile, writes `PreviousGridCoords` (to the current position) and `Health::current` to apply on-enter damage
-- **apply_owned_tile_damage**: reads `GridCoords` to locate the tile, writes `Health::current` to apply standing damage
+- **apply_owned_tile_entry_damage**: reads the new and old tiles, saves the new one in `PreviousGridCoords`, and lowers `Health`.
+- **apply_owned_tile_damage**: reads the tile of each player and lowers `Health`.
 
 ```mermaid
 ---
@@ -203,8 +214,8 @@ characters_query ---> |writes| ce_health
 ### Read MapInfo resource
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: resolves the entered `GridCoords` to the claimed tile entity via `get_claimed_entity_by_position` (through `is_hostile_tile`)
-- **apply_owned_tile_damage**: resolves a `GridCoords` to the claimed tile entity via `get_claimed_entity_by_position` (through `is_hostile_tile`)
+- **apply_owned_tile_entry_damage**: finds the claimed tile at a position (through `is_hostile_tile`).
+- **apply_owned_tile_damage**: same.
 
 ```mermaid
 ---
@@ -234,8 +245,8 @@ apply_owned_tile_damage ---> |reads `get_claimed_entity_by_position`| map_info_r
 ### Query ClaimedTile (tile damage)
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: reads `ClaimedTile::owner` (via `is_hostile_tile`) to determine whether the entered tile belongs to a different entity
-- **apply_owned_tile_damage**: reads `ClaimedTile::owner` (via `is_hostile_tile`) to determine whether the standing tile belongs to a different entity
+- **apply_owned_tile_entry_damage**: reads the tile owner (through `is_hostile_tile`).
+- **apply_owned_tile_damage**: same.
 
 ```mermaid
 ---
@@ -269,7 +280,7 @@ claimed_tiles_query ---> |reads| ct_owner
 ### Query Beam entities (beam damage)
 
 Used in the following systems:
-- **apply_beam_damage**: reads `Beam.owner` and `GridCoords` on beam entities whose position changed this frame
+- **apply_beam_damage**: reads the beams that moved this frame.
 
 ```mermaid
 ---
@@ -301,7 +312,7 @@ beams_query ---> |reads| be_coords
 ### Query damageable entities (beam damage)
 
 Used in the following systems:
-- **apply_beam_damage**: reads `GridCoords` to compare with beam head; writes `Health::current` to apply damage
+- **apply_beam_damage**: finds the players on the beam's tile and lowers `Health`.
 
 ```mermaid
 ---
@@ -332,11 +343,49 @@ damageables_query ---> |reads| de_coords
 damageables_query ---> |writes| de_health
 ```
 
+### Read CharacterCollision messages and query Health (collision damage)
+
+Used in the following systems:
+- **apply_collision_damage**: reads `CharacterCollision` and lowers the `Health` of the loser.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_collision_damage["`**apply_collision_damage**`"]
+
+update -.-> apply_collision_damage
+
+message_reader{{"MessageReader#60;CharacterCollision#62;"}}:::reader
+apply_collision_damage ---> message_reader
+collision_message(["`**CharacterCollision**`"])
+message_reader ---> |reads| collision_message
+
+characters_query{{"`characters_query`"}}:::query
+apply_collision_damage ---> characters_query
+
+character_entity@{ shape: st-rect, label: "Character Entity (loser)" }
+ce_health>"`**Health**`"] --> |belongs to| character_entity
+ce_character>"`**Character**`"] --> |belongs to| character_entity
+
+characters_query ---> |writes| ce_health
+characters_query -..-> |filter With| ce_character
+```
+
 ### Knockback messages
 
 Used in the following systems:
-- **apply_beam_damage**: writes `KnockbackRequested` for the hit entity (direction = the beam direction)
-- **apply_knockback**: reads `KnockbackRequested` (from this plugin and from the controller plugin) and writes `EntityKnockedBack` for each entity that actually moved
+- **apply_beam_damage**: writes `KnockbackRequested` in the beam's direction.
+- **move_characters** (Controller plugin): writes `KnockbackRequested` for walk-ins and collisions.
+- **apply_knockback**: reads `KnockbackRequested` and writes `EntityKnockedBack` for each player that moved.
 
 ```mermaid
 ---
@@ -350,6 +399,7 @@ classDef system-group stroke-dasharray: 5 5
 update(("`Update`")):::system-group
 apply_beam_damage["`**apply_beam_damage**`"]
 apply_knockback["`**apply_knockback**`"]
+move_characters["`**move_characters** (Controller)`"]
 
 update -.-> apply_beam_damage
 update -.-> apply_knockback
@@ -358,6 +408,7 @@ knockback_requested_message(["`**KnockbackRequested**`"])
 entity_knocked_back_message(["`**EntityKnockedBack**`"])
 
 apply_beam_damage ---> |writes| knockback_requested_message
+move_characters ---> |writes| knockback_requested_message
 knockback_requested_message ---> |read by| apply_knockback
 apply_knockback ---> |writes| entity_knocked_back_message
 ```
@@ -365,7 +416,7 @@ apply_knockback ---> |writes| entity_knocked_back_message
 ### Query knocked-back entities (apply_knockback)
 
 Used in the following systems:
-- **apply_knockback**: reads `Has<IsDead>` and `Option<&Health>`; writes `GridCoords`; inserts `IsKnockedBack`. Reads `MapInfo` (`on_ground`) and `GameConfig` (`effects.knockback_tween_ms`)
+- **apply_knockback**: checks the player is alive and the target is ground, then moves the player and inserts `IsKnockedBack`.
 
 ```mermaid
 ---
@@ -405,10 +456,9 @@ apply_knockback ---> |"inserts, timer seeded from knockback_tween_ms"| ke_is_kno
 
 ### IsKnockedBack component lifecycle
 
-`IsKnockedBack(Timer)` (`src/components/effects.rs`) is only the input lock of a knocked-back entity. `handle_characters_input` (Input plugin) reads it.
-- **Inserted** by `apply_knockback`, with a fresh `Timer` of `config.effects.knockback_tween_ms`. A new knockback replaces a running lock.
-- **Ticked and removed** by `tick_knockback_lock`, every frame, once the timer finishes. This system is not gated by `RoundPhase`.
-- **Removed** by `reset_round` (Round plugin).
+- `IsKnockedBack(Timer)` is the input lock of a knocked-back player. The Input plugin reads it.
+- **Inserted** by `apply_knockback`. A new knockback replaces a running lock.
+- **Removed** by `tick_knockback_lock` when the timer ends, or by `reset_round` (Round plugin).
 
 ```mermaid
 ---
@@ -438,9 +488,7 @@ tick_knockback_lock ---> |"removes once timer finishes"| is_knocked_back
 ### Write DamageableDied messages
 
 Used in the following systems:
-- **apply_owned_tile_entry_damage**: emits `DamageableDied` when a character's HP reaches zero on entering an opponent-owned tile
-- **apply_owned_tile_damage**: emits `DamageableDied` when a character's HP reaches zero on an opponent-owned tile
-- **apply_beam_damage**: emits `DamageableDied` when an entity's HP reaches zero after a beam hit
+- **apply_owned_tile_entry_damage**, **apply_owned_tile_damage**, **apply_beam_damage**, **apply_collision_damage**: write `DamageableDied` when the health reaches zero (through `deal_damage`).
 
 ```mermaid
 ---
@@ -455,14 +503,47 @@ update(("`Update`")):::system-group
 apply_owned_tile_entry_damage["`**apply_owned_tile_entry_damage**`"]
 apply_owned_tile_damage["`**apply_owned_tile_damage**`"]
 apply_beam_damage["`**apply_beam_damage**`"]
+apply_collision_damage["`**apply_collision_damage**`"]
 
 update -.-> apply_owned_tile_entry_damage
 update -.-> apply_owned_tile_damage
 update -.-> apply_beam_damage
+update -.-> apply_collision_damage
 
 damageable_died_message(["`**DamageableDied**`"])
 
 apply_owned_tile_entry_damage ---> |writes| damageable_died_message
 apply_owned_tile_damage ---> |writes| damageable_died_message
 apply_beam_damage ---> |writes| damageable_died_message
+apply_collision_damage ---> |writes| damageable_died_message
+```
+
+### Write DamageTimer duration (dev only)
+
+Used in the following systems:
+- **resync_damage_timer**: sets the timer duration when the config changes.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+resync_damage_timer["`**resync_damage_timer**`"]
+
+update -.-> resync_damage_timer
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+damage_timer_res@{ shape: doc, label: "DamageTimer" }
+
+config_res --> |belongs to| world
+damage_timer_res --> |belongs to| world
+
+resync_damage_timer ---> |reads damage.tick_secs| config_res
+resync_damage_timer ---> |writes duration| damage_timer_res
 ```

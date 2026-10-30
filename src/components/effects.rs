@@ -96,7 +96,7 @@ pub struct DamageEffectTarget;
 
 /*
  * Per-step duration for the movement slide tween.
- * Set by the inputs plugin, read by apply_translate_effect.
+ * Set by the inputs plugin, read by request_translate_effect.
  */
 #[derive(Component, Clone, Copy)]
 pub struct MovementSlide {
