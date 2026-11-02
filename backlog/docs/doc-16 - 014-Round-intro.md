@@ -3,62 +3,205 @@ id: doc-16
 title: '[014] Round intro'
 type: other
 created_date: '2026-07-15 12:00'
-updated_date: '2026-07-19 12:00'
+updated_date: '2026-10-30 12:00'
 ---
 # Round Intro
 
-The `intro` submodule of the `round` plugin (`src/plugins/round/intro.rs`; the round feature is covered by the Round plugin doc). It renders the round-start "3 · 2 · 1 · GO!" banner shown while the round is in `RoundPhase::Starting`. Its sibling `outcome` submodule (`src/plugins/round/outcome.rs`, see the Round outcome doc) renders the win banner for `RoundPhase::Outcome` using the same overlay + glyph machinery.
+This part of the [Round plugin](/documentation/15/013-round-plugin) shows the "3 · 2 · 1 · GO!" banner at the start of each round. The code is in `src/plugins/round/intro.rs`.
 
-It owns only the banner **content** (the countdown logic). Text is composed with `spawn_label` from the Text plugin, and the banners render on the **overlay camera**, spawned by the Camera plugin. This keeps the submodule free of both font loading and camera setup, mirroring the HUD split (HUD content in the HUD plugin, HUD camera in the Camera plugin). Its systems are wired into the app by `round/mod.rs`.
+## Key ideas
 
-## Concepts
+- The banner shows during `RoundPhase::Starting`. Gameplay is frozen during this phase.
+- The text is drawn with `spawn_round_label`, on the overlay camera (render layer 3). The Text plugin draws the letters and the Camera plugin owns the camera.
+- Each number shows for one second. The intro lasts `round.intro_count` seconds (3).
+- "GO!" grows fast to `round.go_end_scale` (24) over `round.go_linger_ms` (500 ms), so it looks like it flies past the players. The game is already in `Playing` while it grows.
 
-- **Overlay camera** — spawned and owned by the Camera plugin, not here. It is a fixed, full-window fourth camera on `OVERLAY_RENDER_LAYER` (layer 3), order 4, `ClearColorConfig::None`, that composites banners on top of the world and HUD. The banners spawned here pass `RenderLayers::layer(OVERLAY_RENDER_LAYER)` to `spawn_label` so this camera sees them.
+```mermaid
+---
+config:
+  theme: dark
+---
 
-- **Text rendering** — `FontAtlas` (resource) and `spawn_label` come from the Text plugin; this submodule is a consumer. The round's shared `spawn_round_label` helper (in `round/mod.rs`) wraps `spawn_label` with the fixed choices for round banners (centred at the origin, on `OVERLAY_RENDER_LAYER`).
+flowchart TD
 
-- `CountdownNumber` — a marker **component** on the number label currently shown ("3"/"2"/"1"); the advance system swaps it out each step by querying `With<CountdownNumber>` and despawning.
+enter["`**Enter Starting**
+shows 3`"]
+two["`shows 2`"]
+one["`shows 1`"]
+go["`shows GO!
+sets Playing`"]
+gone["`GO! despawned`"]
 
-- `GoBanner` — a marker **component** on the "GO!" label. It carries a `TweenAnim` (`bevy_tweening`, `TransformScaleLens` with `EaseFunction::ExponentialIn`) that accelerates the label's scale up to `config.round.go_end_scale` (default 24.0, a screen-overflowing size) over `config.round.go_linger_ms` (default 500), so it reads as rushing toward the players and flying off-screen; the label is despawned on completion.
+enter --> |1 s| two
+two --> |1 s| one
+one --> |1 s| go
+go --> |"500 ms tween"| gone
+```
 
-- `IntroCountdown` — a **resource** driving the number sequence: a fixed one-second repeating `Timer` plus the current number, starting at `config.round.intro_count` (default 3) and counting down to 1, then `0` meaning "fire GO!". Each number shows for one second, so the intro lasts `config.round.intro_count` seconds. Inserted on entering `Starting`, removed when "GO!" fires.
+## Ordering
 
-## Plugin workflow
+```mermaid
+---
+config:
+  theme: dark
+---
 
-- `OnEnter(RoundPhase::Starting)`
-    - Begin Intro Countdown:
-        - Reads: `FontAtlas` (from the Text plugin), `GameConfig`
-        - Writes: spawns the first number label — `config.round.intro_count` (marked `CountdownNumber`); inserts the `IntroCountdown` resource
-- Update phase
-    - Advance Intro Countdown (runs only `in_state(Starting)`):
-        - Reads: `Time`, `FontAtlas`, `GameConfig`, `IntroCountdown`, entities `With<CountdownNumber>`
-        - Writes: on each timer step, despawns the current number and either spawns the next number, or (when numbers are exhausted) spawns the "GO!" label with a scale-up `TweenAnim`, removes `IntroCountdown`, and sets `NextState<RoundPhase>` to `Playing`
-    - Despawn Go Banner (**ungated**):
-        - Reads: `AnimCompletedEvent` messages, entities `With<GoBanner>`
-        - Writes: despawns the "GO!" label once its tween completes
+flowchart TD
+
+subgraph enter_starting ["OnEnter(Starting)"]
+  begin_intro_countdown["`**begin_intro_countdown**`"]
+end
+
+subgraph update ["Update, no set"]
+  advance_intro_countdown["`**advance_intro_countdown**
+  only during Starting`"]
+  despawn_go_banner["`**despawn_go_banner**
+  every phase`"]
+end
+
+enter_starting ~~~ update
+```
+
+- `advance_intro_countdown` writes `NextState<RoundPhase>`. It is in `RoundPhaseWriter`, like the other systems that set the phase.
+- `despawn_go_banner` runs in every phase. "GO!" ends during `Playing`, so a `Starting` gate would leave it on screen.
 
 ## Plugin Systems
 
 ### Begin Intro Countdown
 
-Runs on `OnEnter(RoundPhase::Starting)`. Spawns the first number (`config.round.intro_count`, default 3) at the origin via `spawn_round_label` (the round's shared wrapper around the Text plugin's `spawn_label`), tags it `CountdownNumber`, and inserts a fresh `IntroCountdown` (fixed one-second repeating timer, `remaining = config.round.intro_count`). Spawning the first number here — rather than waiting for the advance system's first tick — avoids a blank first second.
+- Runs on entering `Starting`.
+- Shows the first number (`round.intro_count`) with the `CountdownNumber` marker.
+- Inserts `IntroCountdown`: a one-second repeating timer and the current number.
 
 ### Advance Intro Countdown
 
-Runs every frame **only `in_state(RoundPhase::Starting)`**. Ticks the fixed one-second `IntroCountdown` timer; when a step elapses it despawns the current `CountdownNumber` and decrements the count. While numbers remain it spawns the next one (counting down toward 1). When the count reaches zero it instead spawns the "GO!" label with a `GoBanner` marker and a `TransformScaleLens` scale-up `TweenAnim` (target `config.round.go_end_scale`, duration `config.round.go_linger_ms`), removes the `IntroCountdown` resource, and sets `NextState<RoundPhase>` to `Playing` — so gameplay unfreezes in the same run while the "GO!" banner keeps animating.
+- Runs only during `Starting`. Each second, despawns the current number and removes 1 from the count.
+- While the count is above 0, shows the next number.
+- At 0, shows "GO!" with `GoBanner` and a scale `TweenAnim` (`ExponentialIn`). Then removes `IntroCountdown` and sets the next phase to `Playing`.
 
 ### Despawn Go Banner
 
-Runs every frame and is **deliberately ungated** — by the time the "GO!" tween finishes, the state is already `Playing`, so gating it on `Starting` would strand the banner on screen (`TweenAnim` auto-removes only its own component on completion, not the entity). Reads `AnimCompletedEvent` and, when the completed animation belongs to a `GoBanner` entity, despawns it (recursively removing its glyph children). Mirrors the Effects plugin's `on_effect_completed`, which despawns finished effect drivers.
+- Reads `AnimCompletedEvent`. When the tween of a `GoBanner` ends, despawns it with its letters.
 
-## Components and Resources CRUD
+## Components, Resources and Messages CRUD
 
-Definitions and where they are used:
-- `FontAtlas` — owned by the Text plugin; read here by `begin_intro_countdown` and `advance_intro_countdown` via `spawn_round_label`.
-- `GameConfig` — owned elsewhere; read here by `begin_intro_countdown` and `advance_intro_countdown` for `intro_count`, `go_end_scale`, and `go_linger_ms`.
-- `CountdownNumber` — marker `#[derive(Component)]` (this plugin), attached in `begin_intro_countdown` / `advance_intro_countdown`, queried/despawned by `advance_intro_countdown`.
-- `GoBanner` — marker `#[derive(Component)]` (this plugin), attached in `advance_intro_countdown`, queried/despawned by `despawn_go_banner`.
-- `IntroCountdown` — `#[derive(Resource)]` (this plugin), inserted by `begin_intro_countdown`, mutated and removed by `advance_intro_countdown`.
+### Read FontAtlas and GameConfig
+
+Used in the following systems:
+- **begin_intro_countdown**: reads the font and `round.intro_count`.
+- **advance_intro_countdown**: reads the font, `round.go_linger_ms` and `round.go_end_scale`.
+
+### IntroCountdown resource
+
+Used in the following systems:
+- **begin_intro_countdown**: inserts it.
+- **advance_intro_countdown**: ticks the timer, changes `remaining`, and removes the resource at the end.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+enter_starting(("`OnEnter(Starting)`")):::system-group
+update(("`Update`")):::system-group
+begin_intro_countdown["`**begin_intro_countdown**`"]
+advance_intro_countdown["`**advance_intro_countdown**`"]
+
+enter_starting -.-> begin_intro_countdown
+update -.-> advance_intro_countdown
+
+world@{ shape: st-rect, label: "World" }
+intro_res@{ shape: doc, label: "IntroCountdown" }
+
+ic_timer>"`**timer**`"]
+ic_remaining>"`**remaining**`"]
+
+intro_res --> |belongs to| world
+ic_timer --> |field of| intro_res
+ic_remaining --> |field of| intro_res
+
+begin_intro_countdown ---> |inserts resource| intro_res
+advance_intro_countdown ---> |ticks| ic_timer
+advance_intro_countdown ---> |writes| ic_remaining
+advance_intro_countdown ---> |removes resource| intro_res
+```
+
+### Spawn banner labels
+
+Used in the following systems:
+- **begin_intro_countdown**: spawns the first number with `CountdownNumber`.
+- **advance_intro_countdown**: spawns the next numbers with `CountdownNumber`, then "GO!" with `GoBanner` and `TweenAnim`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+enter_starting(("`OnEnter(Starting)`")):::system-group
+update(("`Update`")):::system-group
+begin_intro_countdown["`**begin_intro_countdown**`"]
+advance_intro_countdown["`**advance_intro_countdown**`"]
+
+enter_starting -.-> begin_intro_countdown
+update -.-> advance_intro_countdown
+
+number_entity@{ shape: st-rect, label: "Number Label Entity" }
+go_entity@{ shape: st-rect, label: "GO! Label Entity" }
+
+nl_marker>"`**CountdownNumber**`"] --> |inserted on| number_entity
+go_marker>"`**GoBanner**`"] --> |inserted on| go_entity
+go_tween>"`**TweenAnim**`"] --> |inserted on| go_entity
+
+begin_intro_countdown ---> |spawns| number_entity
+advance_intro_countdown ---> |spawns| number_entity
+advance_intro_countdown ---> |spawns| go_entity
+```
+
+### Query CountdownNumber entities
+
+Used in the following systems:
+- **advance_intro_countdown**: despawns the number that is on screen.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+advance_intro_countdown["`**advance_intro_countdown**`"]
+
+update -.-> advance_intro_countdown
+
+numbers_query{{"`numbers`"}}:::query
+advance_intro_countdown ---> numbers_query
+
+number_entity@{ shape: st-rect, label: "Number Label Entity" }
+
+nl_entity>"`**Entity**`"] --> |belongs to| number_entity
+nl_marker>"`**CountdownNumber**`"] --> |belongs to| number_entity
+
+numbers_query ---> |reads| nl_entity
+numbers_query -..-> |filter With| nl_marker
+advance_intro_countdown ---> |despawns| number_entity
+```
+
+### Read AnimCompletedEvent messages
+
+Used in the following systems:
+- **despawn_go_banner**: finds the end of the "GO!" tween.
 
 ```mermaid
 ---
@@ -70,34 +213,77 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 classDef reader stroke-dasharray: 3 3
 
-on_starting(("`OnEnter(Starting)`")):::system-group
 update(("`Update`")):::system-group
+despawn_go_banner["`**despawn_go_banner**`"]
 
-begin["`**begin_intro_countdown**`"]
-advance["`**advance_intro_countdown**
-(in_state Starting)`"]
-despawn["`**despawn_go_banner**
-(ungated)`"]
+update -.-> despawn_go_banner
 
-on_starting -.-> begin
-update -.-> advance
-update -.-> despawn
+message_reader{{"MessageReader#60;AnimCompletedEvent#62;"}}:::reader
+despawn_go_banner ---> message_reader
 
-font_res@{ shape: doc, label: "FontAtlas" }
-config_res@{ shape: doc, label: "GameConfig" }
-intro_res@{ shape: doc, label: "IntroCountdown" }
-next_state@{ shape: doc, label: "NextState<RoundPhase>" }
+anim_completed_message(["`**AnimCompletedEvent**`"])
 
-despawn_reader{{"MessageReader#60;AnimCompletedEvent#62;"}}:::reader
-anim_message(["`**AnimCompletedEvent**`"])
-
-font_res --> |read by| begin
-config_res --> |read by| begin
-begin --> |inserts| intro_res
-font_res --> |read by| advance
-config_res --> |read by| advance
-intro_res --> |ticked/removed by| advance
-advance --> |sets Playing| next_state
-despawn ---> despawn_reader
-despawn_reader ---> |reads| anim_message
+message_reader ---> |reads| anim_completed_message
 ```
+
+### Query GoBanner entities
+
+Used in the following systems:
+- **despawn_go_banner**: despawns the "GO!" label whose tween ended.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+despawn_go_banner["`**despawn_go_banner**`"]
+
+update -.-> despawn_go_banner
+
+go_banners_query{{"`go_banners`"}}:::query
+despawn_go_banner ---> go_banners_query
+
+go_entity@{ shape: st-rect, label: "GO! Label Entity" }
+
+go_id>"`**Entity**`"] --> |belongs to| go_entity
+go_marker>"`**GoBanner**`"] --> |belongs to| go_entity
+
+go_banners_query ---> |reads| go_id
+go_banners_query -..-> |filter With| go_marker
+despawn_go_banner ---> |despawns| go_entity
+```
+
+### Set NextState RoundPhase
+
+Used in the following systems:
+- **advance_intro_countdown**: sets `Playing` when "GO!" shows.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+advance_intro_countdown["`**advance_intro_countdown**`"]
+
+update -.-> advance_intro_countdown
+
+next_state_res@{ shape: doc, label: "NextState<RoundPhase>" }
+
+advance_intro_countdown ---> |sets Playing| next_state_res
+```
+
+Definitions:
+- `CountdownNumber`: private marker `Component` on the number label on screen.
+- `GoBanner`: private marker `Component` on the "GO!" label.
+- `IntroCountdown`: private `Resource` with a one-second `timer` and `remaining`, the number on screen. 0 means "show GO!".
