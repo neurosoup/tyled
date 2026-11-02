@@ -3,45 +3,41 @@ id: doc-17
 title: '[015] Text plugin'
 type: other
 created_date: '2026-07-16 12:00'
-updated_date: '2026-07-16 12:00'
+updated_date: '2026-11-02 12:00'
 ---
 # Text Plugin
 
-A small bitmap-font text-rendering service. It loads the shared font atlas (`assets/font.png`) into the `FontAtlas` resource at startup and exposes `spawn_label`, which composes a string into a horizontal row of per-glyph sprites. Any feature can render text with it without owning font loading itself — the round `intro` submodule's countdown and the `outcome` submodule's win banner both render through it.
+This plugin draws text with a bitmap font. It loads the font once, and other plugins call `spawn_label` to show a string. The code is in `src/plugins/text.rs`.
 
-It is not tied to any camera: the caller passes the `RenderLayers` the glyphs should render on, so the same helper serves the overlay layer, a HUD layer, or the world.
+## Key ideas
 
-It is registered after the Camera plugin in `AppPlugin`. Registration order relative to consumers doesn't matter, but consumers must read `FontAtlas` as `Option<Res<FontAtlas>>` and wait for it rather than assuming it exists in an `OnEnter` system for a state's default variant — that schedule can fire before `Startup` completes, so `FontAtlas` isn't guaranteed to exist there yet (see the Menu plugin doc's `ensure_menu_spawned` for the pattern).
+- `FontAtlas` holds the font image (`assets/font.png`) and its grid layout. It is inserted at `Startup`.
+- `spawn_label` turns a string into one parent entity with one sprite child per letter. The letters are centered on the parent's `Transform`.
+- The caller chooses the camera: it passes the `RenderLayers`, and `spawn_label` puts them on each letter. Render layers do not pass from parent to child here.
+- Despawn the parent to remove the whole label.
+- Users today: the [Round intro](/documentation/16/014-round-intro) ("3 · 2 · 1 · GO!"), the [Round outcome](/documentation/18/016-round-outcome) banner and the [Menu](/documentation/22/020-menu-plugin) rows.
+- A system that runs on `OnEnter` of a state's default value can run before `Startup`. There, `FontAtlas` may not exist yet, so read it as `Option<Res<FontAtlas>>` (see `ensure_menu_spawned` in the Menu plugin).
 
-## Concepts
+## Font atlas
 
-- `FontAtlas` (`src/plugins/text.rs`) — a **resource** holding the font's image handle and its `TextureAtlasLayout` handle. `assets/font.png` is a `FONT_COLS`×`FONT_ROWS` (16×3) grid of `FONT_CELL` (16×16) cells; the layout is built once with `TextureAtlasLayout::from_grid` at `Startup`.
-
-- `glyph_index(char) -> Option<usize>` — maps a character to its atlas cell: `A`–`Z` → 0–25, `0`–`9` → 32–41, `! ? . :` → 42–45, a selector glyph `>` → 46. Returns `None` for spaces and any unmapped character (including `¢`, absent from the current atlas), which advance the cursor but draw no sprite. Case-insensitive; the atlas is uppercase-only.
-
-- `spawn_label(commands, &FontAtlas, text, transform, render_layers) -> Entity` — spawns a parent entity plus one child glyph `Sprite` (via `Sprite::from_atlas_image`) per mapped character, offset on x by `FONT_ADVANCE` and horizontally centred around the parent's transform. **Each glyph child carries the passed `render_layers` directly** — render layers do not propagate parent→child in this project without `Propagate`, so a layer set only on the parent would leave the glyphs on the default layer. Despawning the returned parent recursively removes its glyph children.
-
-- `FONT_COLS` / `FONT_ROWS` / `FONT_CELL` / `FONT_ADVANCE` — atlas grid dimensions and the per-glyph horizontal advance. Change these (and the atlas art / `glyph_index`) together.
-
-## Plugin workflow
-
-- Startup phase
-    - Setup Font Atlas:
-        - Reads: `AssetServer` (loads `font.png`), `Assets<TextureAtlasLayout>`
-        - Writes: inserts the `FontAtlas` resource
-
-`spawn_label` and `glyph_index` are plain helper functions (not systems); callers invoke them from their own systems.
+- `assets/font.png` is a grid of 16 px cells. It has uppercase letters, digits and `! ? . : >`.
+- `glyph_index` returns the number of the cell that holds a character (for example `'C'` → 2). `spawn_label` uses this number to show that cell. Other characters draw nothing.
 
 ## Plugin Systems
 
 ### Setup Font Atlas
 
-Runs once at `Startup`. Loads `assets/font.png`, builds the `TextureAtlasLayout` grid via `TextureAtlasLayout::from_grid(FONT_CELL, FONT_COLS, FONT_ROWS, …)`, and inserts the `FontAtlas` resource.
+- Runs once at `Startup`.
+- Loads `font.png`, builds the grid layout and inserts `FontAtlas`.
+
+`spawn_label` and `glyph_index` are helper functions. Other plugins call them from their own systems.
 
 ## Components, Resources and Messages CRUD
 
-Definitions and where they are used:
-- `FontAtlas` — `#[derive(Resource, Clone)]` (`src/plugins/text.rs`), inserted by `setup_font_atlas` (this plugin), read by consumers (e.g. the round `intro` submodule's countdown systems) as the argument to `spawn_label`.
+### Insert FontAtlas resource
+
+Used in the following systems:
+- **setup_font_atlas**: loads the image, adds the layout and inserts the resource.
 
 ```mermaid
 ---
@@ -53,17 +49,113 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 startup(("`Startup`")):::system-group
-setup["`**setup_font_atlas**`"]
+setup_font_atlas["`**setup_font_atlas**`"]
 
-startup -.-> setup
+startup -.-> setup_font_atlas
 
+world@{ shape: st-rect, label: "World" }
 asset_server@{ shape: doc, label: "AssetServer" }
 layouts@{ shape: doc, label: "Assets<TextureAtlasLayout>" }
 font_res@{ shape: doc, label: "FontAtlas" }
-consumers@{ shape: st-rect, label: "consumers (spawn_label)" }
 
-asset_server --> |read by| setup
-layouts --> |read by| setup
-setup --> |inserts| font_res
-font_res --> |read by| consumers
+fa_image>"`**image**`"]
+fa_layout>"`**layout**`"]
+
+asset_server --> |belongs to| world
+layouts --> |belongs to| world
+font_res --> |belongs to| world
+fa_image --> |field of| font_res
+fa_layout --> |field of| font_res
+
+setup_font_atlas ---> |"loads font.png"| asset_server
+setup_font_atlas ---> |adds grid layout| layouts
+setup_font_atlas ---> |inserts resource| font_res
 ```
+
+### Read FontAtlas resource
+
+Used in the following systems:
+- **begin_intro_countdown**, **advance_intro_countdown** (Round intro): draw the numbers and "GO!".
+- **show_outcome_banner** (Round outcome): draws the winner banner.
+- **ensure_menu_spawned** (Menu): draws the first rows. Reads `Option<Res<FontAtlas>>` and waits until it exists.
+- **update_selection** (Menu): draws the rows again when the selection changes.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+enter_starting(("`OnEnter(Starting)`")):::system-group
+enter_outcome(("`OnEnter(Outcome)`")):::system-group
+update(("`Update`")):::system-group
+begin_intro_countdown["`**begin_intro_countdown**
+Round intro`"]
+advance_intro_countdown["`**advance_intro_countdown**
+Round intro`"]
+show_outcome_banner["`**show_outcome_banner**
+Round outcome`"]
+ensure_menu_spawned["`**ensure_menu_spawned**
+Menu`"]
+update_selection["`**update_selection**
+Menu`"]
+
+enter_starting -.-> begin_intro_countdown
+update -.-> advance_intro_countdown
+enter_outcome -.-> show_outcome_banner
+update -.-> ensure_menu_spawned
+update -.-> update_selection
+
+world@{ shape: st-rect, label: "World" }
+font_res@{ shape: doc, label: "FontAtlas" }
+
+font_res --> |belongs to| world
+
+begin_intro_countdown ---> |reads| font_res
+advance_intro_countdown ---> |reads| font_res
+show_outcome_banner ---> |reads| font_res
+ensure_menu_spawned ---> |"reads (optional)"| font_res
+update_selection ---> |reads| font_res
+```
+
+### Spawn label entities
+
+Used in the following systems (through `spawn_label`):
+- **begin_intro_countdown**, **advance_intro_countdown** (Round intro).
+- **show_outcome_banner** (Round outcome).
+- **ensure_menu_spawned**, **update_selection** (Menu).
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+spawn_label["`**spawn_label**
+called by the systems above`"]
+
+label_entity@{ shape: st-rect, label: "Label Entity" }
+glyph_entity@{ shape: st-rect, label: "Glyph Entity (one per letter)" }
+
+lb_name>"`**Name**`"] --> |inserted on| label_entity
+lb_transform>"`**Transform**`"] --> |inserted on| label_entity
+lb_visibility>"`**Visibility**`"] --> |inserted on| label_entity
+
+gl_sprite>"`**Sprite**`"] --> |inserted on| glyph_entity
+gl_transform>"`**Transform**`"] --> |inserted on| glyph_entity
+gl_layers>"`**RenderLayers**`"] --> |inserted on| glyph_entity
+
+glyph_entity --> |child of| label_entity
+
+spawn_label ---> |spawns| label_entity
+spawn_label ---> |spawns| glyph_entity
+```
+
+Definitions:
+- `FontAtlas`: public `Resource` with the font `image` and the grid `layout` handles.
+- `FONT_COLS` (16), `FONT_ROWS` (3), `FONT_CELL` (16 x 16 px), `FONT_ADVANCE` (12 px): the atlas grid and the letter spacing.
