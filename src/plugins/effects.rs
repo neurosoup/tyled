@@ -16,7 +16,7 @@ use bevy::platform::collections::HashMap;
 use bevy_ecs_tiled::prelude::{TilePos, TileTextureIndex, TilemapId, TilemapTexture};
 use bevy_spritesheet_animation::plugin::AnimationSystemSet;
 use bevy_tweening::{
-    AnimCompletedEvent, AnimTarget, CycleCompletedEvent, Tween, TweenAnim, Tweenable,
+    AnimCompletedEvent, AnimTarget, CycleCompletedEvent, Tween, TweenAnim, TweeningPlugin, Tweenable,
     lens::{SpriteColorLens, TransformPositionLens, TransformScaleLens},
 };
 
@@ -129,6 +129,7 @@ struct ChannelPlan {
 type LiveEffect = (EffectKind, Option<EffectKind>);
 
 pub(crate) fn plugin(app: &mut App) {
+    app.add_plugins(TweeningPlugin);
     app.init_resource::<LitAtlases>();
     app.add_message::<EffectRequest>();
     app.configure_sets(

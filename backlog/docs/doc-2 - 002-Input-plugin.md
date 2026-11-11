@@ -9,7 +9,7 @@ updated_date: '2026-10-17 12:00'
 
 This plugin reads the player keys and turns them into move, shoot, parry and stop messages. It also sets up the input on each new player and turns characters in place when they face a new direction. A bot player has no key map: the Bot plugin fills the same action state, earlier in the same frame.
 
-The plugin also registers the `InputManagerPlugin` and the `TweeningPlugin`.
+The plugin also registers the `InputManagerPlugin`.
 
 ## Plugin Systems
 

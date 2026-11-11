@@ -7,7 +7,7 @@ updated_date: '2026-10-22 12:00'
 ---
 # Effects Plugin
 
-This plugin plays the visual effects of players and tiles.
+This plugin plays the visual effects of players and tiles. It also registers the `TweeningPlugin`.
 
 ## Key ideas
 

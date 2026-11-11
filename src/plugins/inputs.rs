@@ -8,15 +8,10 @@ use crate::prelude::*;
 use bevy::{prelude::*, transform::commands};
 use bevy_ecs_tiled::prelude::*;
 use bevy_spritesheet_animation::prelude::*;
-use bevy_tweening::{
-    AnimTarget, EntityCommandsTweeningExtensions, Tween, TweenAnim, TweenState, TweeningPlugin,
-    lens::TransformPositionLens,
-};
 use leafwing_input_manager::prelude::*;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<Action>::default());
-    app.add_plugins(TweeningPlugin);
     app.add_systems(PreUpdate, attach_players_actions);
     app.add_systems(
         Update,
