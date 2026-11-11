@@ -3,7 +3,7 @@ id: doc-24
 title: '[000] Plugin state relationships'
 type: other
 created_date: '2026-09-15 12:00'
-updated_date: '2026-10-17 12:00'
+updated_date: '2026-11-11 12:00'
 ---
 # Plugin State Relationships
 
@@ -92,6 +92,7 @@ round_resolution ---> |"ends the round (Playing → Outcome)"| outcome
 - HUD, animations and effects are not gated, on purpose: their tweens must finish across phase changes.
 - The knockback lock timer is not gated, so a lock still ends after the phase changes.
 - On exit of `Outcome`, effects remove the drivers that move players, with no fixed order against `reset_round`. An effect driver is a small entity that plays one effect tween (for example a slide or a knockback) for one player.
+- On exit of `Outcome`, the Hitstop plugin sets the game speed back to normal, so a parry slowdown never continues into the next intro.
 
 ## Reading the diagram
 
@@ -121,8 +122,9 @@ damage_plugin["`**Damage Plugin**`"]:::system-group
 telemetry_plugin["`**Telemetry Plugin**`"]:::system-group
 effects_plugin["`**Effects Plugin**`"]:::system-group
 claim_plugin["`**Claim Plugin**`"]:::system-group
-hud_plugin["`**HUD Plugin — HudSync**`"]:::system-group
-animations_plugin["`**Animations Plugin — Presentation**`"]:::system-group
+hud_plugin["`**HUD Plugin, HudSync**`"]:::system-group
+animations_plugin["`**Animations Plugin, Presentation**`"]:::system-group
+hitstop_plugin["`**Hitstop Plugin**`"]:::system-group
 
 app_main_menu(["`**AppState::MainMenu**`"])
 app_in_round(["`**AppState::InRound**`"])
@@ -172,5 +174,6 @@ phase_outcome ---> |on enter| telemetry_plugin
 phase_outcome ---> |on exit| round_state_plugin
 phase_outcome ---> |on exit| round_outcome_plugin
 phase_outcome ---> |on exit| effects_plugin
+phase_outcome ---> |on exit| hitstop_plugin
 round_outcome_plugin ---> |writes| phase_starting
 ```
