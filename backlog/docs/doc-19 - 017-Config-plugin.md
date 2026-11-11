@@ -3,91 +3,71 @@ id: doc-19
 title: '[017] Config plugin'
 type: other
 created_date: '2026-07-19 12:00'
-updated_date: '2026-09-14 12:00'
+updated_date: '2026-11-11 12:00'
 ---
 # Config Plugin
 
-The game's single tuning surface. It loads every gameplay/timing/visual knob from `assets/game_config.ron` into the `GameConfig` resource, which the rest of the game reads through `Res<GameConfig>`. Editing the `.ron` file is how the game is rebalanced — no code changes needed to retune damage, tick rates, round length, camera feel, tween/animation timings, or the background colour.
+This plugin loads the tuning values from `assets/game_config.ron` into the `GameConfig` resource. Other plugins read them with `Res<GameConfig>`. The code is in `src/plugins/config.rs`.
 
-It is registered **first** in `AppPlugin` (right after `defaults`) and inserts `GameConfig` at plugin-build time, so the resource exists before any `Startup` system runs and every consumer can rely on it.
+## Key ideas
 
-Only gameplay/timing/visual values live here. Structural invariants stay in their own modules: render-layer/order allocations (`camera.rs`), z-indices, font-atlas and spritesheet grid layouts, and the player sprite scale (`PLAYER_SPRITE_SCALE` in `maps.rs`) are plain consts, not config fields.
+- To rebalance the game, edit `assets/game_config.ron`. No code change is needed.
+- Each `.ron` value has a tag that says when an edit takes effect: `[live]`, `[next-round]`, `[restart]` or `[menu]`. The legend is at the top of the `.ron` file.
+- The plugin is registered right after `defaults`. It inserts `GameConfig` at plugin build, so the resource exists before any `Startup` system.
+- Fixed layout values stay as consts in their own modules, for example render layers, z-indices and atlas grids.
+- The test `embedded_config_parses` checks that the `.ron` file still parses. A broken edit fails the tests, and the game does not start with bad values.
 
-## Build split (dev vs release)
+## Dev and release builds
 
-`assets/game_config.ron` is the single source of truth for both builds.
+```mermaid
+---
+config:
+  theme: dark
+---
 
-- **Release** (`not(feature = "dev")`): the file is embedded at compile time with `include_str!` and parsed once at startup (`GameConfig::embedded`). Values are fixed and there is no file IO.
-- **Dev** (`feature = "dev"`): the file is read from disk at runtime (falling back to the embedded copy if missing/malformed), then registered as a hot-reloadable asset. Saving the file re-applies its values live via the asset watcher.
+flowchart TD
 
-## Concepts
+ron["`**assets/game_config.ron**`"]
+release["`**Release**
+embedded with include_str!
+fixed values`"]
+dev["`**Dev**
+read from disk at start
+falls back to the embedded copy`"]
+reload["`**Dev hot reload**
+saving the file updates GameConfig`"]
 
-- `GameConfig` (`src/plugins/config.rs`) — a `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` struct grouping the knobs by domain: `timing`, `damage`, `round`, `camera`, `player`, `animation`, `effects`, `telemetry`, `controllers`, `bot`. Each field carries a one-line doc; the `.ron` mirrors them and tags each with when an edit takes effect (`[live]`, `[next-round]`, `[restart]`, `[menu]`). Deriving `Reflect` also surfaces it in the dev inspector.
+ron --> release
+ron --> dev
+dev --> reload
+```
 
-- `controllers` (`ControllersConfig`) — which seats are bot-driven, read by the Input plugin's `attach_players_actions` when a `Player` entity is first spawned:
-    - `player1_bot` `[menu]` — whether P1 is driven by the bot instead of keyboard input. This `.ron` default is overwritten at launch by whatever matchup the player picks in the main menu (see the Menu plugin doc), before any map — and thus any `Player` entity — is spawned.
-    - `player2_bot` `[menu]` — whether P2 is driven by the bot instead of keyboard input; same main-menu override as `player1_bot`.
-
-- `bot` (`BotConfig`) — tunables read every beat by the Bot plugin's `bot_think` (see the Bot plugin doc):
-    - `fire_cooldown_ms` `[live]` — milliseconds the bot waits between shots.
-    - `aggression` `[live]` — how strongly the bot favors a shot that also passes through the opponent, or a reposition target closer to the opponent, over the nearest available claim.
-    - `think_interval_ms` `[live]` — milliseconds between bot decisions; paces movement/aim/fire choices.
-    - `hostile_cost` `[live]` — Dijkstra cost to enter an enemy-owned tile while pathfinding; higher prefers safer routes.
-    - `player1_strike` / `player2_strike` `[live]` — whether that seat's bot uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory) instead of the default territory play.
-
-- `animation` (`AnimationConfig`) — read by the Animations, Maps, and HUD plugins:
-    - `player_idle_frame_ms` `[restart]` — milliseconds per frame of the player idle animations.
-    - `tile_flip_frame_ms` `[restart]` — milliseconds per frame of the claimed-tile flip animations.
-    - `digit_roll_frame_ms` `[restart]` — milliseconds per frame of the HUD digit rolling-odometer animations.
-    - `unclaim_cascade_secs` `[live]` — max cascade delay (seconds) for the tile-unclaim revert, scaled by distance.
-    - `hp_bar_decay_rate` `[live]` — how fast the HP bar snaps to its target ratio, read every frame by the HUD plugin's `animate_hp`. Higher = snappier.
-    - `damage_bar_decay_rate` `[live]` — how fast the damage-echo bar catches up to the HP bar once it resumes, read every frame by the HUD plugin's `animate_damage_bar`. Higher = snappier.
-    - `damage_bar_delay_ms` `[live]` — milliseconds the damage-echo bar holds still after a hit before it starts catching up, read by the HUD plugin's `arm_damage_echo_delay` each time a player's `Health` changes.
-
-- `effects` (`EffectsConfig`) — read by the Effects plugin (see the Effects plugin doc):
-    - `knockback_tween_ms` `[live]` — milliseconds of the knockback slide and of the input lock (`IsKnockedBack`); both always last the same time. Higher = longer stun.
-    - `damage_flash_ms` `[live]` — milliseconds for the damage colour-flash tween.
-    - `beam_glow_fade_in_ms` `[live]` — milliseconds for the glow fade-in. Higher gives a softer, slower start.
-    - `beam_glow_hold_ms` `[live]` — milliseconds the glow stays at full strength. Higher gives a longer flash.
-    - `beam_glow_fade_out_ms` `[live]` — milliseconds for the glow fade-out. Higher gives a longer trail behind the beam.
-    - `beam_glow_lightness` `[live]` — how far lit colours move toward white (Oklch lightness `L += (1 - L) * k`), from 0 (no change) to 1 (white). Changing it rebuilds the lit atlas.
-    - `beam_glow_chroma` `[live]` — fraction of each pixel's Oklch chroma the lit colours keep, from 0 (grey) to 1 (unchanged). Changing it rebuilds the lit atlas.
-    - `beam_glow_neighbor_peak` `[live]` — peak strength (overlay alpha) of the glow on the four orthogonal neighbors and the lookahead tile, from 0 (off) to 1 (as bright as the beam tile).
-    - `beam_glow_neighbor_delay_ms` `[live]` — milliseconds the neighbor and lookahead glow wait before starting. Higher starts them later.
-
-- `telemetry` (`TelemetryConfig`) — read by the Telemetry plugin (see the Telemetry plugin doc):
-    - `enabled` `[live]` — whether play-telemetry records are written to `play_trace.jsonl`; every telemetry system is gated on this each frame.
-    - `history` `[restart]` — total trace files kept (current + rotated backups), applied only when the sink is (re)opened at `Startup`.
-
-- `assets/game_config.ron` — the authoritative, commented tuning file. A `#[test]` (`embedded_config_parses`) asserts it deserializes into `GameConfig`, so a malformed edit fails the build rather than the player. The test asserts no specific values, so retuning never breaks it.
-
-- **Hot-reload (dev only)** — a small custom `AssetLoader` (`GameConfigLoader`) deserializes the `.ron` into a `GameConfig` asset. `load_config_asset` loads the handle at `Startup`; `apply_config_reload` mirrors each `AssetEvent::Modified`/`LoadedWithDependencies` back into the `GameConfig` resource. `Res<GameConfig>` change-detection then propagates the new values.
-
-- **When edits take effect** — values read every frame in `Update` update instantly (camera rates, damage amounts, tween/flash durations, bot behaviour, and the per-character `move_repeat`/`turn_step` timings, which are read afresh each step). This also includes `animation.hp_bar_decay_rate`, `animation.damage_bar_decay_rate`, and `animation.damage_bar_delay_ms`, which the HUD plugin's `animate_hp`, `animate_damage_bar`, and `arm_damage_echo_delay` read fresh every frame/every hit — none of them are baked into a spawned component. The two tick timers (`DamageTimer`, `BeamStepTimer`) are re-synced on config change by dev-only systems that call `Timer::set_duration`, so their tick edits also apply live. Values consumed once at spawn/setup (player HP and charges, countdown length, the frame-duration animation timings `player_idle_frame_ms`/`tile_flip_frame_ms`/`digit_roll_frame_ms`) apply on the next round or next spawn (or need a restart, per their individual tags above). `controllers.player1_bot`/`player2_bot` are a special case (`[menu]`): the `.ron` value seeds `GameConfig` at launch, but is immediately overwritten once the player confirms a matchup in the main menu (see the Menu plugin doc) — before any map or `Player` entity exists — so its `.ron` default only matters for the brief window before that first confirmation.
-
-## Plugin workflow
-
-- Build phase (all builds)
-    - Insert `GameConfig`: parses the embedded (release) or on-disk (dev) `.ron` and inserts the `GameConfig` resource before any `Startup` system runs.
-- Startup phase (dev only)
-    - Load Config Asset: loads `game_config.ron` through the asset server and stores its handle.
-- Update phase (dev only)
-    - Apply Config Reload: on an asset change, copies the reloaded asset into the `GameConfig` resource.
+- `[live]` values are read every frame or every step, so they change at once in dev.
+- The damage and beam step timers are re-synced by dev-only systems in their own plugins.
 
 ## Plugin Systems
 
 ### Load Config Asset (dev)
 
-Runs once at `Startup`. Loads `game_config.ron` via the `AssetServer` and keeps the handle so the file watcher tracks it.
+- Runs once at `Startup`.
+- Loads `game_config.ron` as an asset and keeps its handle, so the file watcher tracks it.
 
 ### Apply Config Reload (dev)
 
-Runs every `Update`. Reads `AssetEvent<GameConfig>` messages and, on a modification, overwrites the `GameConfig` resource with the reloaded asset — the live-tuning entry point.
+- Runs every frame in `Update`.
+- When the asset changes, copies it into the `GameConfig` resource.
 
 ## Components, Resources and Messages CRUD
 
-Definitions and where they are used:
-- `GameConfig` — `#[derive(Resource, Asset, Reflect, Clone, Deserialize)]` (`src/plugins/config.rs`), inserted at plugin build and (in dev) refreshed by `apply_config_reload`. Read as `Res<GameConfig>` by consumers across the input, beam, damage, camera, maps, animations, hud, and round plugins.
+### Read GameConfig
+
+Used in the following systems:
+- Almost every plugin reads it. Each plugin doc lists its own readers.
+
+### Insert GameConfig resource
+
+Used in the following systems:
+- **plugin build**: parses the embedded copy (release) or the file on disk (dev), and inserts the resource.
 
 ```mermaid
 ---
@@ -98,26 +78,84 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
-build(("`App build`")):::system-group
-startup(("`Startup`")):::system-group
-update(("`Update`")):::system-group
+build(("`Plugin build`")):::system-group
 
-insert["`**insert GameConfig**`"]
-load["`**load_config_asset** (dev)`"]
-reload["`**apply_config_reload** (dev)`"]
-
-build -.-> insert
-startup -.-> load
-update -.-> reload
-
-ron@{ shape: doc, label: "assets/game_config.ron" }
+world@{ shape: st-rect, label: "World" }
 config_res@{ shape: doc, label: "GameConfig" }
-consumers@{ shape: st-rect, label: "consumers (Res<GameConfig>)" }
 
-ron --> |embedded / read by| insert
-insert --> |inserts| config_res
-ron --> |loaded by| load
-load --> |asset change| reload
-reload --> |updates| config_res
-config_res --> |read by| consumers
+config_res --> |belongs to| world
+
+build ---> |inserts resource| config_res
 ```
+
+### GameConfigHandle resource (dev)
+
+Used in the following systems:
+- **load_config_asset**: loads the asset and inserts the handle.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+startup(("`Startup`")):::system-group
+load_config_asset["`**load_config_asset**`"]
+
+startup -.-> load_config_asset
+
+world@{ shape: st-rect, label: "World" }
+asset_server@{ shape: doc, label: "AssetServer" }
+handle_res@{ shape: doc, label: "GameConfigHandle" }
+
+asset_server --> |belongs to| world
+handle_res --> |belongs to| world
+
+load_config_asset ---> |"loads game_config.ron"| asset_server
+load_config_asset ---> |inserts resource| handle_res
+```
+
+### Read AssetEvent messages and update GameConfig (dev)
+
+Used in the following systems:
+- **apply_config_reload**: on `Modified` or `LoadedWithDependencies`, copies the new asset into `GameConfig`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+apply_config_reload["`**apply_config_reload**`"]
+
+update -.-> apply_config_reload
+
+message_reader{{"MessageReader#60;AssetEvent#60;GameConfig#62;#62;"}}:::reader
+apply_config_reload ---> message_reader
+
+asset_event_message(["`**AssetEvent**`"])
+message_reader ---> |reads| asset_event_message
+
+world@{ shape: st-rect, label: "World" }
+assets_res@{ shape: doc, label: "Assets<GameConfig>" }
+config_res@{ shape: doc, label: "GameConfig" }
+
+assets_res --> |belongs to| world
+config_res --> |belongs to| world
+
+apply_config_reload ---> |reads| assets_res
+apply_config_reload ---> |writes| config_res
+```
+
+Definitions:
+- `GameConfig`: public `Resource` and `Asset`, with one group of values per domain.
+- `GameConfigHandle`: private dev-only `Resource` that keeps the asset handle alive.
+- `GameConfigLoader`: dev-only `AssetLoader` that parses the `.ron` file.
