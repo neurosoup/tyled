@@ -3,58 +3,87 @@ id: doc-22
 title: '[020] Menu plugin'
 type: other
 created_date: '2026-08-05 12:00'
-updated_date: '2026-08-05 12:00'
+updated_date: '2026-11-11 12:00'
 ---
 # Menu Plugin
 
-The pre-round main menu. It lets players pick a matchup — which seats are bot-controlled — before any map loads, gating everything downstream of map creation (player/tile initialization, the round state machine) behind confirmation.
+This plugin shows the main menu, where players choose who is a bot. No map loads before a choice is confirmed. The code is in `src/plugins/menu.rs`.
 
-It owns `AppState`, the app's top-level lifecycle state, sitting above `RoundPhase` (owned by the Round plugin): `MainMenu` is the default; `InRound` is entered once a matchup is confirmed and never left. The Maps plugin's `load_maps` runs `OnEnter(AppState::InRound)` rather than at `Startup`, so the level and HUD maps — and everything that reacts to their `MapCreated` event — do not spawn until the menu confirms a matchup.
+## Key ideas
 
-Menu rows are rendered with the Text plugin's `spawn_label` onto the overlay camera (owned by the Camera plugin), the same machinery the round intro/outcome banners use. It is registered after the Camera and Text plugins in `AppPlugin` (so `FontAtlas` and `OVERLAY_RENDER_LAYER` exist) and before the Input plugin (so a confirmed matchup is applied before player input is attached).
+- `AppState` is the top-level state, above `RoundPhase`. It starts in `MainMenu` and goes to `InRound` once. It never goes back.
+- The Maps plugin runs `load_maps` on `OnEnter(AppState::InRound)`. So the maps, the players and the round all wait for the menu.
+- The confirmed choice is written into `GameConfig.controllers`. The Input plugin reads it when the players spawn.
+- The entries are drawn with the [Text plugin](/documentation/17/015-text-plugin) on the overlay camera. The selected entry starts with `>`.
+- Controls: W / S or the arrow keys move the cursor. Q or `/` confirms.
 
-## Concepts
+| Entry | Player 1 | Player 2 |
+|---|---|---|
+| `1P VS 2P` | human | human |
+| `1P VS BOT` | human | bot |
+| `BOT VS 2P` | bot | human |
+| `BOT VS BOT` (dev builds only) | bot | bot |
 
-- `AppState` (`src/plugins/menu.rs`) — a `#[derive(States)]` enum with variants `MainMenu` (default) and `InRound`. Registered with `init_state`. All three menu systems are gated `run_if(in_state(AppState::MainMenu))`; the Maps plugin's `load_maps` is gated `OnEnter(AppState::InRound)`.
-- `MatchupChoice` — one of the three selectable matchups: `PlayerVsPlayer`, `PlayerVsBot`, `BotVsPlayer`. `controllers()` maps each to a `(player1_bot, player2_bot)` pair.
-- `MENU_ENTRIES` — the fixed, ordered `[(MatchupChoice, &str); 3]` list backing the menu rows and their display strings ("1P VS 2P", "1P VS BOT", "BOT VS 2P").
-- `MenuSelection` — a **resource** wrapping the index (`usize`) of the currently-highlighted row, defaulting to 0.
-- `MenuLabel` — a marker **component** tagging every spawned menu row entity, used to bulk-despawn the rows and detect whether they already exist.
+## Ordering
 
-## Plugin workflow
+```mermaid
+---
+config:
+  theme: dark
+---
 
-- Update phase (chained, `run_if(in_state(AppState::MainMenu))`)
-    - Ensure Menu Spawned:
-        - Reads: `FontAtlas` (optional — no-ops until the Text plugin's `Startup` system has run), `MenuSelection`, entities `With<MenuLabel>`
-        - Writes: spawns the three menu row labels the first time none exist
-    - Update Selection:
-        - Reads: `ButtonInput<KeyCode>` (`KeyW`/`ArrowUp`, `KeyS`/`ArrowDown`), `FontAtlas`, `MenuSelection`, entities `With<MenuLabel>`
-        - Writes: moves `MenuSelection` up/down (clamped to the entry range, no wraparound); on change, despawns and respawns the rows
-    - Confirm Selection:
-        - Reads: `ButtonInput<KeyCode>` (`KeyQ` or `Slash`), `MenuSelection`, entities `With<MenuLabel>`
-        - Writes: applies the selected `MatchupChoice::controllers()` into `GameConfig.controllers` (`player1_bot`, `player2_bot`), despawns the menu rows, sets `NextState<AppState>` to `InRound`
+flowchart TD
+
+subgraph update ["Update, only during MainMenu"]
+  ensure_menu_spawned["`**ensure_menu_spawned**`"]
+  update_selection["`**update_selection**`"]
+  confirm_selection["`**confirm_selection**`"]
+  ensure_menu_spawned --> update_selection
+  update_selection --> confirm_selection
+end
+
+subgraph enter_in_round ["OnEnter(AppState::InRound)"]
+  load_maps["`**load_maps**
+  Maps plugin`"]
+end
+
+update ~~~ enter_in_round
+```
+
+- `ensure_menu_spawned` runs in `Update`, because `OnEnter` of the default state can run before `Startup`, when `FontAtlas` does not exist yet.
 
 ## Plugin Systems
 
 ### Ensure Menu Spawned
 
-Runs every frame while `in_state(AppState::MainMenu)`, but only does anything once. Takes `FontAtlas` as `Option` and returns early until the Text plugin's `Startup` system has loaded it — deliberately not an `OnEnter(AppState::MainMenu)` system, since that schedule fires before `Startup` completes and `FontAtlas` wouldn't exist yet. Once available, if no `MenuLabel` entities exist it spawns one label per `MENU_ENTRIES` row via `spawn_label`, stacked vertically at y-offsets `+24.0, 0.0, -24.0`, onto `RenderLayers::layer(OVERLAY_RENDER_LAYER)`. The currently-selected row is prefixed with the font atlas's selector glyph (`>`), every other row with a leading space, so the text stays aligned either way.
+- Waits for `FontAtlas`, then draws the entries once, if none exist.
 
 ### Update Selection
 
-Reads `KeyW`/`ArrowUp` (up) and `KeyS`/`ArrowDown` (down) — either key scheme moves the cursor. Clamps `MenuSelection` to the `MENU_ENTRIES` index range with no wraparound. On any change it despawns all `MenuLabel` entities and respawns the rows with the new selection highlighted.
+- Moves the cursor up or down. It stops at the first and last entries.
+- On a change, despawns the entries and draws them again.
 
 ### Confirm Selection
 
-Reads `KeyQ` or `Slash` — either confirms. On press, looks up the selected `MatchupChoice`'s `controllers()` pair and writes it into `GameConfig.controllers.player1_bot`/`player2_bot`, despawns the menu rows, and sets `NextState<AppState>` to `InRound`, unblocking the Maps plugin's `load_maps` and the rest of the round-start chain.
+- On Q or `/`, writes the chosen matchup into `GameConfig.controllers`.
+- Despawns the entries and sets the next state to `InRound`.
 
 ## Components, Resources and Messages CRUD
 
-Definitions and where they are used:
-- `AppState` — `#[derive(States)]` (this plugin), registered via `init_state`; read by this plugin's `run_if` gates and by the Maps plugin's `load_maps`'s `OnEnter(InRound)` gate.
-- `MenuSelection` — `#[derive(Resource, Default)]` (this plugin), read/written by `update_selection`, read by `ensure_menu_spawned` and `confirm_selection`.
-- `MenuLabel` — `#[derive(Component)]` (this plugin), inserted by `ensure_menu_spawned`/`update_selection` on each spawned row, queried and despawned by `update_selection` and `confirm_selection`.
-- `GameConfig.controllers` — owned by the Config plugin; `player1_bot`/`player2_bot` are overwritten by `confirm_selection` from the chosen `MatchupChoice`, then read by the Input plugin's `attach_players_actions` when players spawn.
+### Read FontAtlas and ButtonInput
+
+Used in the following systems:
+- **ensure_menu_spawned**: reads `FontAtlas` as an `Option`.
+- **update_selection**: reads `FontAtlas` and the up and down keys.
+- **confirm_selection**: reads the confirm keys.
+
+### MenuSelection resource
+
+Used in the following systems:
+- **plugin build**: inserts it with entry 0.
+- **ensure_menu_spawned**: reads it to mark the selected entry.
+- **update_selection**: changes it.
+- **confirm_selection**: reads it to find the chosen matchup.
 
 ```mermaid
 ---
@@ -65,37 +94,175 @@ config:
 flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
-update(("`Update (in_state MainMenu)`")):::system-group
-on_enter(("`OnEnter(InRound)`")):::system-group
+build(("`Plugin build`")):::system-group
+update(("`Update`")):::system-group
+ensure_menu_spawned["`**ensure_menu_spawned**`"]
+update_selection["`**update_selection**`"]
+confirm_selection["`**confirm_selection**`"]
 
-ensure["`**ensure_menu_spawned**`"]
-select["`**update_selection**`"]
-confirm["`**confirm_selection**`"]
-load_maps["`**load_maps** (Maps plugin)`"]
+update -.-> ensure_menu_spawned
+update -.-> update_selection
+update -.-> confirm_selection
 
-update -.-> ensure
-update -.-> select
-update -.-> confirm
-on_enter -.-> load_maps
-
-font_res@{ shape: doc, label: "FontAtlas" }
+world@{ shape: st-rect, label: "World" }
 selection_res@{ shape: doc, label: "MenuSelection" }
-config_res@{ shape: doc, label: "GameConfig" }
-next_state@{ shape: doc, label: "NextState<AppState>" }
-labels@{ shape: st-rect, label: "MenuLabel rows" }
 
-font_res --> |read by| ensure
-selection_res --> |read by| ensure
-ensure --> |spawns| labels
+selection_res --> |belongs to| world
 
-font_res --> |read by| select
-selection_res --> |read/writes| select
-select --> |despawns/respawns| labels
-
-selection_res --> |read by| confirm
-confirm --> |writes controllers| config_res
-confirm --> |despawns| labels
-confirm --> |sets InRound| next_state
-
-next_state --> |gates| load_maps
+build ---> |inserts resource| selection_res
+ensure_menu_spawned ---> |reads| selection_res
+update_selection ---> |writes| selection_res
+confirm_selection ---> |reads| selection_res
 ```
+
+### Spawn menu entries
+
+Used in the following systems:
+- **ensure_menu_spawned**: draws the first entries.
+- **update_selection**: draws the entries again after a change.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+ensure_menu_spawned["`**ensure_menu_spawned**`"]
+update_selection["`**update_selection**`"]
+
+update -.-> ensure_menu_spawned
+update -.-> update_selection
+
+entry_entity@{ shape: st-rect, label: "Menu Entry Label Entity" }
+
+ml_marker>"`**MenuLabel**`"] --> |inserted on| entry_entity
+
+ensure_menu_spawned ---> |spawns| entry_entity
+update_selection ---> |spawns| entry_entity
+```
+
+### Query MenuLabel entities
+
+Used in the following systems:
+- **ensure_menu_spawned**: checks if entries already exist.
+- **update_selection**, **confirm_selection**: despawn the entries.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+ensure_menu_spawned["`**ensure_menu_spawned**`"]
+update_selection["`**update_selection**`"]
+confirm_selection["`**confirm_selection**`"]
+
+update -.-> ensure_menu_spawned
+update -.-> update_selection
+update -.-> confirm_selection
+
+labels_query{{"`labels`"}}:::query
+ensure_menu_spawned ---> labels_query
+update_selection ---> labels_query
+confirm_selection ---> labels_query
+
+entry_entity@{ shape: st-rect, label: "Menu Entry Label Entity" }
+
+ml_entity>"`**Entity**`"] --> |belongs to| entry_entity
+ml_marker>"`**MenuLabel**`"] --> |belongs to| entry_entity
+
+labels_query ---> |reads| ml_entity
+labels_query -..-> |filter With| ml_marker
+update_selection ---> |despawns| entry_entity
+confirm_selection ---> |despawns| entry_entity
+```
+
+### Write GameConfig controllers
+
+Used in the following systems:
+- **confirm_selection**: writes `player1_bot` and `player2_bot`.
+- **attach_players_actions** (Input plugin): reads them when the players spawn.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+update(("`Update`")):::system-group
+pre_update(("`PreUpdate`")):::system-group
+confirm_selection["`**confirm_selection**`"]
+attach_players_actions["`**attach_players_actions**
+Input plugin`"]
+
+update -.-> confirm_selection
+pre_update -.-> attach_players_actions
+
+world@{ shape: st-rect, label: "World" }
+config_res@{ shape: doc, label: "GameConfig" }
+
+gc_controllers>"`**controllers**`"]
+
+config_res --> |belongs to| world
+gc_controllers --> |field of| config_res
+
+confirm_selection ---> |writes| gc_controllers
+attach_players_actions ---> |reads| gc_controllers
+```
+
+### AppState
+
+Used in the following systems:
+- **plugin build**: registers the state, starting in `MainMenu`.
+- **confirm_selection**: sets `NextState<AppState>` to `InRound`.
+- **load_maps** (Maps plugin): runs on `OnEnter(AppState::InRound)`.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+
+build(("`Plugin build`")):::system-group
+update(("`Update`")):::system-group
+enter_in_round(("`OnEnter(InRound)`")):::system-group
+confirm_selection["`**confirm_selection**`"]
+load_maps["`**load_maps**
+Maps plugin`"]
+
+update -.-> confirm_selection
+enter_in_round -.-> load_maps
+
+world@{ shape: st-rect, label: "World" }
+state_res@{ shape: doc, label: "State#60;AppState#62;" }
+next_state_res@{ shape: doc, label: "NextState#60;AppState#62;" }
+
+state_res --> |belongs to| world
+next_state_res --> |belongs to| world
+
+build ---> |inserts resource| state_res
+confirm_selection ---> |sets InRound| next_state_res
+next_state_res -.-> |"triggers OnEnter(InRound)"| load_maps
+```
+
+Definitions:
+- `AppState`: public `States` enum: `MainMenu` (default) and `InRound`.
+- `MatchupChoice`: one menu choice. `controllers()` returns `(player1_bot, player2_bot)`.
+- `MENU_ENTRIES`: the ordered list of entries and their text.
+- `MenuSelection`: public `Resource` with the index of the selected entry.
+- `MenuLabel`: public marker `Component` on each entry label.

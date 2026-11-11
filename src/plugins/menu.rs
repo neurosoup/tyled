@@ -58,11 +58,11 @@ const MENU_ENTRIES: [(MatchupChoice, &str); 4] = [
     (MatchupChoice::BotVsBot, "BOT VS BOT"),
 ];
 
-/// Index of the currently-highlighted menu row.
+/// Index of the currently-highlighted menu entry.
 #[derive(Resource, Default)]
 pub struct MenuSelection(pub usize);
 
-/// Tags every spawned menu row entity, for bulk despawn.
+/// Tags every spawned menu entry entity, for bulk despawn.
 #[derive(Component)]
 pub struct MenuLabel;
 
@@ -77,10 +77,10 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-/// Spawns one label per menu row, prefixing the selected row with the font
-/// atlas's selector glyph (`>`) and every other row with a leading space so
+/// Spawns one label per menu entry, prefixing the selected entry with the font
+/// atlas's selector glyph (`>`) and every other entry with a leading space so
 /// alignment stays identical either way.
-fn spawn_rows(commands: &mut Commands, font: &FontAtlas, selection: &MenuSelection) {
+fn spawn_entries(commands: &mut Commands, font: &FontAtlas, selection: &MenuSelection) {
     for (i, (_, text)) in MENU_ENTRIES.iter().enumerate() {
         let prefix = if i == selection.0 { ">" } else { " " };
         let label = spawn_label(
@@ -94,7 +94,7 @@ fn spawn_rows(commands: &mut Commands, font: &FontAtlas, selection: &MenuSelecti
     }
 }
 
-/// Draws the initial rows the first time `FontAtlas` is available. Gated on
+/// Draws the initial entries the first time `FontAtlas` is available. Gated on
 /// `Update` rather than `OnEnter`: the default state's `OnEnter` fires before
 /// `Startup` systems (like `text::setup_font_atlas`) have run, so `FontAtlas`
 /// doesn't exist there yet.
@@ -110,11 +110,11 @@ fn ensure_menu_spawned(
     if !labels.is_empty() {
         return;
     }
-    spawn_rows(&mut commands, &font, &selection);
+    spawn_entries(&mut commands, &font, &selection);
 }
 
 /// Moves the cursor with W/S or the arrow keys (shared cursor, either works),
-/// clamped to the entry range, and respawns the rows on any change.
+/// clamped to the entry range, and respawns the entries on any change.
 fn update_selection(
     mut commands: Commands,
     font: Res<FontAtlas>,
@@ -142,7 +142,7 @@ fn update_selection(
     for entity in &labels {
         commands.entity(entity).despawn();
     }
-    spawn_rows(&mut commands, &font, &selection);
+    spawn_entries(&mut commands, &font, &selection);
 }
 
 /// Confirms the highlighted matchup with Q or `/`, applies it to the
