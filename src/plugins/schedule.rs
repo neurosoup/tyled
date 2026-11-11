@@ -1,9 +1,5 @@
 /*
- * Single place declaring the cross-plugin gameplay pipeline order: bot decisions feed input,
- * input feeds movement, movement feeds the beam step, beams feed tile claims, claims feed the
- * charge economy, economy feeds damage, damage feeds displacement (knockback), displacement feeds
- * presentation (visual effects reacting to claim/damage state), presentation feeds round
- * resolution, and round resolution feeds HUD sync.
+ * Single place declaring the cross-plugin gameplay pipeline order.
  * Plugins tag their own systems into these sets locally via `.in_set(...)` rather than naming
  * another plugin's system directly.
  */

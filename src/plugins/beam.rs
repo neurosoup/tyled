@@ -65,7 +65,10 @@ pub(crate) fn resolve_fire(
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
 ) -> Option<BeamBehavior> {
-    match (is_position_claimed(map_info, claimed_query, origin), can_override_block) {
+    match (
+        is_position_claimed(map_info, claimed_query, origin),
+        can_override_block,
+    ) {
         (true, false) => None,
         (true, true) => Some(BeamBehavior::Lance),
         (false, _) => Some(BeamBehavior::Straight),
@@ -274,7 +277,7 @@ fn beam_step(
 
         match beam.behavior {
             // +----------------------------+
-            // | Lance                   |
+            // | Lance                      |
             // | resolve on the first       |
             // | unclaimed tile ahead.      |
             // +----------------------------+
