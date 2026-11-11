@@ -3,92 +3,141 @@ id: doc-20
 title: '[018] Bot plugin'
 type: other
 created_date: '2026-07-21 12:00'
-updated_date: '2026-09-15 12:00'
+updated_date: '2026-11-11 12:00'
 ---
 # Bot Plugin
 
-Drives a bot-controlled player's synthetic `ActionState<Action>` through the same `handle_characters_input` system a human's `InputMap` drives, so the bot is bound by the identical fire and charge gates — it can never bypass `resolve_fire`'s claimed-tile refusal or fire without a `BeamCharges` charge. Each beat it deliberates and mirrors the chosen behaviour into `BotDecision` so the Telemetry plugin can log bot reasoning alongside human play.
+This plugin plays a player for the computer. It writes the bot's `ActionState<Action>`, and the Input plugin reads it like a human's input. The code is in `src/plugins/bot.rs`.
 
-Each seat runs one of two decision modes, selected per seat by `config.bot.strike_for(player.player_id)`:
+## Key ideas
 
-- **Striking seat** (strike flag on) — offense-focused; ignores territory. It fires whenever it has a line of fire to the opponent, otherwise chases them via A*.
-- **Territory seat** (strike flag off — the default) — first runs an always-on reactive brace-or-dodge against an incoming hostile beam (turn and hold for a parry if there's a `parry_chance` roll and enough runway, else step off the line); otherwise it claims tiles by firing along runways, repositions via Dijkstra, and (with the Lance ability) strikes aligned opponents.
+- The bot has no `InputMap`. It presses the same actions as a human, so it follows the same fire and charge rules.
+- `controllers.player1_bot` / `player2_bot` choose which players are bots. The Input plugin reads them and adds the `Bot` marker.
+- Each bot plays in one of two modes, chosen by `bot.player1_strike` / `player2_strike`:
+    - **Striking**: hunts the opponent and shoots at them. It ignores territory.
+    - **Territory** (default): claims tiles, dodges beams, and uses its abilities.
+- The **parry reflex** runs every frame, before everything else. A parry window is shorter than the time between two decisions.
+- All other decisions happen on a **beat**: every `bot.think_interval_ms`, plus a small random jitter. Between beats, the bot stands still and does not shoot.
+- `bot.parry_chance` is rolled once per incoming beam. The result is kept, so the reflex and the brace/dodge choice agree on the same beam.
+- Each decision is copied into `BotDecision`. The Telemetry plugin logs it when it changes.
 
-Both seats share one reflex layer, checked every frame ahead of either mode and ahead of the beat gate described below: whenever `find_parryable_beam` finds a parryable beam right now, the bot either presses `Action::Shoot` (behaviour `"parry"`) or lets it through, per the same per-beam `parry_chance` roll the brace/dodge call consults. This runs at frame rate rather than on the `think_interval_ms` beat because the parry window (`config.parry.window_fraction` of a beam step) is far narrower than the gap between beats — gating it on the beat would mean catching it by luck alone.
+## Decision flow
 
-## Concepts
+```mermaid
+---
+config:
+  theme: dark
+---
 
-- `Bot` — zero-sized marker component (`src/components/markers.rs`). Attached by the Input plugin's `attach_players_actions` to a bot-controlled player's entity in place of an `InputMap<Action>`; a bare `ActionState<Action>` is inserted alongside it instead. No standalone marker doc exists for it — it is documented here since this plugin is its primary consumer.
-- `BotDecision` — public component mirroring the bot's most recently chosen behaviour: `behaviour` (a short tag, one of `"claim"`, `"aggress"`, `"aim"`, `"reposition"`, `"idle"`, `"lance"`, `"lance_strike"`, `"hunt"`, `"strike_lance"`, `"strike_straight"`, `"dodge"`, `"brace"`, `"parry"`), `why` (a human-readable reason string), `move_x`/`move_y` (the chosen move axis), and `shoot` (whether it fired this beat). Overwritten only when the value differs from the previous beat, so a cross-module reader — the Telemetry plugin's `record_decisions` — can log strictly on change via `Changed<BotDecision>`.
-- `BotBrain` — private per-bot scratch state: `last_fire_secs` and `shooting` (fire-cooldown bookkeeping), `next_beat_secs` (the paced-deliberation gate), `target` (a sticky `GridCoords` destination that persists across beats until it is claimed or claimed by the opponent), and `parry_rolls` (a per-beam-entity `HashMap<Entity, bool>` caching whether the bot committed to parrying that beam, shared between the reflex check and the brace/dodge call so both agree on the same beam; pruned each beat against the beams still in flight).
-- `config.controllers.player1_bot` / `player2_bot` — which seats are bot-driven; read by the Input plugin, not here.
-- `config.bot.fire_cooldown_ms`, `aggression`, `think_interval_ms`, `hostile_cost`, `chase_cost_threshold`, `parry_chance` — the numeric tunables `bot_think` reads every beat (see the Config plugin doc for edit-timing tags). `parry_chance` is rolled once per incoming beam, not read as a raw threshold, to decide whether the bot goes for that beam's parry at all.
-- `config.parry.window_fraction` — the same human-facing parry-timing knob `handle_characters_input` uses, read here so the bot's reflex check and a human's input share one definition of "parryable."
-- `config.bot.player1_strike` / `player2_strike` — per-seat mode flags, read via `strike_for(player.player_id)` to choose the striking vs. territory decision path. The reflex parry layer and the territory Lance-strike are always-on, not config toggles.
+flowchart TD
 
-## Plugin workflow
+frame["`**Each frame**`"]
+reflex{"`Parryable beam and parry roll succeeds?`"}
+parry["`**parry**`"]
+beat{"`Beat reached?`"}
+wait["`Stand still, release Shoot`"]
+mode{"`Striking mode?`"}
 
-- Update phase
-    - Attach Bot State reacts to newly added `Bot` entities that don't yet carry `BotBrain` and inserts default `BotBrain`/`BotDecision`.
-    - Bot Think (`.after(attach_bot_state)`, `.in_set(GameplaySet::BotThink)`, gated `in_state(RoundPhase::Playing)`) paces itself to `think_interval_ms` and, once its beat elapses, runs the seat's decision mode (striking or territory) — fire/aim/hunt/claim/reposition/dodge — writing the result into the bot's `ActionState<Action>` and mirroring it into `BotDecision`. The shared `GameplaySet` chain (`schedule.rs`) orders `GameplaySet::BotThink` before `GameplaySet::Input`, so the synthesized `ActionState` is in place before the Input plugin's `handle_characters_input` reads it the same frame (see the Input plugin doc).
+frame --> reflex
+reflex --> |yes| parry
+reflex --> |no| beat
+beat --> |no| wait
+beat --> |yes| mode
+
+subgraph striking ["Striking"]
+  line{"`Line of fire to the opponent?`"}
+  strike["`**aim** / **strike_lance** / **strike_straight**`"]
+  hunt["`**hunt** toward the opponent, or **idle**`"]
+  line --> |yes| strike
+  line --> |no| hunt
+end
+
+subgraph territory ["Territory, in priority order"]
+  threat{"`Beam coming on my row or column?`"}
+  brace["`**brace** / **dodge**`"]
+  grinder{"`Border Grinder flip worth chasing?`"}
+  chase["`**border_grinder_chase**`"]
+  fire{"`Can fire?`"}
+  shoot["`**aim** / **claim** / **aggress** / **lance** / **lance_strike**`"]
+  target{"`Reachable unclaimed tile?`"}
+  move["`**reposition** / **aggress** (Dijkstra)`"]
+  rest["`**hold** on safe ground, **retreat** from enemy ground, or **idle**`"]
+
+  threat --> |yes| brace
+  threat --> |no| grinder
+  grinder --> |yes| chase
+  grinder --> |no| fire
+  fire --> |yes| shoot
+  fire --> |no| target
+  target --> |yes| move
+  target --> |no| rest
+end
+
+mode --> |yes| line
+mode --> |no| threat
+```
+
+- With Border Grinder, a shot that flips an enemy tile is chosen before any normal claim.
+- The Border Grinder chase is skipped if a flip is possible from the current tile, or if the path costs more than `bot.chase_cost_threshold`.
+- A striking bot without Lance never steps onto an enemy tile, because it cannot fire from there.
+
+## Ordering
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+
+subgraph update ["Update"]
+  attach_bot_state["`**attach_bot_state**
+  every phase`"]
+  bot_think["`**bot_think**
+  GameplaySet::BotThink, only during Playing`"]
+  input["`**GameplaySet::Input**
+  handle_characters_input reads the ActionState`"]
+end
+
+attach_bot_state --> bot_think
+bot_think --> input
+```
 
 ## Plugin Systems
 
 ### Attach Bot State
 
-Runs in `Update`. Query filters `Added<Bot>, Without<BotBrain>` — for every bot entity that was just added and doesn't yet carry brain state, inserts `BotBrain::default()` and `BotDecision::default()`.
+- Adds `BotBrain` and `BotDecision` to each new `Bot` entity.
 
 ### Bot Think
 
-Runs in `Update`, ordered `.after(attach_bot_state)` and tagged `.in_set(GameplaySet::BotThink)` — the shared `GameplaySet` chain (`schedule.rs`) orders `BotThink` before `GameplaySet::Input`, so its synthesized `ActionState` is in place before the Input plugin's `handle_characters_input` reads it that same frame — gated `in_state(RoundPhase::Playing)`.
+- Runs every frame during `Playing`, for each bot.
+- Follows the decision flow above. Writes the move axis and the Shoot button into `ActionState<Action>`.
+- Replaces `BotDecision` only when the decision changes.
 
-**Reflex parry layer**: runs first, every frame, ahead of the beat gate — `find_parryable_beam` (the same function `handle_characters_input` uses for a human) checks whether a hostile beam is right now inside its `config.parry.window_fraction` window and facing the bot. If so, the bot looks up (or rolls and caches) `brain.parry_rolls[beam]` against `config.bot.parry_chance`; on a hit it zeroes the move axis, presses `Action::Shoot`, mirrors behaviour `"parry"` into `BotDecision`, and skips the rest of the frame for that bot. This bypasses `think_interval_ms` entirely because the window itself (tens of milliseconds) is narrower than the gap between beats, so gating it on the beat would mean catching it by chance alone. A miss (beam not parryable, or the roll came up against it) falls through to the beat-gated logic below.
+### Helpers
 
-**Beat gate**: if `time.elapsed_secs()` is still short of `brain.next_beat_secs`, the system zeroes the move axis, releases `Action::Shoot`, and continues to the next bot without deliberating — this paces movement/aim/fire choices to `config.bot.think_interval_ms` rather than re-deciding every frame. Otherwise it schedules the next beat, prunes `brain.parry_rolls` down to beams still in flight, resolves the opponent's tile (first non-self `Character` player), computes the fireable `behavior` from the current tile (`resolve_fire` with the bot's own `AbilityList`/`Lance`), and picks a branch based on `config.bot.strike_for(player.player_id)`.
-
-**Striking seat** (strike flag on, and an opponent exists) — offense-focused; territory is irrelevant.
-
-- **Line of fire** — tests whether a shot in the current facing, then any of the four `CARDINALS`, geometrically reaches the opponent (`shot_hits_enemy`: a Straight shot is stopped by the first claimed tile, a Lance shot pierces claimed/forbidden tiles). If a firing direction exists but the bot isn't facing it yet, it turns in place — behaviour `"aim"`; once facing it, and if `fire_cooldown_ms` has elapsed since the last shot and it isn't mid-shot, it presses `Action::Shoot` — behaviour `"strike_lance"` (Lance beam) or `"strike_straight"` (Straight beam).
-- **Hunt** — with no line of fire, it chases via `astar_first_step` toward the opponent's tile — behaviour `"hunt"`. A striker *with* Lance chases freely (it can pierce-strike from claimed tiles). A striker *without* Lance never steps onto or idles on an enemy tile (it can't fire from a claimed tile, so it would just soak damage waiting): it takes the chase step only if it lands on a safe (on-ground, non-hostile) tile, else the safe cardinal step nearest the foe. If no safe approach exists it reports `"idle"`.
-
-**Territory seat** (strike flag off — the default) — deliberates in priority order:
-
-1. **Brace or dodge** — before any fire/path logic, `incoming_beam_threat` scans the `beams` query for a hostile beam travelling along the bot's row or column toward it, returning its distance, the facing needed to parry it, and a safe perpendicular dodge step. The bot braces (turns toward it, or holds still if already facing it — behaviour `"brace"`) when it's already facing the right way or the beam is still 2+ tiles out *and* the shared `parry_chance` roll for that beam commits; a beam too close to safely reorient for, or one the roll rejected, gets the plain sideways dodge instead — behaviour `"dodge"`. Falling into the "too close" case also erases that beam's entry from `brain.parry_rolls` even if an earlier beat had already committed to it — abandoning the commitment so the reflex layer (which reads the same cache) doesn't still try to press `Action::Shoot` for a parry the bot is now busy dodging away from. Bracing doesn't throw the shot itself: the reflex layer above lands the actual parry once the window opens.
-2. **Fire** — `best_fire` is the current facing's `reach` if it is at least 1 tile, otherwise whichever `CARDINAL` has the greatest `reach` (≥ 1); for Lance it is instead the direction that lands on the opponent, else the first landing direction (`lance_hits_enemy` / `lance_landing`). Committing to the current facing until its line is exhausted avoids swivelling between two directions of equal reach. If the bot has charges and a shot is available: if it isn't facing the fire direction yet it turns in place — behaviour `"aim"`; once facing (or when no runway exists — firing into a blocked neighbour still claims the bot's own tile), and if the cooldown has elapsed and it isn't mid-shot, it presses `Action::Shoot` — behaviour `"lance_strike"` (Lance beam reaching an aligned opponent), `"lance"` (other Lance shot), `"aggress"` (Straight shot whose line crosses the opponent, `fires_toward_opponent`), or `"claim"`.
-3. **Reposition** — with no charges or no shot, it pathfinds via `dijkstra_first_steps` (4-connected, cost 1 per normal tile and `config.bot.hostile_cost` to enter an opponent-owned tile). It keeps the sticky `brain.target` if still reachable and unclaimed; otherwise picks the reachable unclaimed tile minimizing `reposition_score` (Dijkstra cost, biased toward the opponent once `aggression ≥ 0.5`), ties broken by Manhattan distance; if the whole board is claimed it falls back to the opponent's tile when reachable, so it pressures rather than idles. It steps one tile toward the target — behaviour `"aggress"` if `aggression ≥ 0.5` else `"reposition"` — or reports `"idle"` if nothing is reachable.
-
-The resulting move axis is written to `ActionState::<Action>::Move`, and a `BotDecision` built from the chosen behaviour/reason/axis/shoot flag replaces the component only if it differs from the previous beat's.
-
-### reach (helper)
-
-Private helper, not a system. Counts consecutive unclaimed, non-forbidden, on-ground tiles starting one step past `from` in direction `dir`, stopping at the first claimed tile, forbidden area, or off-ground position. Used by `bot_think` to score candidate firing directions.
-
-### dijkstra_first_steps (helper)
-
-Private helper, not a system. Runs Dijkstra's algorithm over walkable ground tiles from the bot's position, 4-connected via `CARDINALS`. Entering a tile owned by an opponent (`is_hostile_tile`) costs `hostile_cost`; any other ground tile costs 1. Returns, per reachable coordinate, the total cost and the first step taken from the start to reach it — the latter is what lets `bot_think` move one tile per beat toward a multi-tile-distant target without recomputing the full path.
-
-### astar_first_step (helper)
-
-Private helper, not a system. Goal-directed A* from the bot's tile toward a single target tile over walkable ground (4-connected via `CARDINALS`), entering an enemy-owned tile costing `hostile_cost`, with a Manhattan heuristic (admissible since every step costs ≥ 1). Returns the first step of a shortest path, or `None` if unreachable. It terminates when it reaches the goal *or* any tile cardinally adjacent to it — the goal itself may be a non-walkable tile (e.g. a player-start position outside `ground_entities`), and adjacency is where a strike lines up. Used by the striking seat's hunt behaviour.
-
-### shot_hits_enemy (helper)
-
-Private helper, not a system. Whether a shot of a given `BeamBehavior` fired from a tile in a direction geometrically reaches the opponent: a Straight shot is stopped by the first claimed tile (any owner), a Lance shot (delegating to `lance_hits_enemy`) pierces claimed/forbidden tiles. Used by the striking seat to detect a line of fire.
-
-### lance_hits_enemy / lance_landing (helpers)
-
-Private helpers, not systems. `lance_hits_enemy` reports whether a Lance shot from a tile in a direction reaches the opponent — landing on their tile or passing its head over them — before resolving elsewhere or leaving the map. `lance_landing` returns the tile a Lance shot resolves on (pierces claimed/forbidden tiles to the first unclaimed ground tile ahead), or `None` if it leaves the map first. Used by the territory seat's Lance branch (and `shot_hits_enemy`).
-
-### incoming_beam_threat (helper)
-
-Private helper, not a system. Scans the `beams` query for a hostile beam (not owned by this bot) travelling along the bot's row or column toward it with a safe dodge tile available (a beam with nowhere safe to step is skipped, same as the prior dodge-only check); if one is found, returns its distance, the facing needed to parry it, and the perpendicular dodge step, else `None`. Drives the territory seat's always-on brace-or-dodge branch.
+- `reach`: counts the free tiles in a straight line.
+- `border_grinder_target`: true if the next tile belongs to the enemy.
+- `lance_landing`, `lance_hits_enemy`: where a Lance shot lands, and whether it hits the opponent.
+- `shot_hits_enemy`: whether a Straight or Lance shot hits the opponent.
+- `incoming_beam_threat`: finds an enemy beam coming toward the bot, with the facing to parry it and a safe dodge step.
+- `dijkstra_first_steps`: cost and first step to every reachable tile. Entering an enemy tile costs `bot.hostile_cost`.
+- `astar_first_step`: first step toward one target tile. Used by the striking mode.
+- `reposition_score`, `fires_toward_opponent`: scoring for the territory mode, biased toward the opponent when `bot.aggression` ≥ 0.5.
 
 ## Components, Resources and Messages CRUD
 
-### Query bots awaiting brain state
+### Read GameConfig and Time
 
 Used in the following systems:
-- **attach_bot_state**: detects `Bot` entities that were just added and don't yet carry `BotBrain`, and inserts `BotBrain`/`BotDecision` on them
+- **bot_think**: reads the `bot.*` values, `parry.window_fraction` and the elapsed time.
+
+### Query new bots
+
+Used in the following systems:
+- **attach_bot_state**: finds `Bot` entities that were just added and have no `BotBrain`.
 
 ```mermaid
 ---
@@ -108,7 +157,7 @@ update -.-> attach_bot_state
 bots_query{{"`bots`"}}:::query
 attach_bot_state ---> bots_query
 
-bot_entity@{ shape: st-rect, label: "Bot" }
+bot_entity@{ shape: st-rect, label: "Bot Player" }
 
 be_entity>"`**Entity**`"] --> |belongs to| bot_entity
 be_bot>"`**Bot**`"] --> |belongs to| bot_entity
@@ -119,10 +168,10 @@ bots_query -..-> |filter Added| be_bot
 bots_query -..-> |filter Without| be_brain
 ```
 
-### Write commands — insert BotBrain and BotDecision
+### Insert BotBrain and BotDecision
 
 Used in the following systems:
-- **attach_bot_state**: inserts default `BotBrain` and `BotDecision` on each newly attached bot entity
+- **attach_bot_state**: inserts both with default values.
 
 ```mermaid
 ---
@@ -138,7 +187,7 @@ attach_bot_state["`**attach_bot_state**`"]
 
 update -.-> attach_bot_state
 
-bot_entity@{ shape: st-rect, label: "Bot" }
+bot_entity@{ shape: st-rect, label: "Bot Player" }
 
 be_brain>"`**BotBrain**`"]
 be_decision>"`**BotDecision**`"]
@@ -150,10 +199,10 @@ attach_bot_state ---> |inserts component| be_brain
 attach_bot_state ---> |inserts component| be_decision
 ```
 
-### Query bots for decision-making
+### Query bots
 
 Used in the following systems:
-- **bot_think**: reads position, facing, and `Player` (for `player_id`, to select the seat's decision mode), mutably drives `ActionState#60;Action#62;`, and reads/writes its own `BotDecision`/`BotBrain` scratch state, for all `Bot` entities
+- **bot_think**: reads the bot's position, facing, charges and abilities. Writes its `ActionState`, `BotDecision` and `BotBrain`.
 
 ```mermaid
 ---
@@ -173,7 +222,7 @@ update -.-> bot_think
 bots_query{{"`bots`"}}:::query
 bot_think ---> bots_query
 
-bot_entity@{ shape: st-rect, label: "Bot (Player)" }
+bot_entity@{ shape: st-rect, label: "Bot Player" }
 
 be_entity>"`**Entity**`"] --> |belongs to| bot_entity
 be_player>"`**Player**`"] --> |belongs to| bot_entity
@@ -201,7 +250,7 @@ bots_query -..-> |filter With| be_bot
 ### Query player positions
 
 Used in the following systems:
-- **bot_think**: collects every character player's `Entity` + `GridCoords` up front, to locate the opponent's current tile for aggression scoring, hunting, and the opponent-pressure fallback. The `With<Character>` filter is required alongside `With<Player>`: HUD entities (HP bars) also carry a `Player` component plus a `GridCoords`, so without it the bot could pick a non-character HUD entity as its opponent
+- **bot_think**: finds the opponent's tile. `With<Character>` is needed because HUD entities also have `Player` and `GridCoords`.
 
 ```mermaid
 ---
@@ -221,7 +270,7 @@ update -.-> bot_think
 positions_query{{"`positions`"}}:::query
 bot_think ---> positions_query
 
-player_entity@{ shape: st-rect, label: "Character player" }
+player_entity@{ shape: st-rect, label: "Character Player" }
 
 pe_entity>"`**Entity**`"] --> |belongs to| player_entity
 pe_grid_coords>"`**GridCoords**`"] --> |belongs to| player_entity
@@ -234,10 +283,10 @@ positions_query -..-> |filter With| pe_player
 positions_query -..-> |filter With| pe_character
 ```
 
-### Query beams (parry/dodge detection)
+### Query beams
 
 Used in the following systems:
-- **bot_think**: iterates active `Beam` entities — via `find_parryable_beam` in the every-frame reflex layer, and via `incoming_beam_threat` in the beat-gated brace/dodge branch — reading each beam's `GridCoords`, `Beam.owner`/`Beam.direction`, and (reflex layer only) `Beam.step_timer`, to detect a parryable or merely incoming hostile beam and pick a reaction. The `Without<Character>` filter excludes player entities so only logical beam tracers are scanned
+- **bot_think**: finds parryable beams (`find_parryable_beam`, shared with the Input plugin) and incoming beams (`incoming_beam_threat`).
 
 ```mermaid
 ---
@@ -259,19 +308,21 @@ bot_think ---> beams_query
 
 beam_entity@{ shape: st-rect, label: "Beam" }
 
-be_grid_coords>"`**GridCoords**`"] --> |belongs to| beam_entity
-be_beam>"`**Beam**`"] --> |belongs to| beam_entity
-be_character>"`**Character**`"]
+bm_entity>"`**Entity**`"] --> |belongs to| beam_entity
+bm_grid_coords>"`**GridCoords**`"] --> |belongs to| beam_entity
+bm_beam>"`**Beam**`"] --> |belongs to| beam_entity
+bm_character>"`**Character**`"]
 
-beams_query ---> |reads| be_grid_coords
-beams_query ---> |reads `owner`/`direction`| be_beam
-beams_query -..-> |filter Without| be_character
+beams_query ---> |reads| bm_entity
+beams_query ---> |reads| bm_grid_coords
+beams_query ---> |reads| bm_beam
+beams_query -..-> |filter Without| bm_character
 ```
 
-### Read MapInfo and ClaimedTile (bot pathfinding and fire check)
+### Read MapInfo and ClaimedTile
 
 Used in the following systems:
-- **bot_think**: reads `MapInfo.on_ground`/`on_forbidden_areas`/`claimed_entities` and `ClaimedTile.owner` (via `resolve_fire`, `reach`, `is_position_claimed`, `is_hostile_tile`, `dijkstra_first_steps`, `astar_first_step`, `shot_hits_enemy`, `lance_hits_enemy`, `lance_landing`, `find_parryable_beam`, and `incoming_beam_threat`) to decide whether a shot is legal, score candidate firing directions, detect a line of fire to the opponent or an incoming beam, and pathfind toward a reachable tile
+- **bot_think**: checks ground, forbidden tiles and tile owners for firing, pathfinding and threats.
 
 ```mermaid
 ---
@@ -288,26 +339,25 @@ bot_think["`**bot_think**`"]
 
 update -.-> bot_think
 
-claimed_query{{"Query#60;#38;ClaimedTile#62;"}}:::query
+claimed_query{{"`claimed_query`"}}:::query
 bot_think ---> claimed_query
 
-tile_entity@{ shape: st-rect, label: "Ground tile" }
+tile_entity@{ shape: st-rect, label: "Ground Tile" }
 te_claimed>"`**ClaimedTile**`"] --> |belongs to| tile_entity
-claimed_query ---> |reads `owner`| te_claimed
+claimed_query ---> |reads| te_claimed
 
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
 map_info_res --> |belongs to| world
 
-bot_think ---> |reads `on_ground`| map_info_res
-bot_think ---> |reads `on_forbidden_areas`| map_info_res
-bot_think ---> |reads `claimed_entities`| map_info_res
+bot_think ---> |reads| map_info_res
 ```
 
-### Read GameConfig (bot tuning)
+### ActionState of a bot
 
 Used in the following systems:
-- **bot_think**: every beat reads the numeric tunables `config.bot.fire_cooldown_ms`, `config.bot.aggression`, `config.bot.think_interval_ms`, `config.bot.hostile_cost`, and `config.bot.chase_cost_threshold`, plus the per-seat mode flag `config.bot.player1_strike`/`player2_strike` (via `strike_for`) to choose the striking vs. territory decision path. Every frame (not just on-beat) it also reads `config.bot.parry_chance` and `config.parry.window_fraction` for the reflex parry layer. The reflex parry layer and the territory Lance-strike are always-on, not config toggles
+- **bot_think**: writes the move axis and presses or releases Shoot.
+- **handle_characters_input** (Input plugin): reads it, the same way as for a human.
 
 ```mermaid
 ---
@@ -320,47 +370,25 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 bot_think["`**bot_think**`"]
+handle_characters_input["`**handle_characters_input**
+Input plugin`"]
 
 update -.-> bot_think
+update -.-> handle_characters_input
 
-world@{ shape: st-rect, label: "World" }
-config_res@{ shape: doc, label: "GameConfig" }
-config_res --> |belongs to| world
-
-bot_think ---> |reads `bot.*`| config_res
-```
-
-### Write ActionState (bot)
-
-Used in the following systems:
-- **bot_think**: sets `Action::Move`'s axis pair each beat, and presses or releases `Action::Shoot` — the same component `handle_characters_input` reads for a human, so the bot obeys identical fire/charge gates
-
-```mermaid
----
-config:
-  theme: dark
----
-
-flowchart TD
-classDef system-group stroke-dasharray: 5 5
-
-update(("`Update`")):::system-group
-bot_think["`**bot_think**`"]
-
-update -.-> bot_think
-
-bot_entity@{ shape: st-rect, label: "Bot" }
+bot_entity@{ shape: st-rect, label: "Bot Player" }
 
 be_action_state>"`**ActionState#60;Action#62;**`"] --> |belongs to| bot_entity
 
-bot_think ---> |writes `Action::Move` axis| be_action_state
-bot_think ---> |"writes (press/release) `Action::Shoot`"| be_action_state
+bot_think ---> |writes| be_action_state
+handle_characters_input ---> |reads| be_action_state
 ```
 
-### Write BotDecision (cross-module read)
+### BotDecision
 
 Used in the following systems:
-- **bot_think**: replaces `BotDecision` with the beat's chosen behaviour, reason, move axis, and shoot flag, only when it differs from the previous value
+- **bot_think**: replaces it when the decision changes.
+- **record_decisions** (Telemetry plugin): logs it.
 
 ```mermaid
 ---
@@ -373,15 +401,22 @@ classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
 bot_think["`**bot_think**`"]
-record_decisions["`**record_decisions** (Telemetry plugin)`"]
+record_decisions["`**record_decisions**
+Telemetry plugin`"]
 
 update -.-> bot_think
 update -.-> record_decisions
 
-bot_entity@{ shape: st-rect, label: "Bot" }
+bot_entity@{ shape: st-rect, label: "Bot Player" }
 
 be_decision>"`**BotDecision**`"] --> |belongs to| bot_entity
 
-bot_think ---> |"writes (on change)"| be_decision
-record_decisions ---> |"reads (filter Changed)"| be_decision
+bot_think ---> |writes| be_decision
+record_decisions ---> |reads| be_decision
+record_decisions -..-> |filter Changed| be_decision
 ```
+
+Definitions:
+- `Bot`: marker `Component` (`src/components/markers.rs`), added by the Input plugin to a bot player.
+- `BotDecision`: public `Component` with `behaviour` (a short tag, in bold in the decision flow), `why`, `move_x`, `move_y` and `shoot`.
+- `BotBrain`: private `Component` with the fire cooldown state, the next beat time, a sticky `target` tile and the cached `parry_rolls`.
