@@ -1,9 +1,10 @@
 ---
 id: TASK-14
 title: 'Camera: players near the top are hidden by the HUD'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11 17:16'
+updated_date: '2026-11-11 17:55'
 labels:
   - camera
   - bug
@@ -26,7 +27,13 @@ Possible causes to check:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A player on the top row of the arena is fully visible below the HUD, at every zoom level
-- [ ] #2 Both players stay fully visible when they stand at opposite ends of the arena
-- [ ] #3 doc-6 describes the new framing rule
+- [x] #1 A player on the top row of the arena is fully visible below the HUD, at every zoom level
+- [x] #2 Both players stay fully visible when they stand at opposite ends of the arena
+- [x] #3 doc-6 describes the new framing rule
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+update_camera now targets the center of the players' box and picks the smallest zoom level that matches the player distance and fits all players (plus one tile) below the HUD (choose_zoom_level, unit tested). The HUD offset now uses the HUD height in logical pixels, which fixes scaled displays. Known limit: zoom levels are whole-pixel only (4x, 3x, 2x, 1x), so with the players at opposite ends of the arena the camera jumps from 2x to 1x. Options discussed and deferred: add 1.5x (uneven pixels) and 5x for a closer near zoom.
+<!-- SECTION:FINAL_SUMMARY:END -->

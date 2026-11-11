@@ -18,9 +18,7 @@ const HUD_TILES_H: u32 = 4;
 const HUD_TILE_SIZE: u32 = 16;
 const HUD_LOGICAL_H: u32 = HUD_TILES_H * HUD_TILE_SIZE; // 64
 const HUD_SCALE: f32 = 2.0;
-/// Physical-pixel height of the HUD strip at the top of the window
-/// (`hud_viewport`'s `vp_h`). The game world is shifted down by half this
-/// so barycentre-centred players near the top of the arena aren't occluded.
+/// Height of the HUD strip in physical pixels.
 const HUD_VIEWPORT_H: f32 = HUD_LOGICAL_H as f32 * HUD_SCALE; // 128
 
 pub const HUD_RENDER_LAYER: usize = 1;
@@ -90,11 +88,7 @@ fn initialize_hud_rendering(
     }
 }
 
-fn initialize_cameras(
-    mut commands: Commands,
-    window: Single<&Window>,
-    config: Res<GameConfig>,
-) {
+fn initialize_cameras(mut commands: Commands, window: Single<&Window>, config: Res<GameConfig>) {
     commands.spawn((
         Camera2d,
         Msaa::Off,
@@ -182,6 +176,17 @@ fn disable_viewport_camera_msaa(
     }
 }
 
+/// Smallest level that is at least `preferred` and `required`, or the largest level.
+fn choose_zoom_level(preferred: f32, required: f32, levels: &[f32]) -> f32 {
+    let wanted = preferred.max(required);
+    let largest = levels.iter().copied().fold(f32::MIN, f32::max);
+    levels
+        .iter()
+        .copied()
+        .filter(|&level| level >= wanted)
+        .fold(largest, f32::min)
+}
+
 fn update_camera(
     mut set: ParamSet<(
         Single<(&mut Transform, &mut Projection), (With<Camera2d>, Without<RenderLayers>)>,
@@ -189,81 +194,72 @@ fn update_camera(
     )>,
     time: Res<Time>,
     config: Res<GameConfig>,
+    window: Single<&Window>,
+    map_info: Option<Res<MapInfo>>,
 ) {
     let zoom_levels = config.camera.zoom_levels;
-    // Calculate barycenter of all player positions
-    let character_count = set.p1().count() as f32;
-    if character_count == 0.0 {
+    let character_positions: Vec<Vec2> = set
+        .p1()
+        .iter()
+        .map(|transform| transform.translation.truncate())
+        .collect();
+    if character_positions.is_empty() {
         return;
     }
 
-    let mut total_x = 0.0;
-    let mut total_y = 0.0;
-
-    // Collect characters positions for barycenter and distance calculations
-    let character_positions: Vec<Vec2> = {
-        set.p1()
-            .iter()
-            .map(|transform| Vec2::new(transform.translation.x, transform.translation.y))
-            .collect()
-    };
-
+    let mut box_min = character_positions[0];
+    let mut box_max = character_positions[0];
     for position in &character_positions {
-        total_x += position.x;
-        total_y += position.y;
+        box_min = box_min.min(*position);
+        box_max = box_max.max(*position);
     }
+    let box_center = (box_min + box_max) / 2.0;
 
-    let barycenter = Vec2::new(total_x / character_count, total_y / character_count);
-
-    // Calculate the maximum distance between any two players
+    // Largest distance between any two players.
     let max_distance = if character_positions.len() > 1 {
         let mut max_dist = 0.0;
         for i in 0..character_positions.len() {
             for j in (i + 1)..character_positions.len() {
-                let distance = character_positions[i].distance(character_positions[j]);
-                if distance > max_dist {
-                    max_dist = distance;
-                }
+                max_dist = character_positions[i]
+                    .distance(character_positions[j])
+                    .max(max_dist);
             }
         }
         max_dist
     } else {
-        config.camera.base_zoom_distance // Default distance for single player
+        config.camera.base_zoom_distance
     };
 
-    // Snap to the nearest pixel-perfect zoom level.
     let zoom_factor = (max_distance / config.camera.base_zoom_distance)
         .clamp(config.camera.zoom_min, config.camera.zoom_max);
     let continuous_scale = zoom_levels[0] * zoom_factor;
-    let target_scale = zoom_levels
-        .iter()
-        .copied()
-        .min_by(|&a, &b| {
-            (a - continuous_scale)
-                .abs()
-                .total_cmp(&(b - continuous_scale).abs())
-        })
-        .unwrap();
 
-    // Update camera position to barycenter
+    // The HUD height in logical pixels, the unit of the orthographic scale.
+    let hud_logical_px = HUD_VIEWPORT_H / window.scale_factor();
+
+    // One tile of margin keeps the player sprite fully visible.
+    let margin = map_info
+        .map(|info| Vec2::new(info.grid_size.x, info.grid_size.y))
+        .unwrap_or(Vec2::splat(16.0));
+    let box_size = (box_max - box_min) + margin * 2.0;
+    let visible_w = window.width().max(1.0);
+    let visible_h = (window.height() - hud_logical_px).max(1.0);
+    let required_scale = (box_size.x / visible_w).max(box_size.y / visible_h);
+
+    let target_scale = choose_zoom_level(continuous_scale, required_scale, &zoom_levels);
+
     let (mut camera_transform, mut projection) = set.p0().into_inner();
 
-    // Shift the framing down so the barycentre sits in the centre of the region
-    // *below* the HUD strip rather than the centre of the whole window, keeping
-    // top-of-arena players clear of the HUD overlay. The HUD covers a fixed
-    // HUD_VIEWPORT_H physical pixels at the top; world-per-physical-pixel equals
-    // the orthographic scale, so this offset tracks the current zoom level.
-    // Only `scale` affects pixel-perfection — translation is snapped/subpixel-
-    // blitted by the pixel camera — so this shift is safe at any zoom.
+    // Shift the camera up so the players are centred in the area below the HUD.
     let current_scale = match projection.as_ref() {
         Projection::Orthographic(ortho) => ortho.scale,
         _ => zoom_levels[0],
     };
-    let hud_offset_y = (HUD_VIEWPORT_H / 2.0) * current_scale;
+    let hud_offset_y = hud_logical_px / 2.0 * current_scale;
 
     let direction = Vec3::new(
-        barycenter.x,
-        barycenter.y + hud_offset_y,
+        box_center.x,
+        box_center.y + hud_offset_y,
         camera_transform.translation.z,
     );
     camera_transform.translation.smooth_nudge(
@@ -282,5 +278,40 @@ fn update_camera(
                 time.delta_secs(),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_zoom_level;
+
+    const LEVELS: [f32; 4] = [0.25, 1.0 / 3.0, 0.5, 1.0];
+
+    #[test]
+    fn preferred_wins() {
+        assert_eq!(choose_zoom_level(0.4, 0.1, &LEVELS), 0.5);
+    }
+
+    #[test]
+    fn required_forces_wider_level() {
+        assert_eq!(choose_zoom_level(0.25, 0.4, &LEVELS), 0.5);
+    }
+
+    #[test]
+    fn nothing_fits_gives_largest() {
+        assert_eq!(choose_zoom_level(0.25, 3.0, &LEVELS), 1.0);
+    }
+
+    #[test]
+    fn exact_match_at_boundary() {
+        assert_eq!(choose_zoom_level(0.5, 0.2, &LEVELS), 0.5);
+    }
+
+    #[test]
+    fn unsorted_levels() {
+        assert_eq!(
+            choose_zoom_level(0.3, 0.1, &[1.0, 0.25, 0.5, 1.0 / 3.0]),
+            1.0 / 3.0
+        );
     }
 }

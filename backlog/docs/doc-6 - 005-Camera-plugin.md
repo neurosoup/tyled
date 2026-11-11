@@ -45,12 +45,15 @@ Four cameras are active at runtime:
 
 ### Update Camera
 
-- Runs every frame. The target is the average position of the players.
+- Runs every frame. The target is the center of the box around all players.
 - The camera moves toward it smoothly, at `decay_rate`.
 - The target is moved up by half the HUD height, so players near the top stay below the HUD.
+- The HUD height is converted to logical pixels, because the orthographic scale is in logical pixels.
 - This offset is safe at any zoom: only the scale matters for pixel-perfect drawing.
 - Zoom uses only `zoom_levels` (`1/4`, `1/3`, `1/2`, `1`). Only these give whole pixels per world unit.
-- The player distance, divided by `base_zoom_distance` and clamped to `zoom_min`..`zoom_max`, picks the nearest level.
+- The player distance, divided by `base_zoom_distance` and clamped to `zoom_min`..`zoom_max`, gives the wanted zoom.
+- The zoom is the smallest level that is at least the wanted zoom and also fits all players, plus one tile on each side, in the area below the HUD.
+- If no level fits, the largest level is used.
 - The zoom moves toward it at `zoom_decay_rate`, then snaps to the exact value when it is very close.
 
 ### Update HUD Viewport
