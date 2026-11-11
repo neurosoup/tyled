@@ -3,69 +3,21 @@ id: doc-23
 title: '[021] Charge plugin'
 type: other
 created_date: '2026-08-13 12:00'
-updated_date: '2026-09-15 12:00'
+updated_date: '2026-11-11 12:00'
 ---
 # Charge Plugin
 
-Owns `BeamCharges` regen/refund/cost-policy resolvers — home for any beam ability that adjusts a player's charge pool without being a beam-behavior or tile-ownership effect. Today that's just Solar Panels' regen tick.
+This plugin changes the players' `BeamCharges` outside of firing: it gives charges back and keeps them under a limit. The code is in `src/plugins/charge.rs`.
 
-Registered in `AppPlugin` between Claim and Damage. The chained `(regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)` pair runs in `GameplaySet::Economy`, which the shared `GameplaySet` chain (`schedule.rs`) orders after `GameplaySet::Claim`, guaranteeing both read each player's `ClaimedTileCount` after Claim has written it that frame — Bevy does not guarantee this from plugin declaration order alone when systems have a data-access conflict without explicit ordering.
+## Key ideas
 
-## Plugin workflow
+- **Solar Panels**: every `charge.solar_panels_tick_secs`, a player with this ability gains one charge per `charge.solar_panels_tiles_per_charge` tiles they own. The gain stops at `BeamCharges::max`.
+- **Unclaimed-tile cap**: a charge is only useful to claim a free tile. So every frame, each player's charges are lowered to the number of unclaimed tiles, if they are above it. They are never raised.
+- The cap is safe because claimed tiles never become free again during a round.
+- A regen writes a `ChargeRegen` message. Nothing reads it yet. The cap writes no message; the HUD already reacts to `Changed<BeamCharges>`.
+- This plugin is the place for future abilities that change charges.
 
-- Startup phase
-    - Setup Solar Panels Timer:
-        - Reads:
-            - `GameConfig` resource (`config.charge.solar_panels_tick_secs`)
-        - Writes:
-            - Inserts the `SolarPanelsTimer` resource
-- Update phase (dev builds only, `#[cfg(feature = "dev")]`)
-    - Resync Solar Panels Timer:
-        - Reads:
-            - `GameConfig` resource, gated on `is_changed()` (hot-reload)
-        - Writes:
-            - `SolarPanelsTimer`'s duration
-- Update phase (gated `run_if(in_state(RoundPhase::Playing))`, chained in this order)
-    - Regen Charges From Solar Panels:
-        - Reads:
-            - `Time` resource (to tick `SolarPanelsTimer`)
-            - `GameConfig` resource (`config.charge.solar_panels_tiles_per_charge`)
-            - Every player's `ClaimedTileCount`, and each player's `AbilityList` (gated on `AbilityDescriptor::SolarPanels`)
-        - Writes:
-            - Each qualifying player's `BeamCharges::current` (capped at `BeamCharges::max`)
-            - Emits a `ChargeRegen` message (`owner`, `amount`) per player whose `current` actually moved
-    - Cap Charges To Unclaimed Tiles:
-        - Reads:
-            - `MapInfo` (`ground_entities` for the total tile count)
-            - Every player's `ClaimedTileCount` (to sum the board's total claimed tiles, unfiltered by ability)
-        - Writes:
-            - Every player's `BeamCharges::current`, clamped down (never up) to the board's remaining unclaimed-tile count — this is a standing invariant enforced for all players every frame, not a regen-time detail for Solar Panels owners. No message emitted; HUD reactivity comes from `Changed<BeamCharges>`
-
-## Plugin Systems
-
-### Setup Solar Panels Timer
-
-Runs once at `Startup`. Inserts `SolarPanelsTimer`, a repeating `Timer` seeded from `config.charge.solar_panels_tick_secs`. Mirrors the Beam plugin's `setup_beam_step_timer` pattern.
-
-### Resync Solar Panels Timer
-
-Dev-only (`#[cfg(feature = "dev")]`), same hot-reload pattern as the Beam plugin's `resync_beam_step_timer`: when `GameConfig` changes (the asset watcher picks up an edit to `assets/game_config.ron`), rewrites `SolarPanelsTimer`'s duration to match the current `solar_panels_tick_secs` without resetting its elapsed progress.
-
-### Regen Charges From Solar Panels
-
-Ticks `SolarPanelsTimer`; no-ops until it finishes. On a finished tick, iterates every player with `AbilityList`, `ClaimedTileCount`, and `BeamCharges`, skipping any without `AbilityDescriptor::SolarPanels`. For each remaining player, computes `gained = tile_count.current / config.charge.solar_panels_tiles_per_charge` (integer division — regen scales in whole-charge steps per tile-count bracket), skips if `gained == 0`, otherwise sets `BeamCharges::current` to `(current + gained).min(max)` and, if that moved the value, emits `ChargeRegen { owner, amount }` with the applied delta. `ChargeRegen` has no consumers yet — the ability-system hook for anything reacting to a regen event, same role `TileClaimed`/`ChargeSpent` play for their triggers. This system does not enforce the unclaimed-tile ceiling; that's Cap Charges To Unclaimed Tiles, chained immediately after — so a tick can emit a `ChargeRegen` whose gain the clamp erases moments later, though the message still reports a true regen event.
-
-### Cap Charges To Unclaimed Tiles
-
-Runs every frame (not timer-gated), for every player regardless of ability loadout. A charge is only useful up to a claim on a tile nobody owns yet, so the board's remaining unclaimed-tile count (`MapInfo::ground_entities.len()` minus the board-wide sum of `ClaimedTileCount::current`) is a hard ceiling on every player's `BeamCharges::current`: any player whose `current` exceeds it is clamped down; `current` is never raised here. Within a round, claimed tiles never revert (they only gain an owner — see the Claim plugin — until `reset_round`), so a down-only clamp is safe. No message is emitted — a cap isn't a regen event, and the HUD already reacts to `Changed<BeamCharges>`.
-
-## Components, Resources and Messages CRUD
-
-### Read GameConfig (timer setup/resync)
-
-Used in the following systems:
-- **setup_solar_panels_timer**: seeds `SolarPanelsTimer`'s duration from `config.charge.solar_panels_tick_secs`
-- **resync_solar_panels_timer** (dev-only): rewrites the duration on config hot-reload
+## Ordering
 
 ```mermaid
 ---
@@ -74,28 +26,69 @@ config:
 ---
 
 flowchart TD
-classDef system-group stroke-dasharray: 5 5
 
-startup(("`Startup`")):::system-group
-update(("`Update (dev)`")):::system-group
-setup_timer["`**setup_solar_panels_timer**`"]
-resync_timer["`**resync_solar_panels_timer**`"]
+subgraph startup ["Startup"]
+  setup_solar_panels_timer["`**setup_solar_panels_timer**`"]
+end
 
-startup -.-> setup_timer
-update -.-> resync_timer
+subgraph playing ["Update, only during Playing"]
+  claim["`**GameplaySet::Claim**
+  writes ClaimedTileCount`"]
+  subgraph economy ["GameplaySet::Economy"]
+    regen["`**regen_charges**`"]
+    cap["`**cap_charges_to_unclaimed_tiles**`"]
+    regen --> cap
+  end
+  claim --> economy
+end
 
-game_config_res@{ shape: doc, label: "GameConfig" }
+subgraph every ["Update, every phase"]
+  resync["`**resync_solar_panels_timer**
+  dev only`"]
+end
 
-setup_timer ---> |reads charge.solar_panels_tick_secs| game_config_res
-resync_timer ---> |reads charge.solar_panels_tick_secs, is_changed| game_config_res
+startup ~~~ playing
+playing ~~~ every
 ```
 
-### Write SolarPanelsTimer
+- Economy runs after Claim in the same frame, so both systems see the tiles claimed earlier in that frame.
+- The cap runs after the regen, so a regen can never leave charges above the cap.
+
+## Plugin Systems
+
+### Setup Solar Panels Timer
+
+- Runs once at `Startup`. Inserts `SolarPanelsTimer`, a repeating timer.
+
+### Resync Solar Panels Timer (dev)
+
+- When `GameConfig` changes, sets the new timer duration. The elapsed time is kept.
+
+### Regen Charges
+
+- Ticks the timer. When it ends, gives charges to each player with Solar Panels.
+- Writes `ChargeRegen` with the real gain, when the gain is above 0.
+
+### Cap Charges To Unclaimed Tiles
+
+- Runs every frame, for every player.
+- Unclaimed tiles = ground tiles minus the claimed tiles of all players.
+- Lowers `BeamCharges::current` to that number when it is higher.
+
+## Components, Resources and Messages CRUD
+
+### Read GameConfig and Time
 
 Used in the following systems:
-- **setup_solar_panels_timer**: inserts the resource at `Startup`
-- **resync_solar_panels_timer** (dev-only): rewrites its duration on config hot-reload
-- **regen_charges_from_solar_panels**: ticks it every frame
+- **setup_solar_panels_timer**, **resync_solar_panels_timer**: read `charge.solar_panels_tick_secs`.
+- **regen_charges**: reads `Time` and `charge.solar_panels_tiles_per_charge`.
+
+### SolarPanelsTimer resource
+
+Used in the following systems:
+- **setup_solar_panels_timer**: inserts it.
+- **resync_solar_panels_timer** (dev): changes its duration.
+- **regen_charges**: ticks it.
 
 ```mermaid
 ---
@@ -108,26 +101,29 @@ classDef system-group stroke-dasharray: 5 5
 
 startup(("`Startup`")):::system-group
 update(("`Update`")):::system-group
-setup_timer["`**setup_solar_panels_timer**`"]
-resync_timer["`**resync_solar_panels_timer** (dev)`"]
-regen["`**regen_charges_from_solar_panels**`"]
+setup_solar_panels_timer["`**setup_solar_panels_timer**`"]
+resync_solar_panels_timer["`**resync_solar_panels_timer**
+dev only`"]
+regen["`**regen_charges**`"]
 
-startup -.-> setup_timer
-update -.-> resync_timer
+startup -.-> setup_solar_panels_timer
+update -.-> resync_solar_panels_timer
 update -.-> regen
 
+world@{ shape: st-rect, label: "World" }
 timer_res@{ shape: doc, label: "SolarPanelsTimer" }
 
-setup_timer ---> |inserts| timer_res
-resync_timer ---> |writes duration| timer_res
+timer_res --> |belongs to| world
+
+setup_solar_panels_timer ---> |inserts resource| timer_res
+resync_solar_panels_timer ---> |writes duration| timer_res
 regen ---> |ticks| timer_res
 ```
 
-### Read AbilityList and ClaimedTileCount (regen)
+### Query players (regen)
 
 Used in the following systems:
-- **regen_charges_from_solar_panels**: gates the regen on `AbilityDescriptor::SolarPanels`; scales `gained` by the qualifying player's own `ClaimedTileCount::current`
-- **cap_charges_to_unclaimed_tiles**: sums every player's `ClaimedTileCount::current` board-wide (unfiltered by ability) to derive the unclaimed-tile count
+- **regen_charges**: checks `SolarPanels`, reads the player's tile count and adds charges.
 
 ```mermaid
 ---
@@ -140,32 +136,30 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-regen["`**regen_charges_from_solar_panels**`"]
-cap["`**cap_charges_to_unclaimed_tiles**`"]
+regen["`**regen_charges**`"]
 
 update -.-> regen
-update -.-> cap
-regen --> |chained before| cap
 
-players_query{{"`players (AbilityList, ClaimedTileCount, BeamCharges)`"}}:::query
-counts_query{{"`counts (ClaimedTileCount)`"}}:::query
+players_query{{"`players`"}}:::query
 regen ---> players_query
-cap ---> counts_query
 
-player_entity@{ shape: st-rect, label: "Player Entity" }
+player_entity@{ shape: st-rect, label: "Player" }
 
-ability_list>"`**AbilityList**`"] --> |belongs to| player_entity
-claimed_tile_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
+pe_entity>"`**Entity**`"] --> |belongs to| player_entity
+pe_ability_list>"`**AbilityList**`"] --> |belongs to| player_entity
+pe_tile_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
+pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
 
-players_query ---> |reads| ability_list
-players_query ---> |reads current, per qualifying player| claimed_tile_count
-counts_query ---> |reads current, summed board-wide| claimed_tile_count
+players_query ---> |reads| pe_entity
+players_query ---> |reads| pe_ability_list
+players_query ---> |reads| pe_tile_count
+players_query ---> |writes| pe_beam_charges
 ```
 
-### Read MapInfo (unclaimed-tile cap)
+### Read MapInfo resource
 
 Used in the following systems:
-- **cap_charges_to_unclaimed_tiles**: reads `MapInfo::ground_entities` for the total tile count, combined with the board-wide claimed-tile sum above to derive the unclaimed-tile count that every player's charges are clamped to
+- **cap_charges_to_unclaimed_tiles**: reads the number of ground tiles.
 
 ```mermaid
 ---
@@ -184,16 +178,18 @@ update -.-> cap
 world@{ shape: st-rect, label: "World" }
 map_info_res@{ shape: doc, label: "MapInfo" }
 
-map_info_res --> |belongs to| world
+mi_ground>"`**ground_entities**`"]
 
-cap ---> |reads `ground_entities`| map_info_res
+map_info_res --> |belongs to| world
+mi_ground --> |field of| map_info_res
+
+cap ---> |reads| mi_ground
 ```
 
-### Write BeamCharges (regen and cap)
+### Query claimed tile counts and charges (cap)
 
 Used in the following systems:
-- **regen_charges_from_solar_panels**: increments `current`, capped at `max`, for each qualifying player on a finished tick
-- **cap_charges_to_unclaimed_tiles**: clamps `current` down (never up) to the board's remaining unclaimed-tile count, for every player, every frame — the standing invariant that charges can never exceed what's left to claim
+- **cap_charges_to_unclaimed_tiles**: adds up the tile counts of all players, then lowers the charges of every player.
 
 ```mermaid
 ---
@@ -206,31 +202,28 @@ classDef system-group stroke-dasharray: 5 5
 classDef query stroke-dasharray: 3 3
 
 update(("`Update`")):::system-group
-regen["`**regen_charges_from_solar_panels**`"]
 cap["`**cap_charges_to_unclaimed_tiles**`"]
 
-update -.-> regen
 update -.-> cap
-regen --> |chained before| cap
 
-players_query{{"`players (mutable)`"}}:::query
-charges_query{{"`charges (mutable, all players)`"}}:::query
-regen ---> players_query
+counts_query{{"`counts`"}}:::query
+charges_query{{"`charges`"}}:::query
+cap ---> counts_query
 cap ---> charges_query
 
-player_entity@{ shape: st-rect, label: "Player Entity" }
+player_entity@{ shape: st-rect, label: "Player" }
 
-beam_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
-bc_current>"`**current**`"] --> |field of| beam_charges
+pe_tile_count>"`**ClaimedTileCount**`"] --> |belongs to| player_entity
+pe_beam_charges>"`**BeamCharges**`"] --> |belongs to| player_entity
 
-players_query ---> |writes, capped at max| bc_current
-charges_query ---> |clamps down to unclaimed-tile count| bc_current
+counts_query ---> |reads| pe_tile_count
+charges_query ---> |writes| pe_beam_charges
 ```
 
 ### Write ChargeRegen messages
 
 Used in the following systems:
-- **regen_charges_from_solar_panels**: emits one message per player whose `BeamCharges::current` actually moved, `amount` set to the applied delta (no consumers yet); `cap_charges_to_unclaimed_tiles` emits nothing — a clamp isn't a regen event
+- **regen_charges**: writes one message per player whose charges went up.
 
 ```mermaid
 ---
@@ -242,7 +235,7 @@ flowchart TD
 classDef system-group stroke-dasharray: 5 5
 
 update(("`Update`")):::system-group
-regen["`**regen_charges_from_solar_panels**`"]
+regen["`**regen_charges**`"]
 
 update -.-> regen
 
@@ -250,3 +243,7 @@ charge_regen_message(["`**ChargeRegen**`"])
 
 regen ---> |writes| charge_regen_message
 ```
+
+Definitions:
+- `SolarPanelsTimer`: public `Resource` with the repeating Solar Panels timer.
+- `ChargeRegen`: `Message` with `owner` and `amount`, declared in `messages.rs`.

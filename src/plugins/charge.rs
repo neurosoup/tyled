@@ -8,7 +8,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_systems(Startup, setup_solar_panels_timer);
     app.add_systems(
         Update,
-        (regen_charges_from_solar_panels, cap_charges_to_unclaimed_tiles)
+        (regen_charges, cap_charges_to_unclaimed_tiles)
             .chain()
             .in_set(GameplaySet::Economy)
             .run_if(in_state(RoundPhase::Playing)),
@@ -38,7 +38,7 @@ fn resync_solar_panels_timer(config: Res<GameConfig>, timer: Option<ResMut<Solar
     }
 }
 
-fn regen_charges_from_solar_panels(
+fn regen_charges(
     time: Res<Time>,
     config: Res<GameConfig>,
     mut solar_panels_timer: ResMut<SolarPanelsTimer>,

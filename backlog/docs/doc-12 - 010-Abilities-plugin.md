@@ -138,7 +138,7 @@ Used in the following systems:
 - **handle_characters_input** (Input plugin), **spawn_beam** (Beam plugin): check `Lance` before a shot.
 - **beam_step** (Beam plugin): checks `BorderGrinder` on the caster.
 - **bot_think** (Bot plugin): checks `Lance` and `BorderGrinder` to choose a move.
-- **regen_charges_from_solar_panels** (Charge plugin): checks `SolarPanels`.
+- **regen_charges** (Charge plugin): checks `SolarPanels`.
 - **record_outcome** (Telemetry plugin): writes each player's abilities when the round ends.
 
 ```mermaid
@@ -160,7 +160,7 @@ beam_step["`**beam_step**
 Beam plugin`"]
 bot_think["`**bot_think**
 Bot plugin`"]
-regen["`**regen_charges_from_solar_panels**
+regen["`**regen_charges**
 Charge plugin`"]
 record_outcome["`**record_outcome**
 Telemetry plugin`"]
