@@ -59,9 +59,9 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `beam` | Steps `Beam` entities (invisible logical tracers) each tick, resolves them via `BeamResolved` messages, decrements `BeamCharges` on the firing player — the beam is *visually* represented by a shock wave of bouncing tiles (`BounceEffect`) rather than a visible projectile |
 | `claim` | Reads `BeamResolved`, mutates the authoritative `ClaimedTile::owner`, emits `TileClaimed`; the single home for tile-ownership changes (and future `on_resolve`/`on_claim` ability resolvers) |
 | `damage` | Ticks every 500ms; damages players standing on opponent-owned tiles; emits `DamageableDied`; owns knockback (`apply_knockback` reads `KnockbackRequested`, sets `IsKnockedBack`, writes `EntityKnockedBack`) |
-| `effects` | Tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
+| `effects` | Registers `TweeningPlugin`; tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
 | `animations` | `bevy_spritesheet_animation` setup; attaches and switches world-space player/tile sprite animations |
-| `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile percentage, round countdown) |
+| `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile count, round countdown) |
 | `debug` | `bevy-inspector-egui` world inspector (always enabled) |
 
 ### Communication pattern
@@ -93,7 +93,7 @@ The game renders two Tiled maps simultaneously — the game board (default rende
 | Main (`PixelCamera`) | default (no `RenderLayers`) | 0 | Renders game world to off-screen texture |
 | ViewportCamera (auto-spawned) | 2 | 2 | Composites off-screen texture onto window with subpixel smoothing |
 | HUD camera | 1 | 3 | Renders HUD strip at top of window |
-| Overlay camera | 3 | 4 | Full-window screen-space round-phase banners (content owned by the `overlay` plugin) |
+| Overlay camera | 3 | 4 | Full-window screen-space banners and menu (content owned by the round `intro`/`outcome` submodules and the `menu` plugin) |
 
 Render layers have named consts in `camera.rs`: `HUD_RENDER_LAYER` (1), `LEVEL_RENDER_LAYER` (2), `OVERLAY_RENDER_LAYER` (3). HUD entities carry `Propagate(RenderLayers::from_layers(&[1]))` so all their children are also on layer 1.
 
