@@ -121,7 +121,7 @@ load_config_asset ---> |inserts resource| handle_res
 ### Read AssetEvent messages and update GameConfig (dev)
 
 Used in the following systems:
-- **apply_config_reload**: on `Modified` or `LoadedWithDependencies`, copies the new asset into `GameConfig`.
+- **apply_config_reload**: on `Modified` or `LoadedWithDependencies`, copies the new asset into `GameConfig`. The `launch` and `controllers` sections keep their current values.
 
 ```mermaid
 ---

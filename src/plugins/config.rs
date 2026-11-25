@@ -5,6 +5,8 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
+use crate::prelude::AbilityDescriptor;
+
 /// Embedded copy of the tuning file. The single source of truth: release builds
 /// parse this at startup, dev builds fall back to it if the on-disk file is
 /// missing/unparseable.
@@ -22,6 +24,7 @@ pub struct GameConfig {
     pub animation: AnimationConfig,
     pub effects: EffectsConfig,
     pub telemetry: TelemetryConfig,
+    pub launch: LaunchConfig,
     pub controllers: ControllersConfig,
     pub bot: BotConfig,
     pub charge: ChargeConfig,
@@ -153,6 +156,27 @@ pub struct TelemetryConfig {
 }
 
 #[derive(Reflect, Clone, Deserialize)]
+pub struct LaunchConfig {
+    /// Whether the game skips the main menu and starts at once with the `controllers` below. Off = show the menu.
+    pub skip_menu: bool,
+    /// Rounds to play before the match ends. 0 = endless, higher = a longer match.
+    pub rounds: u32,
+    /// What happens after the last round: `Stay` keeps the outcome screen, `Exit` closes the game. Not used when `rounds` is 0.
+    pub after_last_round: AfterLastRound,
+    /// Starting abilities of player 1. `None` = the built-in loadout, `Some([])` = no abilities.
+    pub loadout_p1: Option<Vec<AbilityDescriptor>>,
+    /// Starting abilities of player 2. `None` = the built-in loadout, `Some([])` = no abilities.
+    pub loadout_p2: Option<Vec<AbilityDescriptor>>,
+}
+
+/// What the game does once the last round of a limited match is over.
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum AfterLastRound {
+    Stay,
+    Exit,
+}
+
+#[derive(Reflect, Clone, Deserialize)]
 pub struct ControllersConfig {
     /// Whether player 1 (P1) is driven by the bot instead of keyboard input.
     pub player1_bot: bool,
@@ -235,6 +259,59 @@ pub struct HitStopConfig {
 }
 
 impl GameConfig {
+    /// Applies the launch flags: `--bot-vs-bot`, `--skip-menu`, `--rounds N`,
+    /// `--after-last-round stay|exit`, `--loadout-p1 A,B` and `--loadout-p2 A,B`.
+    /// A value can also be written as `--flag=value`. Unknown arguments are ignored.
+    pub fn apply_launch_args(&mut self, args: &[String]) -> Result<(), String> {
+        let mut index = 0;
+        while index < args.len() {
+            let (name, inline) = match args[index].split_once('=') {
+                Some((name, value)) => (name, Some(value.to_string())),
+                None => (args[index].as_str(), None),
+            };
+            index += 1;
+            match name {
+                "--bot-vs-bot" => {
+                    self.launch.skip_menu = true;
+                    self.controllers.player1_bot = true;
+                    self.controllers.player2_bot = true;
+                }
+                "--skip-menu" => self.launch.skip_menu = true,
+                "--rounds" | "--after-last-round" | "--loadout-p1" | "--loadout-p2" => {
+                    let value = match inline {
+                        Some(value) => value,
+                        None => {
+                            let value = args
+                                .get(index)
+                                .ok_or_else(|| format!("{name} needs a value"))?
+                                .clone();
+                            index += 1;
+                            value
+                        }
+                    };
+                    match name {
+                        "--rounds" => {
+                            self.launch.rounds = value
+                                .parse()
+                                .map_err(|_| format!("--rounds needs a whole number, got '{value}'"))?;
+                        }
+                        "--after-last-round" => {
+                            self.launch.after_last_round = match value.to_lowercase().as_str() {
+                                "stay" => AfterLastRound::Stay,
+                                "exit" => AfterLastRound::Exit,
+                                _ => return Err(format!("--after-last-round needs stay or exit, got '{value}'")),
+                            };
+                        }
+                        "--loadout-p1" => self.launch.loadout_p1 = Some(parse_loadout(&value)?),
+                        _ => self.launch.loadout_p2 = Some(parse_loadout(&value)?),
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     /// Parse the compile-time embedded config. Used verbatim in release builds and
     /// as the dev fallback.
     fn embedded() -> Self {
@@ -242,20 +319,45 @@ impl GameConfig {
     }
 }
 
+/// Reads a comma-separated ability list. An empty text or `none` gives no abilities.
+fn parse_loadout(text: &str) -> Result<Vec<AbilityDescriptor>, String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && !name.eq_ignore_ascii_case("none"))
+        .map(|name| {
+            AbilityDescriptor::from_name(name).ok_or_else(|| {
+                format!("unknown ability '{name}' (use Lance, BorderGrinder or SolarPanels)")
+            })
+        })
+        .collect()
+}
+
+/// Applies the process command line to `config`; a bad flag prints the reason and ends the process.
+fn apply_process_args(config: &mut GameConfig) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(message) = config.apply_launch_args(&args) {
+        eprintln!("{message}");
+        std::process::exit(2);
+    }
+}
+
 pub(crate) fn plugin(app: &mut App) {
     #[cfg(not(feature = "dev"))]
     {
-        app.insert_resource(GameConfig::embedded());
+        let mut config = GameConfig::embedded();
+        apply_process_args(&mut config);
+        app.insert_resource(config);
     }
 
     #[cfg(feature = "dev")]
     {
         // Read from disk at runtime so edits don't force a recompile; fall back to
         // the embedded copy if the file is missing or malformed.
-        let initial = std::fs::read_to_string("assets/game_config.ron")
+        let mut initial = std::fs::read_to_string("assets/game_config.ron")
             .ok()
             .and_then(|text| ron::from_str::<GameConfig>(&text).ok())
             .unwrap_or_else(GameConfig::embedded);
+        apply_process_args(&mut initial);
         app.insert_resource(initial);
 
         app.init_asset::<GameConfig>();
@@ -327,9 +429,91 @@ mod dev {
             if let AssetEvent::Modified { id } | AssetEvent::LoadedWithDependencies { id } = event
                 && let Some(updated) = configs.get(*id)
             {
-                *config = updated.clone();
+                let reloaded = reloaded_config(&config, updated);
+                *config = reloaded;
             }
         }
+    }
+
+    /// The new file values, with the current `launch` and `controllers` sections.
+    fn reloaded_config(current: &GameConfig, updated: &GameConfig) -> GameConfig {
+        // The command line and the menu set these two sections, so a file load must keep them.
+        GameConfig {
+            launch: current.launch.clone(),
+            controllers: current.controllers.clone(),
+            ..updated.clone()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn reload_keeps_launch_and_controllers() {
+            let mut file = GameConfig::embedded();
+            file.controllers.player1_bot = false;
+            file.damage.standing += 1.0;
+            let mut current = GameConfig::embedded();
+            current
+                .apply_launch_args(&["--bot-vs-bot".to_string()])
+                .unwrap();
+
+            let reloaded = reloaded_config(&current, &file);
+
+            assert!(reloaded.controllers.player1_bot);
+            assert!(reloaded.launch.skip_menu);
+            assert_eq!(reloaded.damage.standing, file.damage.standing);
+        }
+    }
+}
+
+#[cfg(test)]
+mod launch_args_tests {
+    use super::*;
+
+    fn args(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn bot_vs_bot_skips_the_menu_with_two_bots() {
+        let mut config = GameConfig::embedded();
+        config.controllers.player1_bot = false;
+        config.apply_launch_args(&args(&["--bot-vs-bot"])).unwrap();
+        assert!(config.launch.skip_menu);
+        assert!(config.controllers.player1_bot && config.controllers.player2_bot);
+    }
+
+    #[test]
+    fn match_flags_are_read_with_space_or_equals() {
+        let mut config = GameConfig::embedded();
+        config
+            .apply_launch_args(&args(&[
+                "--rounds",
+                "5",
+                "--after-last-round=exit",
+                "--loadout-p1",
+                "lance,solar_panels",
+                "--loadout-p2=none",
+            ]))
+            .unwrap();
+        assert_eq!(config.launch.rounds, 5);
+        assert_eq!(config.launch.after_last_round, AfterLastRound::Exit);
+        assert_eq!(
+            config.launch.loadout_p1,
+            Some(vec![AbilityDescriptor::Lance, AbilityDescriptor::SolarPanels])
+        );
+        assert_eq!(config.launch.loadout_p2, Some(vec![]));
+    }
+
+    #[test]
+    fn bad_values_are_errors_and_unknown_flags_are_ignored() {
+        let mut config = GameConfig::embedded();
+        assert!(config.apply_launch_args(&args(&["--rounds", "many"])).is_err());
+        assert!(config.apply_launch_args(&args(&["--rounds"])).is_err());
+        assert!(config.apply_launch_args(&args(&["--loadout-p1", "nope"])).is_err());
+        assert!(config.apply_launch_args(&args(&["--unknown", "--other"])).is_ok());
     }
 }
 

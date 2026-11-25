@@ -72,6 +72,13 @@
         enabled: true,             // [live] write play-telemetry records to play_trace.jsonl
         history: 3,                // [restart] total trace files kept (current + rotated backups)
     ),
+    launch: (
+        skip_menu: false,        // [restart] true = skip the main menu and start at once with the controllers below; `--skip-menu` does the same, `--bot-vs-bot` also forces both bots
+        rounds: 0,               // [restart] rounds before the match ends; 0 = endless (`--rounds N`)
+        after_last_round: Stay,  // [restart] Stay = keep the outcome screen, Exit = close the game (`--after-last-round`)
+        loadout_p1: None,        // [restart] None = built-in loadout, Some([Lance, SolarPanels]) = these abilities (`--loadout-p1`)
+        loadout_p2: None,        // [restart] None = built-in loadout, Some([BorderGrinder]) = these abilities (`--loadout-p2`)
+    ),
     controllers: (
         player1_bot: true,       // [menu] overridden by the main-menu matchup selection at launch
         player2_bot: true,       // [menu] overridden by the main-menu matchup selection at launch

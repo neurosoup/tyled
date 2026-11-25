@@ -7,7 +7,8 @@
  * `RoundResult` and enters `Outcome`, and runs `reset_round` on the way out).
  *
  * The banner lingers for `OUTCOME_LINGER_SECS`, long enough for the loser's
- * death bounce (~0.9s) to finish, then loops the round back to `Starting`.
+ * death bounce (~0.9s) to finish, then loops the round back to `Starting`. A
+ * limited match (`launch.rounds`) stops looping after its last round.
  */
 use bevy::prelude::*;
 
@@ -59,11 +60,23 @@ fn show_outcome_banner(
 /// the state submodule's `reset_round`, then `Starting` re-runs the intro.
 fn advance_outcome(
     time: Res<Time>,
+    config: Res<GameConfig>,
+    score: Res<MatchScore>,
     mut timer: ResMut<OutcomeTimer>,
     mut next_phase: ResMut<NextState<RoundPhase>>,
+    mut exit: MessageWriter<AppExit>,
 ) {
+    let match_over = config.launch.rounds > 0 && score.rounds_played >= config.launch.rounds;
+    if match_over && config.launch.after_last_round == AfterLastRound::Stay {
+        return;
+    }
     timer.0.tick(time.delta());
-    if timer.0.is_finished() {
+    if !timer.0.is_finished() {
+        return;
+    }
+    if match_over {
+        exit.write(AppExit::Success);
+    } else {
         next_phase.set(RoundPhase::Starting);
     }
 }

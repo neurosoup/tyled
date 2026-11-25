@@ -16,6 +16,8 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<MovementStopped>();
     app.add_message::<KnockbackRequested>();
     app.add_message::<EntityKnockedBack>();
+    app.add_message::<DamageDealt>();
+    app.add_message::<AbilityTriggered>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -113,4 +115,30 @@ pub struct KnockbackRequested {
 #[derive(Message)]
 pub struct EntityKnockedBack {
     pub entity: Entity,
+    pub direction: GridCoords,
+}
+
+// What caused a hit.
+#[derive(Debug, Clone, Copy)]
+pub enum DamageSource {
+    BeamContact,
+    Collision,
+    TileEntry,
+    TileStanding,
+}
+
+// Fired when an entity loses health.
+#[derive(Message, Debug)]
+pub struct DamageDealt {
+    pub entity: Entity,
+    pub amount: f32,
+    pub source: DamageSource,
+    pub attacker: Option<Entity>,
+}
+
+// Fired when a drafted ability takes effect.
+#[derive(Message, Debug)]
+pub struct AbilityTriggered {
+    pub owner: Entity,
+    pub ability: AbilityDescriptor,
 }

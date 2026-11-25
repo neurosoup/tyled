@@ -167,6 +167,7 @@ pub struct RoundResult {
 #[derive(Resource, Default)]
 pub struct MatchScore {
     pub wins: [u32; 2],
+    pub rounds_played: u32,
 }
 
 /// Tiles that keep their owner across the round reset instead of reverting to
@@ -184,6 +185,7 @@ fn conclude_round(
     next_phase: &mut NextState<RoundPhase>,
 ) {
     result.winner = winner;
+    score.rounds_played += 1;
     if let Some(id) = winner
         && let Some(slot) = score.wins.get_mut(id as usize)
     {

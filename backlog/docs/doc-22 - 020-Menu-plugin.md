@@ -16,6 +16,14 @@ This plugin shows the main menu, where players choose who is a bot. No map loads
 - The confirmed choice is written into `GameConfig.controllers`. The Input plugin reads it when the players spawn.
 - The entries are drawn with the [Text plugin](/documentation/17/015-text-plugin) on the overlay camera. The selected entry starts with `>`.
 - Controls: W / S or the arrow keys move the cursor. Q or `/` confirms.
+- The menu can be skipped. The setting `launch.skip_menu` or the flag `--skip-menu` starts the round at once with `GameConfig.controllers`. The flag `--bot-vs-bot` also sets both players to bots. When the menu is skipped, the three menu systems do not run and no entry is drawn.
+- The command line is read by the Config plugin (`GameConfig::apply_launch_args`), and it overrides the file. Flags:
+  - `--bot-vs-bot`: skip the menu, both players are bots.
+  - `--skip-menu`: skip the menu, use `controllers` from the file.
+  - `--rounds N`: stop the match after N rounds (0 = endless).
+  - `--after-last-round stay|exit`: keep the outcome screen, or close the game.
+  - `--loadout-p1 A,B` and `--loadout-p2 A,B`: starting abilities (`Lance`, `BorderGrinder`, `SolarPanels`, or `none`).
+- An unattended bot match: `cargo run --features dev -- --bot-vs-bot --rounds 10 --after-last-round exit --loadout-p1 Lance --loadout-p2 BorderGrinder`.
 
 | Entry | Player 1 | Player 2 |
 |---|---|---|
@@ -62,6 +70,11 @@ update ~~~ enter_in_round
 
 - Moves the cursor up or down. It stops at the first and last entries.
 - On a change, despawns the entries and draws them again.
+
+### Start Without Menu
+
+- Runs only during `MainMenu`, and only when the menu is skipped.
+- Sets the next state to `InRound`.
 
 ### Confirm Selection
 

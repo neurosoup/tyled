@@ -16,7 +16,7 @@ This plugin removes health from players and writes `DamageableDied` when a playe
 - **Standing damage** (`damage.standing`, 1): a player is on a hostile tile when `DamageTimer` ends (every `damage.tick_secs`, 0.5 s).
 - **Beam damage** (`damage.beam_contact`, 1): a beam steps onto the tile of a player who does not own the beam. The player is also knocked back.
 - **Collision damage** (`damage.collision`, 5): the loser of a collision between two players.
-- `deal_damage` removes the health and writes `DamageableDied` when the health reaches zero. All four damage systems use it.
+- `deal_damage` removes the health and writes `DamageableDied` when the health reaches zero. All four damage systems use it. It also writes `DamageDealt` with the amount, the source and the beam owner (for beam damage). The Telemetry plugin reads it.
 - **Knockback**: a push of one tile. Only `apply_knockback` moves a player because of a knockback.
 
 ## Ordering
@@ -95,7 +95,7 @@ tick_knockback_lock ~~~ resync_damage_timer
 - Reads all `KnockbackRequested` of the frame, from the Controller plugin and from `apply_beam_damage`.
 - For each player, only the last request counts. The Controller writes in `Movement`, and this plugin writes later in `Damage`.
 - Skips a dead player, a player with zero health, or a target tile that is not ground.
-- Else it moves the player one tile, inserts a new `IsKnockedBack` lock (`effects.knockback_tween_ms`) and writes `EntityKnockedBack`.
+- Else it moves the player one tile, inserts a new `IsKnockedBack` lock (`effects.knockback_tween_ms`) and writes `EntityKnockedBack` with the push direction.
 - The Effects plugin reads `EntityKnockedBack` and plays the slide. The entry damage sees the move on the next frame.
 
 ### Tick Knockback Lock

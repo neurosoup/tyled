@@ -15,7 +15,8 @@ This part of the [Round plugin](/documentation/15/013-round-plugin) shows the wi
 - The `state` submodule chooses the winner and enters `Outcome`. This submodule only shows the result.
 - The text is drawn with `spawn_round_label`, on the overlay camera, like the [Round intro](/documentation/16/014-round-intro).
 - The banner stays for `round.outcome_linger_secs` (2.5 s). This gives the loser's death bounce time to end.
-- Then the phase goes back to `Starting`. On the way out, `reset_round` (in `state`) cleans the board, and the intro countdown starts again.
+- A limited match (`launch.rounds` above 0) stops after that many rounds. With `launch.after_last_round` set to `Stay`, the outcome screen stays and the timer does not tick. With `Exit`, the game closes when the banner time is over.
+- Otherwise the phase goes back to `Starting`. On the way out, `reset_round` (in `state`) cleans the board, and the intro countdown starts again.
 
 ```mermaid
 ---
@@ -77,6 +78,7 @@ update ~~~ exit_outcome
 
 - Runs only during `Outcome`. Ticks `OutcomeTimer`.
 - When the timer ends, sets the next phase to `Starting`.
+- When the match is over (`launch.rounds` above 0 and `MatchScore.rounds_played` reached it): with `Stay` it does nothing, and with `Exit` it writes `AppExit` when the timer ends.
 
 ### Despawn Outcome Banner
 
@@ -89,7 +91,7 @@ update ~~~ exit_outcome
 
 Used in the following systems:
 - **show_outcome_banner**: reads the font and `round.outcome_linger_secs`.
-- **advance_outcome**: reads `Time` to tick the timer.
+- **advance_outcome**: reads `Time` to tick the timer, and `launch.rounds` and `launch.after_last_round`. Also reads `MatchScore.rounds_played`.
 
 ### Read RoundResult resource
 

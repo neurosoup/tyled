@@ -37,7 +37,7 @@ This plugin spawns a beam when a player shoots, moves it one tile at a time, and
 - A `Straight` beam goes forward until a claimed tile or the map edge. It claims the last free tile before it stops.
 - A `Lance` beam goes over claimed tiles. It claims the first free tile it finds, or nothing if it reaches the edge.
 - The Input plugin does the same check, but the tile can change before this system runs, so it checks again.
-- When a beam spawns: one charge is spent, `InFlightBeamCount` goes up, and `ChargeSpent` is written.
+- When a beam spawns: one charge is spent, `InFlightBeamCount` goes up, and `ChargeSpent` is written. A `Lance` beam also writes `AbilityTriggered`.
 - The beam starts with zero parries and its own step timer. It takes its first step on its spawn frame.
 - It gets `WaveSource` and `BounceEffect` (the tile bounce), unless its caster already has a beam in the same lane.
 - `WaveSource` makes each tile bounce when the beam steps on it. This bounce is the wave that players see.

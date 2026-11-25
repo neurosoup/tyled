@@ -76,11 +76,14 @@ impl MapInfo {
     }
 }
 
+/// Asset path of the playable level.
+pub const LEVEL_PATH: &str = "level2.tmx";
+
 fn load_maps(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Loading maps");
 
     commands.spawn((
-        TiledMap(asset_server.load("level2.tmx")),
+        TiledMap(asset_server.load(LEVEL_PATH)),
         CurrentLevel,
         TilemapAnchor::Center,
     ));

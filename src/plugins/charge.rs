@@ -44,6 +44,7 @@ fn regen_charges(
     mut solar_panels_timer: ResMut<SolarPanelsTimer>,
     mut players: Query<(Entity, &AbilityList, &ClaimedTileCount, &mut BeamCharges)>,
     mut charge_regen_writer: MessageWriter<ChargeRegen>,
+    mut ability_writer: MessageWriter<AbilityTriggered>,
 ) {
     solar_panels_timer.0.tick(time.delta());
     if !solar_panels_timer.0.is_finished() {
@@ -65,6 +66,10 @@ fn regen_charges(
         let amount = new_current - charges.current;
         charges.current = new_current;
         charge_regen_writer.write(ChargeRegen { owner: entity, amount });
+        ability_writer.write(AbilityTriggered {
+            owner: entity,
+            ability: AbilityDescriptor::SolarPanels,
+        });
     }
 }
 

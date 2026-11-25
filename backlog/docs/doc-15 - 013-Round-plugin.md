@@ -46,7 +46,7 @@ Outcome --> Starting: banner ends, then reset_round
 - Tie rule (`winner_by_standing`): more owned tiles, then more health, then player 1. The timeout and the "no charges" end use it. A kill of both players in the same frame uses tiles, then player 1.
 - A kill has priority. The other two ends do nothing in a frame where a player died.
 - Each end records the winner in `RoundResult`, adds a win to `MatchScore` and enters `Outcome` (`conclude_round`).
-- `MatchScore` keeps the wins of each player. The reset does not change it.
+- `MatchScore` keeps the wins of each player and the number of rounds played (draws included). The reset does not change it.
 - `reset_round` puts the board and the players back to the start, in place. Nothing is despawned or loaded again, except the beams.
 - `RoundResetExceptions` lists tiles that keep their owner after the reset. It is empty today. It is ready for future abilities.
 
@@ -491,7 +491,7 @@ Definitions:
 - `Countdown`: `Resource`. Inserted by `start_countdown` and `reset_round`, changed by `tick_countdown`, read by `animate_countdown` (HUD plugin).
 - `CountdownDigit`: marker `Component` on the countdown digits of the HUD map. Read by `animate_countdown` (HUD plugin).
 - `RoundResult`: `Resource` with `winner: Option<u8>`. `None` is a draw, which the tie rules never produce.
-- `MatchScore`: `Resource` with `wins: [u32; 2]`. The reset does not change it.
+- `MatchScore`: `Resource` with `wins: [u32; 2]` and `rounds_played`. The reset does not change it. `conclude_round` adds 1 to `rounds_played`.
 - `RoundResetExceptions`: `Resource` with a `HashMap<GridCoords, Entity>` of tiles and their kept owner.
 - `SpawnPoint`: `Component` with the spawn tile of a player. Inserted by `initialize_players` (Maps plugin).
 - `SpawnLookDirection`: `Component` with the spawn direction (player 1 down, player 2 up). Inserted by `initialize_players` (Maps plugin).

@@ -88,6 +88,7 @@ fn spawn_beam(
     map_info: Res<MapInfo>,
     mut owner_state: Query<(&mut BeamCharges, &mut InFlightBeamCount)>,
     mut charge_spent_writer: MessageWriter<ChargeSpent>,
+    mut ability_writer: MessageWriter<AbilityTriggered>,
 ) {
     for beam_fired_message in beam_fired_reader.read() {
         let owner_has_active_beam = beams_query.iter().any(|(beam, coords)| {
@@ -113,6 +114,13 @@ fn spawn_beam(
         ) else {
             continue;
         };
+
+        if behavior == BeamBehavior::Lance {
+            ability_writer.write(AbilityTriggered {
+                owner: beam_fired_message.owner,
+                ability: AbilityDescriptor::Lance,
+            });
+        }
 
         if let Ok((mut charges, mut in_flight)) = owner_state.get_mut(beam_fired_message.owner) {
             charges.current = charges.current.saturating_sub(1);
@@ -265,6 +273,7 @@ fn beam_step(
     time: Res<Time>,
     map_info: Res<MapInfo>,
     mut beam_resolved_writer: MessageWriter<BeamResolved>,
+    mut ability_writer: MessageWriter<AbilityTriggered>,
     mut in_flight: Query<&mut InFlightBeamCount>,
 ) {
     for (beam_entity, mut beam, mut position) in &mut beams_query {
@@ -361,6 +370,10 @@ fn beam_step(
                         next_position,
                     )
                 {
+                    ability_writer.write(AbilityTriggered {
+                        owner: beam.caster,
+                        ability: AbilityDescriptor::BorderGrinder,
+                    });
                     beam_resolved_writer.write(BeamResolved {
                         position: next_position,
                         owner: beam.owner,

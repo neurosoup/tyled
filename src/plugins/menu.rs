@@ -2,7 +2,8 @@
  * The pre-round main menu: lets players pick a matchup (which seats are bot-
  * controlled) before any map loads. The confirmed choice is written into the
  * `GameConfig` resource's `ControllersConfig`, then `AppState` transitions to
- * `InRound`, unblocking `maps::load_maps`. Drawn with the `text` plugin's
+ * `InRound`, unblocking `maps::load_maps`. `launch.skip_menu` (or the
+ * `--skip-menu` / `--bot-vs-bot` flags, read by the config plugin) skips the menu. Drawn with the `text` plugin's
  * `spawn_label` onto the overlay camera (owned by the `camera` plugin).
  */
 use bevy::camera::visibility::RenderLayers;
@@ -66,15 +67,42 @@ pub struct MenuSelection(pub usize);
 #[derive(Component)]
 pub struct MenuLabel;
 
+/// Whether this launch skips the main menu.
+#[derive(Resource)]
+struct SkipMenu(bool);
+
+fn menu_shown(skip: Res<SkipMenu>) -> bool {
+    !skip.0
+}
+
+fn menu_skipped(skip: Res<SkipMenu>) -> bool {
+    skip.0
+}
+
 pub(crate) fn plugin(app: &mut App) {
+    let skip = app.world().resource::<GameConfig>().launch.skip_menu;
+
     app.init_state::<AppState>();
     app.init_resource::<MenuSelection>();
+    app.insert_resource(SkipMenu(skip));
     app.add_systems(
         Update,
         (ensure_menu_spawned, update_selection, confirm_selection)
             .chain()
-            .run_if(in_state(AppState::MainMenu)),
+            .run_if(in_state(AppState::MainMenu))
+            .run_if(menu_shown),
     );
+    app.add_systems(
+        Update,
+        start_without_menu
+            .run_if(in_state(AppState::MainMenu))
+            .run_if(menu_skipped),
+    );
+}
+
+/// Starts the round with the configured controllers, without drawing the menu.
+fn start_without_menu(mut next_state: ResMut<NextState<AppState>>) {
+    next_state.set(AppState::InRound);
 }
 
 /// Spawns one label per menu entry, prefixing the selected entry with the font

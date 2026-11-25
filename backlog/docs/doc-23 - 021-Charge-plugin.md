@@ -67,7 +67,7 @@ playing ~~~ every
 ### Regen Charges
 
 - Ticks the timer. When it ends, gives charges to each player with Solar Panels.
-- Writes `ChargeRegen` with the real gain, when the gain is above 0.
+- Writes `ChargeRegen` with the real gain, when the gain is above 0. Also writes `AbilityTriggered` for Solar Panels.
 
 ### Cap Charges To Unclaimed Tiles
 

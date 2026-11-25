@@ -14,7 +14,7 @@ This plugin gives each player a list of abilities. The abilities change how beam
 - `AbilityList` is the list of abilities of one player. The Maps plugin adds it to each player.
 - `AbilityDescriptor` is one ability: `Lance`, `BorderGrinder` or `SolarPanels`. It is plain data, so a loadout can later be written in a file.
 - Straight Shot is the base beam. Every player has it, so it is not in the list. An empty list means "Straight Shot only".
-- `PlayerLoadouts` holds the starting abilities of each player. There is no draft screen yet, so the loadouts are set in code.
+- `PlayerLoadouts` holds the starting abilities of each player. There is no draft screen yet. The loadouts are built-in, and `launch.loadout_p1` / `launch.loadout_p2` (or the flags `--loadout-p1` and `--loadout-p2`) replace them.
 - Today, player 1 starts with `SolarPanels` and player 2 starts with `BorderGrinder`.
 - This plugin has no systems. Other plugins read `AbilityList` and apply each ability.
 

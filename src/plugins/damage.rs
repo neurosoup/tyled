@@ -81,7 +81,7 @@ fn apply_knockback(
             Duration::from_millis(config.effects.knockback_tween_ms),
             TimerMode::Once,
         )));
-        knocked_back_writer.write(EntityKnockedBack { entity });
+        knocked_back_writer.write(EntityKnockedBack { entity, direction });
     }
 }
 
@@ -104,8 +104,17 @@ fn deal_damage(
     health: &mut Health,
     amount: f32,
     writer: &mut MessageWriter<DamageableDied>,
+    dealt_writer: &mut MessageWriter<DamageDealt>,
+    source: DamageSource,
+    attacker: Option<Entity>,
 ) {
     health.current -= amount;
+    dealt_writer.write(DamageDealt {
+        entity,
+        amount,
+        source,
+        attacker,
+    });
     if health.current <= 0.0 {
         writer.write(DamageableDied { entity });
     }
@@ -115,6 +124,7 @@ fn apply_beam_damage(
     mut knockback_writer: MessageWriter<KnockbackRequested>,
     config: Res<GameConfig>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
+    mut damage_dealt_writer: MessageWriter<DamageDealt>,
     mut damageables_query: Query<(Entity, &GridCoords, &mut Health)>,
     beams_query: Query<(&Beam, &GridCoords), Changed<GridCoords>>,
 ) {
@@ -129,6 +139,9 @@ fn apply_beam_damage(
                     &mut health,
                     config.damage.beam_contact,
                     &mut damageable_died_writer,
+                    &mut damage_dealt_writer,
+                    DamageSource::BeamContact,
+                    Some(beam.owner),
                 );
                 knockback_writer.write(KnockbackRequested {
                     entity,
@@ -142,6 +155,7 @@ fn apply_beam_damage(
 fn apply_collision_damage(
     mut collision_reader: MessageReader<CharacterCollision>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
+    mut damage_dealt_writer: MessageWriter<DamageDealt>,
     config: Res<GameConfig>,
     mut characters_query: Query<&mut Health, With<Character>>,
 ) {
@@ -155,6 +169,9 @@ fn apply_collision_damage(
                 &mut health,
                 config.damage.collision,
                 &mut damageable_died_writer,
+                &mut damage_dealt_writer,
+                DamageSource::Collision,
+                None,
             );
         }
     }
@@ -182,6 +199,7 @@ fn apply_owned_tile_entry_damage(
     config: Res<GameConfig>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
+    mut damage_dealt_writer: MessageWriter<DamageDealt>,
     mut characters_query: Query<
         (Entity, &GridCoords, &mut PreviousGridCoords, &mut Health),
         (With<Character>, Changed<GridCoords>),
@@ -205,6 +223,9 @@ fn apply_owned_tile_entry_damage(
                 &mut health,
                 config.damage.on_enter,
                 &mut damageable_died_writer,
+                &mut damage_dealt_writer,
+                DamageSource::TileEntry,
+                None,
             );
             // Restart the standing clock so the poll below can't double-hit this same frame.
             timer.0.reset();
@@ -220,6 +241,7 @@ fn apply_owned_tile_damage(
     config: Res<GameConfig>,
     mut timer: ResMut<DamageTimer>,
     mut damageable_died_writer: MessageWriter<DamageableDied>,
+    mut damage_dealt_writer: MessageWriter<DamageDealt>,
     mut characters_query: Query<(Entity, &GridCoords, &mut Health), With<Character>>,
     claimed_tiles_query: Query<&ClaimedTile>,
     map_info: Res<MapInfo>,
@@ -239,6 +261,9 @@ fn apply_owned_tile_damage(
                 &mut health,
                 config.damage.standing,
                 &mut damageable_died_writer,
+                &mut damage_dealt_writer,
+                DamageSource::TileStanding,
+                None,
             );
         }
     }
@@ -254,6 +279,7 @@ mod tests {
         let mut app = App::new();
         app.add_message::<KnockbackRequested>();
         app.add_message::<EntityKnockedBack>();
+        app.add_message::<DamageDealt>();
         app.insert_resource(
             ron::from_str::<GameConfig>(include_str!("../../assets/game_config.ron")).unwrap(),
         );
