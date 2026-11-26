@@ -167,6 +167,8 @@ pub struct LaunchConfig {
     pub loadout_p1: Option<Vec<AbilityDescriptor>>,
     /// Starting abilities of player 2. `None` = the built-in loadout, `Some([])` = no abilities.
     pub loadout_p2: Option<Vec<AbilityDescriptor>>,
+    /// Whether the world inspector is shown in dev builds. Off = hidden.
+    pub inspector: bool,
 }
 
 /// What the game does once the last round of a limited match is over.
@@ -260,7 +262,8 @@ pub struct HitStopConfig {
 
 impl GameConfig {
     /// Applies the launch flags: `--bot-vs-bot`, `--skip-menu`, `--rounds N`,
-    /// `--after-last-round stay|exit`, `--loadout-p1 A,B` and `--loadout-p2 A,B`.
+    /// `--after-last-round stay|exit`, `--loadout-p1 A,B`, `--loadout-p2 A,B` and
+    /// `--inspector show|hide`.
     /// A value can also be written as `--flag=value`. Unknown arguments are ignored.
     pub fn apply_launch_args(&mut self, args: &[String]) -> Result<(), String> {
         let mut index = 0;
@@ -277,7 +280,8 @@ impl GameConfig {
                     self.controllers.player2_bot = true;
                 }
                 "--skip-menu" => self.launch.skip_menu = true,
-                "--rounds" | "--after-last-round" | "--loadout-p1" | "--loadout-p2" => {
+                "--rounds" | "--after-last-round" | "--loadout-p1" | "--loadout-p2"
+                | "--inspector" => {
                     let value = match inline {
                         Some(value) => value,
                         None => {
@@ -302,6 +306,13 @@ impl GameConfig {
                                 _ => return Err(format!("--after-last-round needs stay or exit, got '{value}'")),
                             };
                         }
+                        "--inspector" => {
+                            self.launch.inspector = match value.to_lowercase().as_str() {
+                                "show" => true,
+                                "hide" => false,
+                                _ => return Err(format!("--inspector needs show or hide, got '{value}'")),
+                            };
+                        }
                         "--loadout-p1" => self.launch.loadout_p1 = Some(parse_loadout(&value)?),
                         _ => self.launch.loadout_p2 = Some(parse_loadout(&value)?),
                     }
@@ -317,6 +328,34 @@ impl GameConfig {
     fn embedded() -> Self {
         ron::from_str(EMBEDDED_CONFIG).expect("embedded game_config.ron must parse")
     }
+}
+
+/// The text printed by `--help`.
+const LAUNCH_HELP: &str = "\
+Tyled launch options
+
+Usage: tyled [OPTIONS]
+From the source: cargo run --features dev -- [OPTIONS]
+
+Options:
+  -h, --help                     Print this help and exit
+      --skip-menu                Skip the menu, use the players set in game_config.ron
+      --bot-vs-bot               Skip the menu, both players are bots
+      --rounds <N>               Stop the match after N rounds (0 = endless)
+      --after-last-round <MODE>  stay = keep the outcome screen, exit = close the game
+      --loadout-p1 <LIST>        Starting abilities of player 1
+      --loadout-p2 <LIST>        Starting abilities of player 2
+      --inspector <MODE>         show or hide the world inspector (dev builds only)
+
+<LIST> is Lance, BorderGrinder and SolarPanels separated by commas, or none.
+A value can also be written as --option=value.
+Without an option, the value from game_config.ron is used.";
+
+/// The help text, when `args` contain `--help` or `-h`.
+pub fn launch_help(args: &[String]) -> Option<&'static str> {
+    args.iter()
+        .any(|arg| arg == "--help" || arg == "-h")
+        .then_some(LAUNCH_HELP)
 }
 
 /// Reads a comma-separated ability list. An empty text or `none` gives no abilities.
@@ -477,6 +516,29 @@ mod launch_args_tests {
     }
 
     #[test]
+    fn help_is_asked_with_long_or_short_flag() {
+        assert!(launch_help(&args(&["--bot-vs-bot", "--help"])).is_some());
+        assert!(launch_help(&args(&["-h"])).is_some());
+        assert!(launch_help(&args(&["--bot-vs-bot"])).is_none());
+    }
+
+    #[test]
+    fn help_lists_every_flag() {
+        for flag in [
+            "--help",
+            "--skip-menu",
+            "--bot-vs-bot",
+            "--rounds",
+            "--after-last-round",
+            "--loadout-p1",
+            "--loadout-p2",
+            "--inspector",
+        ] {
+            assert!(LAUNCH_HELP.contains(flag), "{flag} is missing from the help");
+        }
+    }
+
+    #[test]
     fn bot_vs_bot_skips_the_menu_with_two_bots() {
         let mut config = GameConfig::embedded();
         config.controllers.player1_bot = false;
@@ -496,8 +558,11 @@ mod launch_args_tests {
                 "--loadout-p1",
                 "lance,solar_panels",
                 "--loadout-p2=none",
+                "--inspector",
+                "hide",
             ]))
             .unwrap();
+        assert!(!config.launch.inspector);
         assert_eq!(config.launch.rounds, 5);
         assert_eq!(config.launch.after_last_round, AfterLastRound::Exit);
         assert_eq!(
@@ -511,6 +576,7 @@ mod launch_args_tests {
     fn bad_values_are_errors_and_unknown_flags_are_ignored() {
         let mut config = GameConfig::embedded();
         assert!(config.apply_launch_args(&args(&["--rounds", "many"])).is_err());
+        assert!(config.apply_launch_args(&args(&["--inspector", "maybe"])).is_err());
         assert!(config.apply_launch_args(&args(&["--rounds"])).is_err());
         assert!(config.apply_launch_args(&args(&["--loadout-p1", "nope"])).is_err());
         assert!(config.apply_launch_args(&args(&["--unknown", "--other"])).is_ok());

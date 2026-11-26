@@ -78,6 +78,7 @@
         after_last_round: Stay,  // [restart] Stay = keep the outcome screen, Exit = close the game (`--after-last-round`)
         loadout_p1: None,        // [restart] None = built-in loadout, Some([Lance, SolarPanels]) = these abilities (`--loadout-p1`)
         loadout_p2: None,        // [restart] None = built-in loadout, Some([BorderGrinder]) = these abilities (`--loadout-p2`)
+        inspector: true,         // [restart] true = show the world inspector, false = hide it; dev builds only (`--inspector show|hide`)
     ),
     controllers: (
         player1_bot: true,       // [menu] overridden by the main-menu matchup selection at launch

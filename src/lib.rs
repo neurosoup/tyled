@@ -5,6 +5,8 @@ use bevy::prelude::*;
 mod components;
 mod plugins;
 
+pub use plugins::launch_help;
+
 /// Use this module instead of importing the `components`, `plugins`, `resources`, and `utils`
 /// modules directly.
 mod prelude {

@@ -62,7 +62,7 @@ The project uses **Rust nightly** (see `rust-toolchain.toml`) and is configured 
 | `effects` | Registers `TweeningPlugin`; tweening effects: movement slide (`TranslateEffectTarget`), bounce (`BounceEffect`/`WaveEffect`), damage flash (`DamageEffectTarget`), death bounce |
 | `animations` | `bevy_spritesheet_animation` setup; attaches and switches world-space player/tile sprite animations |
 | `hud` | All HUD animations (render layer 1): lerps HP bar `scale.x` to match `Health.ratio()`; drives the rolling-odometer numeric counters (beam charges, claimed-tile count, round countdown) |
-| `debug` | `bevy-inspector-egui` world inspector (always enabled) |
+| `debug` | Dev builds only: system ambiguity warnings, and the `bevy-inspector-egui` world inspector (`launch.inspector`, `--inspector show\|hide`) |
 
 ### Communication pattern
 

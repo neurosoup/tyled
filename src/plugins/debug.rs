@@ -11,16 +11,9 @@ use bevy_inspector_egui::{
 use bevy_smooth_pixel_camera::components::ViewportCamera;
 
 pub(crate) fn plugin(app: &mut App) {
-    app.add_plugins(EguiPlugin::default());
-    app.add_plugins(WorldInspectorPlugin::new());
-    // Prevent bevy_egui from auto-assigning to the first camera (which renders to an off-screen
-    // texture via PixelCamera). We manually target ViewportCamera instead, which composites the
-    // final image to the full window.
-    app.insert_resource(EguiGlobalSettings {
-        auto_create_primary_context: false,
-        ..default()
-    });
-    app.add_systems(Update, attach_egui_to_viewport_camera);
+    if app.world().resource::<GameConfig>().launch.inspector {
+        app.add_plugins(inspector);
+    }
 
     app.edit_schedule(Update, |schedule| {
         schedule.set_build_settings(ScheduleBuildSettings {
@@ -32,6 +25,20 @@ pub(crate) fn plugin(app: &mut App) {
 
     // Tiled debug
     // app.add_plugins(TiledDebugPluginGroup);
+}
+
+/// The world inspector window.
+fn inspector(app: &mut App) {
+    app.add_plugins(EguiPlugin::default());
+    app.add_plugins(WorldInspectorPlugin::new());
+    // Prevent bevy_egui from auto-assigning to the first camera (which renders to an off-screen
+    // texture via PixelCamera). We manually target ViewportCamera instead, which composites the
+    // final image to the full window.
+    app.insert_resource(EguiGlobalSettings {
+        auto_create_primary_context: false,
+        ..default()
+    });
+    app.add_systems(Update, attach_egui_to_viewport_camera);
 }
 
 fn attach_egui_to_viewport_camera(

@@ -23,6 +23,8 @@ This plugin shows the main menu, where players choose who is a bot. No map loads
   - `--rounds N`: stop the match after N rounds (0 = endless).
   - `--after-last-round stay|exit`: keep the outcome screen, or close the game.
   - `--loadout-p1 A,B` and `--loadout-p2 A,B`: starting abilities (`Lance`, `BorderGrinder`, `SolarPanels`, or `none`).
+  - `--inspector show|hide`: show or hide the world inspector (dev builds only, shown by default).
+  - `--help` or `-h`: print the list of flags and exit before the game starts.
 - An unattended bot match: `cargo run --features dev -- --bot-vs-bot --rounds 10 --after-last-round exit --loadout-p1 Lance --loadout-p2 BorderGrinder`.
 
 | Entry | Player 1 | Player 2 |
