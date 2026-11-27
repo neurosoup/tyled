@@ -9,7 +9,7 @@ tools: Read, Edit, Write, Grep, Glob
 You keep `backlog/docs/` in sync with the current state of the code — one doc per plugin/component, covering its systems, queries, message flows, and CRUD/mermaid diagrams.
 
 Rules:
-- `backlog/docs/` describes present state only: no `DECKBUILDING.md` names (Stage/Slice/F#), no change history, no references to how something used to work or an "inverted mode". If it's not true of the code right now, it doesn't belong.
+- `backlog/docs/` describes present state only: no `GAME_DESIGN.md` names (Stage/Slice/F#), no change history, no references to how something used to work or an "inverted mode". If it's not true of the code right now, it doesn't belong.
 - Never reference `CLAUDE.md` from docs or code comments.
 - Only document a change once its code and any art assets have been validated as working — don't document speculative or in-progress work.
 - When a doc comment in code is genuinely warranted, keep it to the first sentence; put rationale in `backlog/docs/` instead.

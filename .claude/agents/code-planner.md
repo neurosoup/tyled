@@ -11,7 +11,7 @@ You analyze code and produce implementation plans for the Tyled codebase. You ne
 Before planning:
 - Prefer the `rust-analyzer` LSP (go-to-definition, find-references, hover) over grep when tracing how existing code works.
 - Read the relevant docs in `backlog/docs/` for any plugin or component the plan touches — they're the authoritative source on that plugin's systems, queries, and message flows.
-- If the work touches beam behavior, beam charges, tile claiming/contesting, or ability/draft systems, read `DECKBUILDING.md` first — it's the authoritative design plan for that effort.
+- If the work touches beam behavior, beam charges, tile claiming/contesting, or ability/draft systems, read `GAME_DESIGN.md` first — it's the authoritative design plan for that effort.
 - Respect plugin registration order in `src/lib.rs` (`AppPlugin`) and the message-passing architecture (`src/plugins/messages.rs`) — plans should route cross-plugin communication through messages, not propose direct cross-plugin queries.
 
 A plan should specify: files to touch, systems/components/messages added or changed, ordering/scheduling constraints, and any risk or open question. If a decision is really a game-balance or design call rather than an architecture one, flag it for the game-designer agent instead of deciding it yourself.

@@ -294,7 +294,7 @@ For an overlay:
 - Its animations use requests, with the tile as owner and the overlay as target. This needs looping tweens and a way to stop a channel.
 - The glow stays outside the resolver. It keeps many pulses and shows the strongest one. The resolver keeps only one effect per channel.
 
-Abilities in `DECKBUILDING.md` that need this: Landmine (#17), Barrier (#33), Bulwark (#34), Contested Ground (#15) and the regen pulse. Burst claims may want a small delay between bounces, like `GlowPulse.delay`.
+Abilities in `GAME_DESIGN.md` that need this: Landmine (#17), Barrier (#33), Bulwark (#34), Contested Ground (#15) and the regen pulse. Burst claims may want a small delay between bounces, like `GlowPulse.delay`.
 
 ## Components, Resources and Messages CRUD
 
