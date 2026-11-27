@@ -31,8 +31,9 @@ use crate::prelude::*;
 
 const TRACE_PATH: &str = "play_trace.jsonl";
 
-/// Shape version of the trace. 1 = the first shape, 2 = adds the clock anchor, `rt` and `event` records.
-const SCHEMA_VERSION: u32 = 2;
+/// Shape version of the trace. 1 = the first shape, 2 = adds the clock anchor, `rt` and `event` records,
+/// 3 = adds the parry `attacker` and counts `rt` from the app start.
+const SCHEMA_VERSION: u32 = 3;
 
 pub(crate) fn plugin(app: &mut App) {
     app.init_resource::<ActionSnapshots>();
@@ -109,7 +110,8 @@ impl Clock<'_> {
     fn stamp(&self) -> Stamp {
         Stamp {
             t: self.time.elapsed_secs(),
-            rt: self.real.elapsed_secs(),
+            // Same zero as `rt_at_write`: `Time<Real>::elapsed` starts later, at the first frame.
+            rt: self.real.startup().elapsed().as_secs_f32(),
         }
     }
 }
@@ -241,6 +243,7 @@ struct KnockbackData {
 #[derive(Serialize)]
 struct ParryData {
     defender: u8,
+    attacker: Option<u8>,
     caster: Option<u8>,
     success: bool,
     parries: u32,
@@ -351,7 +354,7 @@ fn open_sink(
     let mut sink = TelemetrySink {
         writer: BufWriter::new(file),
     };
-    // Both clocks are read at the same instant. `rt_at_write` is the exact time since launch.
+    // Both clocks are read at the same instant. `rt_at_write` is the exact time since the app start.
     let unix_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_millis() as u64);
@@ -360,7 +363,7 @@ fn open_sink(
         schema_version: SCHEMA_VERSION,
         unix_ms,
         t_at_write: clock.time.elapsed_secs(),
-        rt_at_write: clock.real.startup().elapsed().as_secs_f32(),
+        rt_at_write: clock.stamp().rt,
         map: LEVEL_PATH,
         telemetry_enabled: config.telemetry.enabled,
         bot_p1: config.controllers.is_bot(0),
@@ -617,6 +620,7 @@ fn record_parries(
             stamp,
             ParryData {
                 defender,
+                attacker: player_id_of(&players, message.previous_owner),
                 caster: player_id_of(&players, message.caster),
                 success: true,
                 parries: message.parries,
@@ -812,6 +816,22 @@ mod tests {
         for key in ["schema_version", "unix_ms", "t_at_write", "rt_at_write", "map"] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
-        assert_eq!(value["schema_version"], 2);
+        assert_eq!(value["schema_version"], 3);
+    }
+
+    #[test]
+    fn record_time_counts_from_the_app_start() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Time::<Real>::default());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let rt = world
+            .run_system_once(|clock: Clock| clock.stamp().rt)
+            .unwrap();
+
+        assert!(rt >= 0.005, "rt was {rt}");
     }
 }

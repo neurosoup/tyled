@@ -210,6 +210,13 @@ increasing difficulty rather than an explicit rule. Revisit with a cap if
 playtesting shows it doesn't actually self-limit (e.g. speed increments
 turn out too small to matter).
 
+Playtest result (bot vs bot): at close range the rally did not limit itself,
+because a returned beam moved on the parry frame. A parried beam now waits one
+full beam step before it moves, and nobody can parry it again until it has
+moved. There is still no cap. As before, when exactly one tile separates the
+players, the return cannot be parried. It now waits one step in front of the
+shooter first, and a Shoot press during that step fires a normal shot.
+
 **Interaction notes** (full detail lives here rather than scattered across
 roster entries):
 - **Body Blocker/Impaler (#7/#8)**: see "three outcomes" above — Body

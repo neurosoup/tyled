@@ -13,6 +13,10 @@ pub struct Beam {
     pub behavior: BeamBehavior,
     /// Per-beam step cadence.
     pub step_timer: Timer,
+    /// Whether a parried beam is still waiting for its next step.
+    pub awaiting_step: bool,
+    /// Whether the beam was parried in the current frame.
+    pub just_parried: bool,
 }
 
 /// The resolved per-beam execution mode.

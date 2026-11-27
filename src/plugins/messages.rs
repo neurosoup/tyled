@@ -96,6 +96,8 @@ pub struct BeamParried {
     #[allow(dead_code)] // read by ability resolvers in Stage F2
     pub beam: Entity,
     pub parrier: Entity,
+    // The player who sent the beam to the parrier.
+    pub previous_owner: Entity,
     #[allow(dead_code)] // read by ability resolvers in Stage F2
     pub caster: Entity,
     #[allow(dead_code)] // read by ability resolvers in Stage F2

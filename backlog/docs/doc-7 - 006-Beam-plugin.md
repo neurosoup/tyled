@@ -49,12 +49,14 @@ This plugin spawns a beam when a player shoots, moves it one tile at a time, and
 - "About to hit" means: in the first `window_fraction` of the beam's step, and the beam can claim the player's tile.
 - The beam turns around, its `owner` becomes the parrier, and its parry count goes up by one.
 - Each parry divides the step time by `speed_multiplier`, but never below `min_step_secs`.
-- Its timer restarts, ready to step. Then `BeamParried` is written for the Effects and Hitstop plugins.
+- Its timer restarts from zero, and `beam_step` does not tick it in the parry frame (`just_parried`). So the beam waits one full step before it moves. Until that step, `awaiting_step` is set and the beam cannot be parried.
+- `BeamParried` is written for the Effects, Hitstop and Telemetry plugins. `previous_owner` is the player who sent the beam to the parrier.
 - Only the first parry of a beam in a frame counts. A player cannot parry a beam they already own.
+- When exactly one tile separates the players, the return cannot be parried. It waits one step in front of the other player, then moves onto that player's tile. A shoot press during that step fires a normal shot.
 
 ### Beam Step
 
-- Ticks the timer of each beam. A beam moves one tile each time its timer ends.
+- Ticks the timer of each beam. A beam moves one tile each time its timer ends. This step also clears `awaiting_step`.
 - A beam always ends through `end_beam`: it lowers the caster's `InFlightBeamCount`, then despawns the beam.
 - `end_beam` is a small helper function. Every case where a beam stops calls it, so the count always stays right.
 
@@ -472,7 +474,7 @@ resolve_parry ---> beams_query
 
 beam_entity@{ shape: st-rect, label: "Beam" }
 be_beam>"`**Beam**`"] --> |belongs to| beam_entity
-beams_query ---> |"writes direction, owner, parries, step_timer"| be_beam
+beams_query ---> |"writes direction, owner, parries, step_timer, awaiting_step, just_parried"| be_beam
 
 world@{ shape: st-rect, label: "World" }
 config_res@{ shape: doc, label: "GameConfig" }

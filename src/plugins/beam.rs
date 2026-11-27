@@ -140,6 +140,8 @@ fn spawn_beam(
                 parries: 0,
                 behavior,
                 step_timer: new_beam_step_timer(beam_step_duration(&config, 0)),
+                awaiting_step: false,
+                just_parried: false,
             },
         ));
         if !owner_has_active_beam {
@@ -205,7 +207,8 @@ pub(crate) fn find_parryable_beam(
     window_fraction: f32,
 ) -> Option<Entity> {
     for (entity, beam_coords, beam) in beams {
-        if beam.owner == character {
+        // A second parry before the beam moves would let two close players loop every frame.
+        if beam.owner == character || beam.awaiting_step {
             continue;
         }
         if *beam_coords + beam.direction != coords {
@@ -250,14 +253,21 @@ fn resolve_parry(
             continue;
         }
 
+        let previous_owner = beam.owner;
         beam.direction = GridCoords::new(-beam.direction.x, -beam.direction.y);
         beam.owner = message.parrier;
         beam.parries += 1;
-        beam.step_timer = new_beam_step_timer(beam_step_duration(&config, beam.parries));
+        beam.step_timer = Timer::from_seconds(
+            beam_step_duration(&config, beam.parries),
+            TimerMode::Repeating,
+        );
+        beam.awaiting_step = true;
+        beam.just_parried = true;
 
         beam_parried_writer.write(BeamParried {
             beam: message.beam,
             parrier: message.parrier,
+            previous_owner,
             caster: beam.caster,
             new_direction: beam.direction,
             parries: beam.parries,
@@ -277,10 +287,15 @@ fn beam_step(
     mut in_flight: Query<&mut InFlightBeamCount>,
 ) {
     for (beam_entity, mut beam, mut position) in &mut beams_query {
+        // The parry frame does not count, or one long frame would skip the whole wait.
+        if std::mem::take(&mut beam.just_parried) {
+            continue;
+        }
         beam.step_timer.tick(time.delta());
         if !beam.step_timer.just_finished() {
             continue;
         }
+        beam.awaiting_step = false;
 
         let next_position = *position + beam.direction;
 
@@ -411,5 +426,116 @@ fn beam_step(
                 *position = next_position;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy_ecs_tiled::prelude::{TilemapGridSize, TilemapSize, TilemapTileSize};
+    use std::time::Duration;
+
+    /// A 4x1 strip of ground with one beam at x = 2 moving left, owned by the first player.
+    fn parry_world() -> (App, Entity, Entity, Entity) {
+        let mut app = App::new();
+        app.add_message::<ParryTriggered>();
+        app.add_message::<BeamParried>();
+        app.add_message::<BeamResolved>();
+        app.add_message::<AbilityTriggered>();
+        app.insert_resource(
+            ron::from_str::<GameConfig>(include_str!("../../assets/game_config.ron")).unwrap(),
+        );
+        let mut map_info = MapInfo {
+            map_size: TilemapSize::new(4, 1),
+            grid_size: TilemapGridSize::new(16.0, 16.0),
+            tile_size: TilemapTileSize::new(16.0, 16.0),
+            ..default()
+        };
+        for x in 0..4 {
+            map_info
+                .ground_entities
+                .insert(GridCoords { x, y: 0 }, Entity::PLACEHOLDER);
+        }
+        app.insert_resource(map_info);
+        let shooter = app.world_mut().spawn_empty().id();
+        let parrier = app.world_mut().spawn_empty().id();
+        let beam = app
+            .world_mut()
+            .spawn((
+                GridCoords { x: 2, y: 0 },
+                Beam {
+                    owner: shooter,
+                    caster: shooter,
+                    direction: GridCoords { x: -1, y: 0 },
+                    parries: 0,
+                    behavior: BeamBehavior::Straight,
+                    step_timer: Timer::from_seconds(0.05, TimerMode::Repeating),
+                    awaiting_step: false,
+                    just_parried: false,
+                },
+            ))
+            .id();
+        (app, shooter, parrier, beam)
+    }
+
+    #[test]
+    fn parried_beam_waits_a_step_and_names_the_previous_owner() {
+        let (mut app, shooter, parrier, beam) = parry_world();
+        app.world_mut()
+            .write_message(ParryTriggered { parrier, beam });
+        app.world_mut().run_system_once(resolve_parry).unwrap();
+
+        let state = app.world().get::<Beam>(beam).unwrap();
+        assert!(state.awaiting_step);
+        assert_eq!(state.step_timer.elapsed_secs(), 0.0);
+        let parried: Vec<_> = app
+            .world()
+            .resource::<Messages<BeamParried>>()
+            .iter_current_update_messages()
+            .map(|message| (message.previous_owner, message.parrier))
+            .collect();
+        assert_eq!(parried, vec![(shooter, parrier)]);
+
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs(1));
+        app.insert_resource(time);
+        // The parry frame is longer than a step, and the beam still stays.
+        app.world_mut().run_system_once(beam_step).unwrap();
+        assert!(app.world().get::<Beam>(beam).unwrap().awaiting_step);
+        assert_eq!(
+            app.world().get::<GridCoords>(beam),
+            Some(&GridCoords { x: 2, y: 0 })
+        );
+
+        app.world_mut().run_system_once(beam_step).unwrap();
+
+        assert!(!app.world().get::<Beam>(beam).unwrap().awaiting_step);
+        assert_eq!(
+            app.world().get::<GridCoords>(beam),
+            Some(&GridCoords { x: 3, y: 0 })
+        );
+    }
+
+    #[test]
+    fn a_waiting_beam_cannot_be_parried() {
+        let (mut app, _, parrier, beam) = parry_world();
+        let probe = move |beams: Query<(Entity, &GridCoords, &Beam), Without<Character>>,
+                          map_info: Res<MapInfo>,
+                          claimed: Query<&ClaimedTile>| {
+            find_parryable_beam(
+                GridCoords { x: 1, y: 0 },
+                GridCoords { x: 1, y: 0 },
+                parrier,
+                &beams,
+                &map_info,
+                &claimed,
+                0.75,
+            )
+        };
+        assert_eq!(app.world_mut().run_system_once(probe).unwrap(), Some(beam));
+
+        app.world_mut().get_mut::<Beam>(beam).unwrap().awaiting_step = true;
+        assert_eq!(app.world_mut().run_system_once(probe).unwrap(), None);
     }
 }

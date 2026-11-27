@@ -14,23 +14,31 @@ This plugin records human and bot play into `play_trace.jsonl`, one JSON object 
 - `telemetry.enabled` turns the whole plugin on or off. Every system checks it.
 - If the file cannot be opened, there is no `TelemetrySink`, and all systems do nothing.
 - At start, the old trace files are rotated: `play_trace.jsonl` becomes `play_trace.1.jsonl`, and so on. `telemetry.history` is the total number of files kept.
-- The first line is the `session` record. It holds `schema_version` (now 2) and the clock anchor.
-- Every later record has two clocks, both in seconds since the app launched:
-  - `t` is game time (`Time<Virtual>`). It slows down during hitstop, and Bevy limits very long frames. It does not follow the wall clock.
-  - `rt` is real time (`Time<Real>`). Use `rt` to place a record on a video timeline.
+- The first line is the `session` record. It holds `schema_version` (now 3) and the clock anchor.
+- Every later record has two clocks, both in seconds:
+  - `t` is game time (`Time<Virtual>`), counted from the first frame. It slows down during hitstop, and Bevy limits very long frames. It does not follow the wall clock.
+  - `rt` is real time since the app start (`Time<Real>::startup`), read when the record is written. Use `rt` to place a record on a video timeline.
 - Records are `action`, `decision`, `event` and `outcome`. An `event` record has an `event` name and its own fields.
 - Actions and decisions are written only when they change, so the file stays small.
 - Player ids are 0 (P1) and 1 (P2). Fields named `attacker`, `caster` or `old_owner` are `null` when there is no player.
 
 ## Mapping a record to a video
 
-The `session` record gives the time of the line in Unix milliseconds (`unix_ms`) and the real time since launch at that instant (`rt_at_write`). With the Unix time when the recording started:
+The `session` record gives the time of the line in Unix milliseconds (`unix_ms`) and the real time since the app start at that instant (`rt_at_write`). With the Unix time when the recording started:
 
 ```
 video_seconds = (session.unix_ms - recording_start_unix_ms) / 1000 + record.rt - session.rt_at_write
 ```
 
-`t_at_write` is the game time at the same instant. It is only useful to relate `t` to `rt`. `rt_at_write` is exact. `t_at_write` is the value of the current frame. `rt` on other records is also the value of their frame.
+`rt_at_write` and `rt` on other records use the same clock, so the formula holds for every record. `t_at_write` is the game time at the same instant.
+
+Traces with `schema_version` 2 counted `rt` from the first clock update, which comes after the `session` record. For them, leave out `rt_at_write`:
+
+```
+video_seconds = (session.unix_ms - recording_start_unix_ms) / 1000 + record.rt
+```
+
+This is still a little early, by the time between the `session` record and the first clock update. The file does not hold that time, so check one moment by eye.
 
 ## Record schema
 
@@ -52,27 +60,28 @@ One example line per `kind`. Existing fields keep their names. `rt` and the `eve
 | `claim` | once per player per frame in which tiles changed owner | `player_id`, `tiles_claimed`, `tile_pct_after`, `x`, `y` (the first tile) |
 | `hit` | when a player loses health | `attacker`, `victim`, `damage`, `hp_after`, `cause` (`beam`, `hostile_tile` or `collision`) |
 | `knockback` | when a player is knocked back | `victim`, `tiles` (always 1), `x`, `y` (new position), `dx`, `dy` |
-| `parry` | when a parry lands | `defender`, `caster`, `success` (always `true`), `parries` |
+| `parry` | when a parry lands | `defender`, `attacker` (sent the beam to the defender), `caster` (first shooter of the beam), `success` (always `true`), `parries` |
 | `ability_used` | when a drafted ability takes effect | `player_id`, `ability` |
 | `charges_empty` | when a player's charges reach 0 | `player_id` |
 | `session_end` | when the app exits | `round` (the last round started) |
 
 Limits to know:
 - `parry` is written only for a parry that lands. A missed parry is a normal shot and has no event, so `success` is always `true`.
+- In a long rally, `caster` and `defender` are the same player on every second parry. `attacker` is always the other player. Traces with `schema_version` 2 have no `attacker`.
 - A beam claims one tile, so `tiles_claimed` is 1 until an ability claims many tiles at once.
 - `hit` with `cause` `hostile_tile` has no attacker. `collision` has no attacker either.
 
 Example lines (values shortened):
 
 ```json
-{"kind":"session","schema_version":2,"unix_ms":1795600000000,"t_at_write":0.0,"rt_at_write":0.42,"map":"level2.tmx","telemetry_enabled":true,"bot_p1":true,"bot_p2":true,"loadout_p1":["SolarPanels"],"loadout_p2":["BorderGrinder"],"rounds":3,"after_last_round":"Stay"}
+{"kind":"session","schema_version":3,"unix_ms":1795600000000,"t_at_write":0.0,"rt_at_write":0.42,"map":"level2.tmx","telemetry_enabled":true,"bot_p1":true,"bot_p2":true,"loadout_p1":["SolarPanels"],"loadout_p2":["BorderGrinder"],"rounds":3,"after_last_round":"Stay"}
 {"kind":"action","controller":"bot","player_id":1,"t":3.37,"rt":3.81,"x":23,"y":14,"facing":"Up","shoot":false,"charges_current":117,"charges_max":117,"on_hostile":false}
 {"kind":"decision","controller":"bot","player_id":1,"t":3.37,"rt":3.81,"behaviour":"claim","why":"nearest free tile","move_x":0.0,"move_y":1.0,"shoot":false}
 {"kind":"event","event":"round_start","t":3.37,"rt":3.81,"round":1,"players":[{"player_id":0,"controller":"bot","loadout":["SolarPanels"]},{"player_id":1,"controller":"bot","loadout":["BorderGrinder"]}]}
 {"kind":"event","event":"claim","t":3.56,"rt":4.0,"player_id":1,"tiles_claimed":1,"tile_pct_after":0.43,"x":23,"y":17}
 {"kind":"event","event":"hit","t":11.03,"rt":11.9,"attacker":null,"victim":1,"damage":5.0,"hp_after":95.0,"cause":"hostile_tile"}
 {"kind":"event","event":"knockback","t":11.15,"rt":12.0,"victim":1,"tiles":1,"x":8,"y":18,"dx":0,"dy":1}
-{"kind":"event","event":"parry","t":22.77,"rt":24.1,"defender":1,"caster":0,"success":true,"parries":1}
+{"kind":"event","event":"parry","t":22.77,"rt":24.1,"defender":1,"attacker":0,"caster":0,"success":true,"parries":1}
 {"kind":"event","event":"ability_used","t":6.34,"rt":6.9,"player_id":1,"ability":"BorderGrinder"}
 {"kind":"event","event":"charges_empty","t":40.2,"rt":43.0,"player_id":0}
 {"kind":"event","event":"session_end","t":120.5,"rt":131.0,"round":3}
