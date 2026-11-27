@@ -18,6 +18,7 @@ pub(crate) fn plugin(app: &mut App) {
     app.add_message::<EntityKnockedBack>();
     app.add_message::<DamageDealt>();
     app.add_message::<AbilityTriggered>();
+    app.add_message::<BotLoopEnded>();
 }
 
 // Fired when an entity moved from one grid position to another
@@ -136,6 +137,27 @@ pub struct DamageDealt {
     pub amount: f32,
     pub source: DamageSource,
     pub attacker: Option<Entity>,
+}
+
+// What a bot loop repeats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopPattern {
+    /// A bot going back and forth between two tiles.
+    PingPong,
+    /// Many player collisions in a short time.
+    Collisions,
+    /// Many parries on one beam.
+    Rally,
+}
+
+// Fired when a reported bot loop comes to an end. A rally has no single player.
+// Times are real seconds since the app start.
+#[derive(Message, Debug)]
+pub struct BotLoopEnded {
+    pub player: Option<Entity>,
+    pub pattern: LoopPattern,
+    pub start_secs: f32,
+    pub end_secs: f32,
 }
 
 // Fired when a drafted ability takes effect.

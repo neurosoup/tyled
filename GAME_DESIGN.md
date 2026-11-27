@@ -217,6 +217,10 @@ moved. There is still no cap. As before, when exactly one tile separates the
 players, the return cannot be parried. It now waits one step in front of the
 shooter first, and a Shoot press during that step fires a normal shot.
 
+Bots also give up rallies: their parry odds fall with each parry the beam
+already had (`bot.parry_rally_decay`). The game rule for human players is
+unchanged.
+
 **Interaction notes** (full detail lives here rather than scattered across
 roster entries):
 - **Body Blocker/Impaler (#7/#8)**: see "three outcomes" above — Body

@@ -210,8 +210,18 @@ pub struct BotConfig {
     pub hostile_cost: u32,
     /// Maximum Dijkstra cost worth paying to reach a tile from which Border Grinder can flip an enemy tile. Above this, chasing isn't worth it and the bot falls back to ordinary territory claiming instead. Roughly comparable to `hostile_cost` — a low value means it only chases flips reachable without crossing hostile ground at all; a high value lets it tunnel deep through enemy territory to get there.
     pub chase_cost_threshold: u32,
-    /// Chance (0.0-1.0), rolled once per incoming hostile beam, that the bot goes for a parry instead of ignoring/dodging it. Governs both the reflexive in-window catch and whether it breaks off its current goal to turn and brace for one approaching from a distance.
+    /// Chance (0.0-1.0) that the bot goes for a parry instead of ignoring or dodging a hostile beam. Higher = parries more often.
     pub parry_chance: f32,
+    /// Multiplies `parry_chance` once for each parry the beam already had, by either player. Lower = shorter rallies, 1 = off.
+    pub parry_rally_decay: f32,
+    /// Visits back and forth between two tiles that are reported as a loop. Higher = fewer reports.
+    pub loop_pingpong_visits: u32,
+    /// Player collisions within `loop_window_secs` that are reported as a loop. Higher = fewer reports.
+    pub loop_collisions: u32,
+    /// Real seconds in which collisions are counted. Higher = also reports slower collision loops.
+    pub loop_window_secs: f32,
+    /// Parries on one beam that are reported as a loop. Higher = fewer reports.
+    pub loop_rally_parries: u32,
     /// Whether player 1 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).
     pub player1_strike: bool,
     /// Whether player 2 uses the offense-focused "striking" behaviour (hunt the opponent and strike, ignoring territory).

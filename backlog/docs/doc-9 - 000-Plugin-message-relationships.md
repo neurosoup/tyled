@@ -22,7 +22,7 @@ For the links through game states, see [doc-24 Plugin state relationships](/docu
 - The Round plugin has three nodes, one per submodule (`state`, `intro`, `outcome`).
 - Maps and Round (outcome) have no edges. They react only to state changes.
 - `EffectRequest` stays inside the Effects plugin, so the diagram does not show it.
-- `TileClaimed`, `ChargeSpent` and `ChargeRegen` have no readers yet. They are hooks for future beam abilities.
+- `ChargeSpent` and `ChargeRegen` have no readers yet. They are hooks for future beam abilities.
 - If one entity gets several `KnockbackRequested` in the same frame, only the last one applies.
 
 ## Reading the diagram
@@ -57,6 +57,8 @@ damage_plugin["`**Damage Plugin**`"]:::system-group
 effects_plugin["`**Effects Plugin**`"]:::system-group
 hitstop_plugin["`**Hitstop Plugin**`"]:::system-group
 hud_plugin["`**HUD Plugin**`"]:::system-group
+bot_plugin["`**Bot Plugin**`"]:::system-group
+telemetry_plugin["`**Telemetry Plugin**`"]:::system-group
 
 map_created_message(["`**TiledEvent#60;MapCreated#62;**`"])
 object_created_message(["`**TiledEvent#60;ObjectCreated#62;**`"])
@@ -74,6 +76,8 @@ character_collision_message(["`**CharacterCollision**`"])
 parry_triggered_message(["`**ParryTriggered**`"])
 beam_parried_message(["`**BeamParried**`"])
 anim_completed_message(["`**AnimCompletedEvent**`"])
+bot_loop_ended_message(["`**BotLoopEnded**`"])
+damage_dealt_message(["`**DamageDealt**`"])
 
 tiled_plugin ---> |writes| map_created_message
 tiled_plugin ---> |writes| object_created_message
@@ -118,6 +122,13 @@ controller_plugin ---> |writes| knockback_requested_message
 controller_plugin ---> |writes| character_collision_message
 
 character_collision_message ---> |read by| damage_plugin
+character_collision_message ---> |read by| bot_plugin
+damage_plugin ---> |writes| damage_dealt_message
+damage_dealt_message ---> |read by| bot_plugin
+tile_claimed_message ---> |read by| bot_plugin
+beam_parried_message ---> |read by| bot_plugin
+bot_plugin ---> |writes| bot_loop_ended_message
+bot_loop_ended_message ---> |read by| telemetry_plugin
 
 knockback_requested_message ---> |read by| damage_plugin
 entity_knocked_back_message ---> |read by| effects_plugin

@@ -14,7 +14,7 @@ This plugin records human and bot play into `play_trace.jsonl`, one JSON object 
 - `telemetry.enabled` turns the whole plugin on or off. Every system checks it.
 - If the file cannot be opened, there is no `TelemetrySink`, and all systems do nothing.
 - At start, the old trace files are rotated: `play_trace.jsonl` becomes `play_trace.1.jsonl`, and so on. `telemetry.history` is the total number of files kept.
-- The first line is the `session` record. It holds `schema_version` (now 3) and the clock anchor.
+- The first line is the `session` record. It holds `schema_version` (now 4) and the clock anchor.
 - Every later record has two clocks, both in seconds:
   - `t` is game time (`Time<Virtual>`), counted from the first frame. It slows down during hitstop, and Bevy limits very long frames. It does not follow the wall clock.
   - `rt` is real time since the app start (`Time<Real>::startup`), read when the record is written. Use `rt` to place a record on a video timeline.
@@ -63,10 +63,13 @@ One example line per `kind`. Existing fields keep their names. `rt` and the `eve
 | `parry` | when a parry lands | `defender`, `attacker` (sent the beam to the defender), `caster` (first shooter of the beam), `success` (always `true`), `parries` |
 | `ability_used` | when a drafted ability takes effect | `player_id`, `ability` |
 | `charges_empty` | when a player's charges reach 0 | `player_id` |
+| `bot_loop` | when a bot loop ends | `player_id` (`null` for a rally), `pattern` (`ping_pong`, `collisions` or `rally`), `start_rt`, `end_rt` |
 | `session_end` | when the app exits | `round` (the last round started) |
 
 Limits to know:
 - `parry` is written only for a parry that lands. A missed parry is a normal shot and has no event, so `success` is always `true`.
+- `bot_loop` is written after the loop ends. Use `start_rt` and `end_rt` for the video, with the same formula as `rt`. A loop that stops with the round is written after the `outcome` record.
+- Traces before `schema_version` 4 have no `bot_loop`.
 - In a long rally, `caster` and `defender` are the same player on every second parry. `attacker` is always the other player. Traces with `schema_version` 2 have no `attacker`.
 - A beam claims one tile, so `tiles_claimed` is 1 until an ability claims many tiles at once.
 - `hit` with `cause` `hostile_tile` has no attacker. `collision` has no attacker either.
@@ -74,7 +77,7 @@ Limits to know:
 Example lines (values shortened):
 
 ```json
-{"kind":"session","schema_version":3,"unix_ms":1795600000000,"t_at_write":0.0,"rt_at_write":0.42,"map":"level2.tmx","telemetry_enabled":true,"bot_p1":true,"bot_p2":true,"loadout_p1":["SolarPanels"],"loadout_p2":["BorderGrinder"],"rounds":3,"after_last_round":"Stay"}
+{"kind":"session","schema_version":4,"unix_ms":1795600000000,"t_at_write":0.0,"rt_at_write":0.42,"map":"level2.tmx","telemetry_enabled":true,"bot_p1":true,"bot_p2":true,"loadout_p1":["SolarPanels"],"loadout_p2":["BorderGrinder"],"rounds":3,"after_last_round":"Stay"}
 {"kind":"action","controller":"bot","player_id":1,"t":3.37,"rt":3.81,"x":23,"y":14,"facing":"Up","shoot":false,"charges_current":117,"charges_max":117,"on_hostile":false}
 {"kind":"decision","controller":"bot","player_id":1,"t":3.37,"rt":3.81,"behaviour":"claim","why":"nearest free tile","move_x":0.0,"move_y":1.0,"shoot":false}
 {"kind":"event","event":"round_start","t":3.37,"rt":3.81,"round":1,"players":[{"player_id":0,"controller":"bot","loadout":["SolarPanels"]},{"player_id":1,"controller":"bot","loadout":["BorderGrinder"]}]}
@@ -84,6 +87,7 @@ Example lines (values shortened):
 {"kind":"event","event":"parry","t":22.77,"rt":24.1,"defender":1,"attacker":0,"caster":0,"success":true,"parries":1}
 {"kind":"event","event":"ability_used","t":6.34,"rt":6.9,"player_id":1,"ability":"BorderGrinder"}
 {"kind":"event","event":"charges_empty","t":40.2,"rt":43.0,"player_id":0}
+{"kind":"event","event":"bot_loop","t":58.1,"rt":63.2,"player_id":1,"pattern":"collisions","start_rt":57.4,"end_rt":63.1}
 {"kind":"event","event":"session_end","t":120.5,"rt":131.0,"round":3}
 {"kind":"outcome","t":51.4,"rt":55.0,"round":1,"winner":0,"reason":"kill","round_duration_secs":48,"players":[{"player_id":0,"controller":"bot","tile_pct":20.1,"tile_count":47,"hp":52.0,"charges_spent":73,"loadout":["SolarPanels"]},{"player_id":1,"controller":"bot","tile_pct":21.4,"tile_count":50,"hp":-1.0,"charges_spent":47,"loadout":["BorderGrinder"]}]}
 ```
@@ -114,6 +118,7 @@ end
 
 subgraph update_all ["Update, after GameplaySet::HudSync, every phase"]
   record_charges_empty["`**record_charges_empty**`"]
+  record_bot_loops["`**record_bot_loops**`"]
 end
 
 subgraph enter_playing ["OnEnter(Playing)"]
@@ -135,7 +140,7 @@ enter_playing ~~~ enter_outcome
 enter_outcome ~~~ last
 ```
 
-- All eleven systems run only when `telemetry.enabled` is true.
+- All thirteen systems run only when `telemetry.enabled` is true.
 - The `Update` recorders run after every gameplay set, so the last frame of a round is recorded.
 
 ## Plugin Systems
@@ -186,6 +191,10 @@ enter_outcome ~~~ last
 
 - Runs every frame, in every phase. Looks at players whose `BeamCharges` changed.
 - Writes a `charges_empty` event the first time the charges are 0. It forgets the player when the charges are above 0 again, for example after a round reset.
+
+### Record Bot Loops
+
+- Runs every frame, in every phase. Reads `BotLoopEnded` and writes a `bot_loop` event.
 
 ### Record Outcome
 

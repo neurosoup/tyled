@@ -3,7 +3,7 @@ id: doc-20
 title: '[018] Bot plugin'
 type: other
 created_date: '2026-07-21 12:00'
-updated_date: '2026-11-11 12:00'
+updated_date: '2026-11-27 12:00'
 ---
 # Bot Plugin
 
@@ -18,7 +18,10 @@ This plugin plays a player for the computer. It writes the bot's `ActionState<Ac
     - **Territory** (default): claims tiles, dodges beams, and uses its abilities.
 - The **parry reflex** runs every frame, before everything else. A parry window is shorter than the time between two decisions.
 - All other decisions happen on a **beat**: every `bot.think_interval_ms`, plus a small random jitter. Between beats, the bot stands still and does not shoot.
-- `bot.parry_chance` is rolled once per incoming beam. The result is kept, so the reflex and the brace/dodge choice agree on the same beam.
+- The parry roll uses `bot.parry_chance`. It is made once per beam and rally depth (the number of parries the beam already had). The result is kept, so the reflex and the brace/dodge choice agree.
+- The odds are multiplied by `bot.parry_rally_decay` for each parry the beam already had, by either player. So long rallies become rare.
+- The opponent's tile is blocked: pathfinding, the dodge step and the striking fallback never move the bot onto it. Two bots can still step onto the same free tile at the same time.
+- A **loop watch** reports repeated play with the `BotLoopEnded` message. It changes nothing in how the bot plays.
 - Each decision is copied into `BotDecision`. The Telemetry plugin logs it when it changes.
 
 ## Decision flow
@@ -102,19 +105,40 @@ end
 
 attach_bot_state --> bot_think
 bot_think --> input
+
+watch["`**watch_bot_loops**
+after Displacement, before HudSync, only during Playing`"]
+exit["`**end_all_loops**
+OnExit(Playing)`"]
+input --> watch
+watch --> exit
 ```
 
 ## Plugin Systems
 
 ### Attach Bot State
 
-- Adds `BotBrain` and `BotDecision` to each new `Bot` entity.
+- Adds `BotBrain`, `BotDecision` and `LoopWatch` to each new `Bot` entity.
 
 ### Bot Think
 
 - Runs every frame during `Playing`, for each bot.
 - Follows the decision flow above. Writes the move axis and the Shoot button into `ActionState<Action>`.
 - Replaces `BotDecision` only when the decision changes.
+
+### Watch Bot Loops
+
+- Runs every frame during `Playing`. Times are real seconds since the app start.
+- Three patterns count as a loop:
+    - **Ping-pong**: the bot goes back and forth between two tiles.
+    - **Collisions**: many player collisions in a short window. Both characters take part in each collision, so it counts for every bot.
+    - **Rally**: many parries on one beam.
+- A claim or a beam hit by a bot ends its ping-pong and collision watch. So a bot that makes progress is not reported.
+- A `BotLoopEnded` message is written when a loop ends: the bot leaves the two tiles or makes progress, the collisions stop for a whole window, or the rally beam is gone.
+
+### End All Loops
+
+- Runs when `Playing` ends. Reports the loops still running, and clears every watch for the next round.
 
 ### Helpers
 
@@ -123,8 +147,9 @@ bot_think --> input
 - `lance_landing`, `lance_hits_enemy`: where a Lance shot lands, and whether it hits the opponent.
 - `shot_hits_enemy`: whether a Straight or Lance shot hits the opponent.
 - `incoming_beam_threat`: finds an enemy beam coming toward the bot, with the facing to parry it and a safe dodge step.
-- `dijkstra_first_steps`: cost and first step to every reachable tile. Entering an enemy tile costs `bot.hostile_cost`.
-- `astar_first_step`: first step toward one target tile. Used by the striking mode.
+- `dijkstra_first_steps`: cost and first step to every reachable tile. Entering an enemy tile costs `bot.hostile_cost`. The blocked tile is never entered.
+- `astar_first_step`: first step toward one target tile, around the blocked tile. Used by the striking mode.
+- `parry_roll`: makes or reuses the parry roll of a beam at its rally depth.
 - `reposition_score`, `fires_toward_opponent`: scoring for the territory mode, biased toward the opponent when `bot.aggression` ≥ 0.5.
 
 ## Components, Resources and Messages CRUD
@@ -171,7 +196,7 @@ bots_query -..-> |filter Without| be_brain
 ### Insert BotBrain and BotDecision
 
 Used in the following systems:
-- **attach_bot_state**: inserts both with default values.
+- **attach_bot_state**: inserts both, and `LoopWatch`, with default values.
 
 ```mermaid
 ---
@@ -416,7 +441,82 @@ record_decisions ---> |reads| be_decision
 record_decisions -..-> |filter Changed| be_decision
 ```
 
+### Read loop messages, write LoopWatch and RallyWatch
+
+Used in the following systems:
+- **watch_bot_loops**: reads `TileClaimed`, `DamageDealt`, `CharacterCollision` and `BeamParried`. Updates each bot's `LoopWatch` and the `RallyWatch` resource.
+- **end_all_loops**: empties both.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+classDef reader stroke-dasharray: 3 3
+
+update(("`Update`")):::system-group
+watch_bot_loops["`**watch_bot_loops**`"]
+
+update -.-> watch_bot_loops
+
+message_reader{{"MessageReader"}}:::reader
+watch_bot_loops ---> message_reader
+tile_claimed_message(["`**TileClaimed**`"])
+damage_dealt_message(["`**DamageDealt**`"])
+collision_message(["`**CharacterCollision**`"])
+beam_parried_message(["`**BeamParried**`"])
+message_reader ---> |reads| tile_claimed_message
+message_reader ---> |reads| damage_dealt_message
+message_reader ---> |reads| collision_message
+message_reader ---> |reads| beam_parried_message
+
+bots_query{{"`bots`"}}:::query
+watch_bot_loops ---> bots_query
+bot_entity@{ shape: st-rect, label: "Bot Player" }
+be_grid_coords>"`**GridCoords**`"] --> |belongs to| bot_entity
+be_watch>"`**LoopWatch**`"] --> |belongs to| bot_entity
+bots_query ---> |reads| be_grid_coords
+bots_query ---> |writes| be_watch
+
+world@{ shape: st-rect, label: "World" }
+rally_res@{ shape: doc, label: "RallyWatch" }
+rally_res --> |belongs to| world
+watch_bot_loops ---> |writes| rally_res
+```
+
+### Write BotLoopEnded
+
+Used in the following systems:
+- **watch_bot_loops** and **end_all_loops**: write it when a reported loop ends.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+
+flowchart TD
+classDef system-group stroke-dasharray: 5 5
+classDef query stroke-dasharray: 3 3
+classDef reader stroke-dasharray: 3 3
+
+exit_playing(("`OnExit(Playing)`")):::system-group
+end_all_loops["`**end_all_loops**`"]
+
+exit_playing -.-> end_all_loops
+
+loop_message(["`**BotLoopEnded**`"])
+end_all_loops ---> |writes| loop_message
+```
+
 Definitions:
 - `Bot`: marker `Component` (`src/components/markers.rs`), added by the Input plugin to a bot player.
 - `BotDecision`: public `Component` with `behaviour` (a short tag, in bold in the decision flow), `why`, `move_x`, `move_y` and `shoot`.
 - `BotBrain`: private `Component` with the fire cooldown state, the next beat time, a sticky `target` tile and the cached `parry_rolls`.
+- `LoopWatch`: private `Component` with what one bot is repeating.
+- `RallyWatch`: private `Resource` with the rallies in progress, per beam.
+- `BotLoopEnded`: public `Message` with the player (none for a rally), the `LoopPattern`, and the start and end times.

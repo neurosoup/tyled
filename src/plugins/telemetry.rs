@@ -31,9 +31,8 @@ use crate::prelude::*;
 
 const TRACE_PATH: &str = "play_trace.jsonl";
 
-/// Shape version of the trace. 1 = the first shape, 2 = adds the clock anchor, `rt` and `event` records,
-/// 3 = adds the parry `attacker` and counts `rt` from the app start.
-const SCHEMA_VERSION: u32 = 3;
+/// Trace shape version. 2: clock anchor, `rt`, events. 3: parry `attacker`, `rt` from app start. 4: `bot_loop`.
+const SCHEMA_VERSION: u32 = 4;
 
 pub(crate) fn plugin(app: &mut App) {
     app.init_resource::<ActionSnapshots>();
@@ -57,7 +56,7 @@ pub(crate) fn plugin(app: &mut App) {
     );
     app.add_systems(
         Update,
-        record_charges_empty
+        (record_charges_empty, record_bot_loops)
             .after(GameplaySet::HudSync)
             .run_if(telemetry_enabled),
     );
@@ -247,6 +246,14 @@ struct ParryData {
     caster: Option<u8>,
     success: bool,
     parries: u32,
+}
+
+#[derive(Serialize)]
+struct BotLoopData {
+    player_id: Option<u8>,
+    pattern: &'static str,
+    start_rt: f32,
+    end_rt: f32,
 }
 
 #[derive(Serialize)]
@@ -629,6 +636,36 @@ fn record_parries(
     }
 }
 
+/// Runs in every phase to catch loops that end with the round.
+fn record_bot_loops(
+    clock: Clock,
+    sink: Option<ResMut<TelemetrySink>>,
+    mut reader: MessageReader<BotLoopEnded>,
+    players: Query<&Player>,
+) {
+    let Some(mut sink) = sink else {
+        return;
+    };
+    let stamp = clock.stamp();
+
+    for message in reader.read() {
+        sink.write(&event(
+            "bot_loop",
+            stamp,
+            BotLoopData {
+                player_id: message.player.and_then(|p| player_id_of(&players, p)),
+                pattern: match message.pattern {
+                    LoopPattern::PingPong => "ping_pong",
+                    LoopPattern::Collisions => "collisions",
+                    LoopPattern::Rally => "rally",
+                },
+                start_rt: message.start_secs,
+                end_rt: message.end_secs,
+            },
+        ));
+    }
+}
+
 fn record_abilities(
     clock: Clock,
     sink: Option<ResMut<TelemetrySink>>,
@@ -816,7 +853,26 @@ mod tests {
         for key in ["schema_version", "unix_ms", "t_at_write", "rt_at_write", "map"] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
-        assert_eq!(value["schema_version"], 3);
+        assert_eq!(value["schema_version"], 4);
+    }
+
+    #[test]
+    fn bot_loop_record_carries_its_time_range() {
+        let record = event(
+            "bot_loop",
+            Stamp { t: 1.0, rt: 9.0 },
+            BotLoopData {
+                player_id: None,
+                pattern: "rally",
+                start_rt: 2.5,
+                end_rt: 8.5,
+            },
+        );
+        let value = serde_json::to_value(&record).unwrap();
+        assert_eq!(value["event"], "bot_loop");
+        assert!(value["player_id"].is_null());
+        assert_eq!(value["start_rt"], 2.5);
+        assert_eq!(value["end_rt"], 8.5);
     }
 
     #[test]

@@ -4,10 +4,11 @@
  * handler a human goes through. Policy: a paced deliberation beat decides,
  * in priority order, whether to fire, turn to aim, or path toward a target
  * tile — the chosen behaviour and reason are mirrored into `BotDecision` for
- * telemetry.
+ * telemetry. A separate watcher reports loops (`BotLoopEnded`) and changes
+ * nothing in how the bot plays.
  */
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
@@ -26,6 +27,15 @@ pub(crate) fn plugin(app: &mut App) {
             .in_set(GameplaySet::BotThink)
             .run_if(in_state(RoundPhase::Playing)),
     );
+    app.init_resource::<RallyWatch>();
+    app.add_systems(
+        Update,
+        watch_bot_loops
+            .after(GameplaySet::Displacement)
+            .before(GameplaySet::HudSync)
+            .run_if(in_state(RoundPhase::Playing)),
+    );
+    app.add_systems(OnExit(RoundPhase::Playing), end_all_loops);
 }
 
 /// The bot's current intent, mirrored each time it changes so telemetry can log
@@ -45,12 +55,214 @@ struct BotBrain {
     shooting: bool,
     next_beat_secs: f32,
     target: Option<GridCoords>,
-    /// Per-beam "will I go for the parry" roll, made once when a beam is first recognized as a
-    /// threat and shared from then on between the reflexive in-window catch and the earlier
-    /// brace-vs-dodge call, so both agree on the same beam. A bail-out (too close to reorient
-    /// for, not already facing) removes the entry early rather than keeping it for the beam's
-    /// whole life. Pruned each beat against the beams still in flight.
-    parry_rolls: HashMap<Entity, bool>,
+    /// Latest parry roll per beam.
+    parry_rolls: ParryRolls,
+}
+
+/// Rally depth and result per beam.
+type ParryRolls = HashMap<Entity, (u32, bool)>;
+
+/// Whether to parry this beam at this depth. `roll` draws from the odds.
+fn parry_roll(
+    rolls: &mut ParryRolls,
+    beam: Entity,
+    depth: u32,
+    chance: f32,
+    decay: f32,
+    roll: impl FnOnce(f64) -> bool,
+) -> bool {
+    // Rolling again on every frame would almost always end in a yes.
+    if let Some(&(rolled_depth, wants)) = rolls.get(&beam)
+        && rolled_depth == depth
+    {
+        return wants;
+    }
+    let odds = (chance * decay.powi(depth as i32)).clamp(0.0, 1.0);
+    let wants = roll(odds as f64);
+    rolls.insert(beam, (depth, wants));
+    wants
+}
+
+/// A loop in progress, in real seconds since the app start.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Span {
+    start: f32,
+    last: f32,
+}
+
+/// What one bot has been repeating since its last claim or beam hit.
+#[derive(Component, Default)]
+struct LoopWatch {
+    tile: Option<(GridCoords, f32)>,
+    previous_tile: Option<GridCoords>,
+    /// Visits in the current back-and-forth between two tiles.
+    visits: u32,
+    visits_start: f32,
+    collisions: VecDeque<f32>,
+    ping_pong: Option<Span>,
+    ramming: Option<Span>,
+}
+
+impl LoopWatch {
+    /// Notes the bot's tile, and returns a ping-pong loop that this tile ended.
+    fn visit(&mut self, tile: GridCoords, now: f32, limit: u32) -> Option<Span> {
+        if self.tile.is_some_and(|(current, _)| current == tile) {
+            return None;
+        }
+        let mut ended = None;
+        if self.previous_tile == Some(tile) {
+            self.visits += 1;
+        } else {
+            ended = self.ping_pong.take();
+            self.visits = if self.tile.is_some() { 2 } else { 1 };
+            self.visits_start = self.tile.map_or(now, |(_, since)| since);
+        }
+        self.previous_tile = self.tile.map(|(current, _)| current);
+        self.tile = Some((tile, now));
+        if self.visits >= limit {
+            self.ping_pong = Some(Span {
+                start: self.visits_start,
+                last: now,
+            });
+        }
+        ended
+    }
+
+    fn collision(&mut self, now: f32, window: f32, limit: u32) {
+        self.collisions.push_back(now);
+        while self.collisions.front().is_some_and(|&at| now - at > window) {
+            self.collisions.pop_front();
+        }
+        if let Some(span) = &mut self.ramming {
+            span.last = now;
+        } else if self.collisions.len() >= limit as usize {
+            self.ramming = self.collisions.front().map(|&start| Span { start, last: now });
+        }
+    }
+
+    /// Returns a collision loop that has been quiet for a whole window.
+    fn expire(&mut self, now: f32, window: f32) -> Option<Span> {
+        if self.ramming.is_some_and(|span| now - span.last > window) {
+            self.collisions.clear();
+            return self.ramming.take();
+        }
+        None
+    }
+
+    /// Forgets everything, and returns the loops that were in progress.
+    fn finish(&mut self) -> impl Iterator<Item = (LoopPattern, Span)> + use<> {
+        let done = std::mem::take(self);
+        [
+            (LoopPattern::PingPong, done.ping_pong),
+            (LoopPattern::Collisions, done.ramming),
+        ]
+        .into_iter()
+        .filter_map(|(pattern, span)| span.map(|span| (pattern, span)))
+    }
+}
+
+/// Rallies in progress, per beam.
+#[derive(Resource, Default)]
+struct RallyWatch(HashMap<Entity, Rally>);
+
+#[derive(Clone, Copy)]
+struct Rally {
+    span: Span,
+    parries: u32,
+}
+
+fn loop_ended(player: Option<Entity>, pattern: LoopPattern, span: Span) -> BotLoopEnded {
+    BotLoopEnded {
+        player,
+        pattern,
+        start_secs: span.start,
+        end_secs: span.last,
+    }
+}
+
+fn watch_bot_loops(
+    real: Res<Time<Real>>,
+    config: Res<GameConfig>,
+    mut claims: MessageReader<TileClaimed>,
+    mut hits: MessageReader<DamageDealt>,
+    mut collisions: MessageReader<CharacterCollision>,
+    mut parries: MessageReader<BeamParried>,
+    beams: Query<(), With<Beam>>,
+    mut bots: Query<(Entity, &GridCoords, &mut LoopWatch), With<Bot>>,
+    mut rallies: ResMut<RallyWatch>,
+    mut ended: MessageWriter<BotLoopEnded>,
+) {
+    // Same zero as the telemetry `rt`.
+    let now = real.startup().elapsed().as_secs_f32();
+    let window = config.bot.loop_window_secs;
+
+    let mut progressed: Vec<Entity> = claims
+        .read()
+        .filter(|claim| claim.old_owner != Some(claim.new_owner))
+        .map(|claim| claim.new_owner)
+        .collect();
+    progressed.extend(
+        hits.read()
+            .filter(|hit| matches!(hit.source, DamageSource::BeamContact))
+            .filter_map(|hit| hit.attacker),
+    );
+    // There are two characters, so every collision involves every bot.
+    let collision_count = collisions.read().count();
+
+    for (entity, coords, mut watch) in &mut bots {
+        if progressed.contains(&entity) {
+            for (pattern, span) in watch.finish() {
+                ended.write(loop_ended(Some(entity), pattern, span));
+            }
+        }
+        for _ in 0..collision_count {
+            watch.collision(now, window, config.bot.loop_collisions);
+        }
+        if let Some(span) = watch.visit(*coords, now, config.bot.loop_pingpong_visits) {
+            ended.write(loop_ended(Some(entity), LoopPattern::PingPong, span));
+        }
+        if let Some(span) = watch.expire(now, window) {
+            ended.write(loop_ended(Some(entity), LoopPattern::Collisions, span));
+        }
+    }
+
+    for parry in parries.read() {
+        if !bots.contains(parry.parrier) {
+            continue;
+        }
+        let rally = rallies.0.entry(parry.beam).or_insert(Rally {
+            span: Span { start: now, last: now },
+            parries: 0,
+        });
+        rally.span.last = now;
+        rally.parries = parry.parries;
+    }
+    rallies.0.retain(|&beam, rally| {
+        let alive = beams.contains(beam);
+        if !alive && rally.parries >= config.bot.loop_rally_parries {
+            ended.write(loop_ended(None, LoopPattern::Rally, rally.span));
+        }
+        alive
+    });
+}
+
+/// Reports the loops still running when play stops, and starts the next round clean.
+fn end_all_loops(
+    config: Res<GameConfig>,
+    mut bots: Query<(Entity, &mut LoopWatch)>,
+    mut rallies: ResMut<RallyWatch>,
+    mut ended: MessageWriter<BotLoopEnded>,
+) {
+    for (entity, mut watch) in &mut bots {
+        for (pattern, span) in watch.finish() {
+            ended.write(loop_ended(Some(entity), pattern, span));
+        }
+    }
+    for (_, rally) in rallies.0.drain() {
+        if rally.parries >= config.bot.loop_rally_parries {
+            ended.write(loop_ended(None, LoopPattern::Rally, rally.span));
+        }
+    }
 }
 
 const CARDINALS: [GridCoords; 4] = [
@@ -64,7 +276,7 @@ fn attach_bot_state(mut commands: Commands, bots: Query<Entity, (Added<Bot>, Wit
     for entity in &bots {
         commands
             .entity(entity)
-            .insert((BotBrain::default(), BotDecision::default()));
+            .insert((BotBrain::default(), BotDecision::default(), LoopWatch::default()));
     }
 }
 
@@ -112,9 +324,9 @@ fn bot_think(
     {
         // Reflex layer: a parry window is tens of milliseconds wide, far narrower than the beat
         // interval below, so catching it can't wait for the next paced "think" — it's checked
-        // every frame regardless of beat timing. The chance roll (cached per beam, shared with
-        // the brace/dodge call further down) is what makes this "opportunistic" rather than a
-        // deterministic reflex: a beam the bot already decided to ignore stays ignored here too.
+        // every frame regardless of beat timing. The chance roll (cached per beam and rally depth,
+        // shared with the brace/dodge call further down) is what makes this "opportunistic" rather
+        // than a deterministic reflex: a beam the bot decided to ignore stays ignored here too.
         if let Some(beam) = find_parryable_beam(
             *coords,
             look.to_grid_coords(),
@@ -124,10 +336,15 @@ fn bot_think(
             &claimed_query,
             config.parry.window_fraction,
         ) {
-            let wants_to_parry = *brain
-                .parry_rolls
-                .entry(beam)
-                .or_insert_with(|| rand::rng().random_bool(config.bot.parry_chance as f64));
+            let depth = beams.get(beam).map_or(0, |(_, _, beam)| beam.parries);
+            let wants_to_parry = parry_roll(
+                &mut brain.parry_rolls,
+                beam,
+                depth,
+                config.bot.parry_chance,
+                config.bot.parry_rally_decay,
+                |odds| rand::rng().random_bool(odds),
+            );
             if wants_to_parry {
                 action_state.set_axis_pair(&Action::Move, Vec2::ZERO);
                 action_state.press(&Action::Shoot);
@@ -264,8 +481,14 @@ fn bot_think(
             && CARDINALS.into_iter().any(is_border_grinder_flip);
         let chase_target = (has_border_grinder && !current_position_has_flip)
             .then(|| {
-                let reachable =
-                    dijkstra_first_steps(&map_info, &claimed_query, entity, coords, hostile_cost);
+                let reachable = dijkstra_first_steps(
+                    &map_info,
+                    &claimed_query,
+                    entity,
+                    coords,
+                    hostile_cost,
+                    opponent,
+                );
                 // A firing position, not the enemy tile itself — standing adjacent to a hostile
                 // tile is enough to flip it (the existing `effective_reach` reach-0 trick fires
                 // once we're there), and walking onto the enemy tile directly would just mean
@@ -357,20 +580,33 @@ fn bot_think(
                 // up a pierce is a real capability, not a trap.
                 action_state.release(&Action::Shoot);
                 brain.shooting = false;
-                let chase =
-                    astar_first_step(&map_info, &claimed_query, entity, coords, foe, hostile_cost);
+                let chase = astar_first_step(
+                    &map_info,
+                    &claimed_query,
+                    entity,
+                    coords,
+                    foe,
+                    hostile_cost,
+                    Some(foe),
+                );
                 let step = if has_lance {
                     chase
                 } else {
                     let safe = |t: GridCoords| {
-                        map_info.on_ground(t)
+                        t != foe
+                            && map_info.on_ground(t)
                             && !is_hostile_tile(&map_info, &claimed_query, t, entity)
                     };
                     chase.filter(|s| safe(coords + *s)).or_else(|| {
-                        CARDINALS
-                            .into_iter()
-                            .filter(|&d| safe(coords + d))
-                            .min_by_key(|&d| manhattan(coords + d, foe))
+                        // Next to the foe there is nothing left to approach.
+                        (manhattan(coords, foe) > 1)
+                            .then(|| {
+                                CARDINALS
+                                    .into_iter()
+                                    .filter(|&d| safe(coords + d))
+                                    .min_by_key(|&d| manhattan(coords + d, foe))
+                            })
+                            .flatten()
                     })
                 };
                 match step {
@@ -384,20 +620,24 @@ fn bot_think(
                 }
             }
         } else if let Some(threat) =
-            incoming_beam_threat(coords, &beams, entity, &map_info, &claimed_query)
+            incoming_beam_threat(coords, &beams, entity, opponent, &map_info, &claimed_query)
         {
             // A hostile beam is bearing down this row/column. A parry is strictly better than a
             // dodge (it removes the threat and hands it back), but only worth going for when
             // there's enough runway to turn and still catch the window — a beam already adjacent
-            // is too close to reorient for. Rolled once per beam and shared with the reflex catch
-            // above, so a beam the bot committed to here is the one it'll actually swing at.
+            // is too close to reorient for. Rolled once per rally depth and shared with the reflex
+            // catch above, so a beam the bot committed to here is the one it'll actually swing at.
             let already_facing = look.to_grid_coords() == threat.needed_facing;
             let wants_to_brace = already_facing || threat.distance >= 2;
             let commits_to_parry = if wants_to_brace {
-                *brain
-                    .parry_rolls
-                    .entry(threat.beam)
-                    .or_insert_with(|| rand::rng().random_bool(config.bot.parry_chance as f64))
+                parry_roll(
+                    &mut brain.parry_rolls,
+                    threat.beam,
+                    threat.parries,
+                    config.bot.parry_chance,
+                    config.bot.parry_rally_decay,
+                    |odds| rand::rng().random_bool(odds),
+                )
             } else {
                 // Too close to turn in time and not already facing: abandon any earlier
                 // commitment to this beam so the reflex layer (which shares this cache) doesn't
@@ -484,7 +724,14 @@ fn bot_think(
             action_state.release(&Action::Shoot);
             brain.shooting = false;
 
-            let reachable = dijkstra_first_steps(&map_info, &claimed_query, entity, coords, hostile_cost);
+            let reachable = dijkstra_first_steps(
+                &map_info,
+                &claimed_query,
+                entity,
+                coords,
+                hostile_cost,
+                opponent,
+            );
 
             // A valid target is any reachable unclaimed tile (on arrival the bot can always
             // claim it). Only searched while charges remain — with none left, claiming is moot.
@@ -723,6 +970,8 @@ fn lance_hits_enemy(
 /// dodge it instead.
 struct IncomingThreat {
     beam: Entity,
+    /// Parries the beam has had so far.
+    parries: u32,
     /// Chebyshev distance in tiles from the beam to `coords` along their shared line.
     distance: i32,
     needed_facing: GridCoords,
@@ -736,6 +985,7 @@ fn incoming_beam_threat(
     coords: GridCoords,
     beams: &Query<(Entity, &GridCoords, &Beam), Without<Character>>,
     self_entity: Entity,
+    opponent: Option<GridCoords>,
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
 ) -> Option<IncomingThreat> {
@@ -757,12 +1007,15 @@ fn incoming_beam_threat(
         };
         let Some(dodge_step) = perpendicular.into_iter().find(|&p| {
             let dest = coords + p;
-            map_info.on_ground(dest) && !is_hostile_tile(map_info, claimed_query, dest, self_entity)
+            Some(dest) != opponent
+                && map_info.on_ground(dest)
+                && !is_hostile_tile(map_info, claimed_query, dest, self_entity)
         }) else {
             continue;
         };
         return Some(IncomingThreat {
             beam: beam_entity,
+            parries: beam.parries,
             distance: (coords.x - beam_pos.x).abs().max((coords.y - beam_pos.y).abs()),
             needed_facing: GridCoords::new(-dir.x, -dir.y),
             dodge_step,
@@ -771,13 +1024,15 @@ fn incoming_beam_threat(
     None
 }
 
-/// Dijkstra over walkable ground tiles from `start`, 4-connected via `CARDINALS`.
+/// Dijkstra over walkable ground tiles from `start`, 4-connected via `CARDINALS`, never entering
+/// the `blocked` tile.
 fn dijkstra_first_steps(
     map_info: &MapInfo,
     claimed_query: &Query<&ClaimedTile>,
     bot: Entity,
     start: GridCoords,
     hostile_cost: u32,
+    blocked: Option<GridCoords>,
 ) -> HashMap<GridCoords, (u32, GridCoords)> {
     let mut dist: HashMap<GridCoords, u32> = HashMap::new();
     let mut first_step: HashMap<GridCoords, GridCoords> = HashMap::new();
@@ -793,7 +1048,7 @@ fn dijkstra_first_steps(
         }
         for step in CARDINALS {
             let next = coords + step;
-            if !map_info.on_ground(next) {
+            if !map_info.on_ground(next) || Some(next) == blocked {
                 continue;
             }
             let enter_cost = if is_hostile_tile(map_info, claimed_query, next, bot) {
@@ -827,6 +1082,7 @@ fn astar_first_step(
     start: GridCoords,
     goal: GridCoords,
     hostile_cost: u32,
+    blocked: Option<GridCoords>,
 ) -> Option<GridCoords> {
     if start == goal {
         return None;
@@ -853,7 +1109,7 @@ fn astar_first_step(
         }
         for step in CARDINALS {
             let next = coords + step;
-            if !map_info.on_ground(next) {
+            if !map_info.on_ground(next) || Some(next) == blocked {
                 continue;
             }
             let enter_cost = if is_hostile_tile(map_info, claimed_query, next, bot) {
@@ -871,4 +1127,140 @@ fn astar_first_step(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy_ecs_tiled::prelude::{TilemapGridSize, TilemapSize, TilemapTileSize};
+
+    fn open_map(width: i32, height: i32) -> MapInfo {
+        let mut map_info = MapInfo {
+            map_size: TilemapSize::new(width as u32, height as u32),
+            grid_size: TilemapGridSize::new(16.0, 16.0),
+            tile_size: TilemapTileSize::new(16.0, 16.0),
+            ..default()
+        };
+        for x in 0..width {
+            for y in 0..height {
+                map_info
+                    .ground_entities
+                    .insert(GridCoords { x, y }, Entity::PLACEHOLDER);
+            }
+        }
+        map_info
+    }
+
+    #[test]
+    fn paths_never_enter_the_blocked_tile() {
+        let mut world = World::new();
+        world.insert_resource(open_map(3, 2));
+        let (reachable, step) = world
+            .run_system_once(|map_info: Res<MapInfo>, claimed: Query<&ClaimedTile>| {
+                let start = GridCoords::new(0, 0);
+                let foe = GridCoords::new(1, 0);
+                let reachable = dijkstra_first_steps(
+                    &map_info,
+                    &claimed,
+                    Entity::PLACEHOLDER,
+                    start,
+                    40,
+                    Some(foe),
+                );
+                let step = astar_first_step(
+                    &map_info,
+                    &claimed,
+                    Entity::PLACEHOLDER,
+                    start,
+                    GridCoords::new(2, 0),
+                    40,
+                    Some(foe),
+                );
+                (reachable, step)
+            })
+            .unwrap();
+
+        assert!(!reachable.contains_key(&GridCoords::new(1, 0)));
+        assert_eq!(
+            reachable.get(&GridCoords::new(2, 0)),
+            Some(&(4, GridCoords::new(0, 1)))
+        );
+        assert_eq!(step, Some(GridCoords::new(0, 1)));
+    }
+
+    #[test]
+    fn a_parry_is_rolled_once_per_depth_with_falling_odds() {
+        let mut rolls = ParryRolls::default();
+        let beam = Entity::PLACEHOLDER;
+        let mut asked = Vec::new();
+        for depth in [0, 0, 0, 1, 1, 2] {
+            parry_roll(&mut rolls, beam, depth, 0.8, 0.5, |odds| {
+                asked.push((odds * 1000.0).round() as u32);
+                true
+            });
+        }
+        assert_eq!(asked, vec![800, 400, 200]);
+        assert!(parry_roll(&mut rolls, beam, 2, 0.8, 0.5, |_| false));
+    }
+
+    /// Walks back and forth between two tiles, one step every 0.1 s.
+    fn ping_pong(watch: &mut LoopWatch, visits: u32) {
+        for visit in 0..visits {
+            let tile = GridCoords::new((visit % 2) as i32, 0);
+            assert_eq!(watch.visit(tile, visit as f32 * 0.1, 10), None);
+        }
+    }
+
+    #[test]
+    fn ten_visits_between_two_tiles_make_a_loop() {
+        let mut watch = LoopWatch::default();
+        ping_pong(&mut watch, 9);
+        assert!(watch.ping_pong.is_none());
+
+        let mut watch = LoopWatch::default();
+        ping_pong(&mut watch, 12);
+        let ended = watch.visit(GridCoords::new(5, 5), 2.0, 10).unwrap();
+        assert_eq!(ended.start, 0.0);
+        assert!((ended.last - 1.1).abs() < 0.001);
+    }
+
+    #[test]
+    fn steady_walking_is_not_a_loop() {
+        let mut watch = LoopWatch::default();
+        for x in 0..40 {
+            assert_eq!(watch.visit(GridCoords::new(x, 0), x as f32, 10), None);
+        }
+        assert_eq!(watch.finish().count(), 0);
+    }
+
+    #[test]
+    fn close_collisions_make_a_loop_that_ends_after_a_quiet_window() {
+        let mut watch = LoopWatch::default();
+        for at in [0.0, 0.4, 0.8, 1.2] {
+            watch.collision(at, 3.0, 5);
+        }
+        assert!(watch.ramming.is_none());
+        watch.collision(1.6, 3.0, 5);
+        assert_eq!(watch.expire(2.0, 3.0), None);
+        assert_eq!(watch.expire(5.0, 3.0), Some(Span { start: 0.0, last: 1.6 }));
+    }
+
+    #[test]
+    fn spread_out_collisions_are_not_a_loop() {
+        let mut watch = LoopWatch::default();
+        for count in 0..10 {
+            watch.collision(count as f32, 3.0, 5);
+        }
+        assert!(watch.ramming.is_none());
+    }
+
+    #[test]
+    fn finishing_reports_the_running_loop_and_starts_clean() {
+        let mut watch = LoopWatch::default();
+        ping_pong(&mut watch, 12);
+        let ended: Vec<_> = watch.finish().map(|(pattern, _)| pattern).collect();
+        assert_eq!(ended, vec![LoopPattern::PingPong]);
+        assert_eq!(watch.visits, 0);
+    }
 }
